@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'; child-src 'none'"
+    />
+    <title>Voice Hotkey</title>
+    <script type="module" src="./overlay.ts"></script>
+  </head>
+  <body>
+    <!--
+      Deliberately its own entry point. The overlay used to load the whole
+      settings/history app just to draw this pill, which meant a second full
+      renderer process running the entire UI.
+    -->
+    <div class="overlay idle" id="overlay" role="status" aria-live="polite">
+      <div class="glyph" aria-hidden="true">
+        <span class="halo"></span>
+        <span class="halo halo-delayed"></span>
+        <span class="core"></span>
+      </div>
+      <div class="copy">
+        <div class="message" id="message">Ready</div>
+        <div class="detail" id="detail"></div>
+      </div>
+      <div class="timer" id="timer"></div>
+    </div>
+  </body>
+</html>

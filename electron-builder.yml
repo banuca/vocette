@@ -1,0 +1,46 @@
+appId: dev.voicehotkey.app
+productName: Voice Hotkey
+copyright: Copyright © 2026 Voice Hotkey contributors
+
+directories:
+  output: dist
+  buildResources: resources
+
+files:
+  - out/**
+  - package.json
+
+extraResources:
+  - from: resources
+    to: resources
+    filter:
+      - icon.png
+      - tray.png
+
+asarUnpack:
+  - '**/node_modules/uiohook-napi/**'
+
+# uiohook-napi ships N-API prebuilds, which are ABI-stable across Electron
+# versions and selected at require time by node-gyp-build. Rebuilding from source
+# would need Python and a C++ toolchain for no benefit.
+npmRebuild: false
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  icon: resources/icon.png
+  artifactName: ${name}-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Voice Hotkey
+
+# The preview builds are unsigned; SmartScreen will warn until a code-signing
+# certificate is configured. See SECURITY.md.
