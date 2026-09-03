@@ -19,6 +19,8 @@ const api = {
   deleteHistoryEntry: (id: string): Promise<HistoryEntry[]> =>
     ipcRenderer.invoke('history:delete', id),
   clearHistory: (): Promise<void> => ipcRenderer.invoke('history:clear'),
+  exportHistory: (format: 'json' | 'txt'): Promise<{ saved: boolean; path: string | null }> =>
+    ipcRenderer.invoke('history:export', format),
 
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:write', text),
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke('app:info'),

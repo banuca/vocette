@@ -1,4 +1,5 @@
 import type { RecorderStartRequest, RecorderStopRequest } from '../shared/types'
+import { prepareForTranscription } from './audio-prep'
 
 /** getUserMedia can hang indefinitely on a wedged audio driver. */
 const MIC_OPEN_TIMEOUT_MS = 6000
@@ -86,6 +87,14 @@ async function start(request: RecorderStartRequest): Promise<void> {
 
   try {
     stream = await openMicrophone(request.microphoneId)
+    // The main process may have abandoned this take (watchdog, tray reset)
+    // while getUserMedia was pending. A late start must not leave the mic hot
+    // and the app wedged on "already recording".
+    if (settled || activeRequestId !== request.requestId) {
+      stream.getTracks().forEach((track) => track.stop())
+      return
+    }
+
     const mimeType = preferredMimeType()
     recorder = new MediaRecorder(stream, {
       ...(mimeType ? { mimeType } : {}),
@@ -123,16 +132,15 @@ async function start(request: RecorderStartRequest): Promise<void> {
           return
         }
 
-        void blob
-          .arrayBuffer()
-          .then((buffer) => {
-            const audio = new Uint8Array(buffer)
+        void prepareForTranscription(blob, blob.type || 'audio/webm')
+          .then((prepared) => {
+            const audio = new Uint8Array(prepared.buffer)
             // ipcRenderer.send serialises synchronously, so zeroing our copy
             // straight after is safe.
             window.recorder.sendAudio({
               requestId: request.requestId,
               audio,
-              mimeType: blob.type || 'audio/webm',
+              mimeType: prepared.mimeType,
               durationMs
             })
             audio.fill(0)
@@ -180,4 +188,12 @@ window.recorder.onStop((request: RecorderStopRequest) => {
     return
   }
   recorder.stop()
+})
+
+window.recorder.onCancel((request) => {
+  // The main process abandoned this take. Tear down without replying — any
+  // reply would race the cancel and could be mistaken for a live event.
+  if (request.requestId !== activeRequestId) return
+  settled = true
+  teardown()
 })

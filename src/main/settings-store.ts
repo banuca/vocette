@@ -16,7 +16,7 @@ import {
   type SettingsUpdate
 } from '../shared/types'
 
-export const SETTINGS_VERSION = 2
+export const SETTINGS_VERSION = 3
 
 export interface StoredSettings {
   version: number
@@ -25,11 +25,13 @@ export interface StoredSettings {
   hotkeyEnabled: boolean
   autoPaste: boolean
   removeFillers: boolean
+  playSounds: boolean
   launchAtLogin: boolean
   microphoneId: string
   historyRetentionDays: number
   model: string
   language: string
+  apiEndpoint: string
   encryptedApiKey: string
 }
 
@@ -40,21 +42,50 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   hotkeyEnabled: true,
   autoPaste: true,
   removeFillers: true,
+  playSounds: true,
   launchAtLogin: false,
   microphoneId: '',
   historyRetentionDays: 0,
   model: 'gpt-transcribe',
   language: 'en',
+  apiEndpoint: '',
   encryptedApiKey: ''
 }
 
 const MAX_API_KEY_LENGTH = 512
+const MAX_ENDPOINT_LENGTH = 300
 const retentionSet = new Set<number>(RETENTION_OPTIONS)
 const holdDelaySet = new Set<number>(HOLD_DELAY_OPTIONS)
 const modelSet = new Set<string>(TRANSCRIPTION_MODELS)
+/** A model name for custom endpoints: provider slug, letters/digits/dots/dashes. */
+const CUSTOM_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u
 
 function isLanguageCode(value: unknown): value is string {
   return typeof value === 'string' && (value === 'auto' || /^[a-z]{2}$/u.test(value))
+}
+
+/**
+ * Endpoint rules: empty means api.openai.com. Otherwise https is required —
+ * except for http on localhost/127.0.0.1, so a locally hosted transcription
+ * server (whisper.cpp, vLLM) can be used without certificates.
+ */
+function isValidEndpoint(value: string): boolean {
+  if (!value) return true
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return false
+  }
+  if (url.protocol === 'https:') return true
+  if (url.protocol !== 'http:') return false
+  return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+}
+
+export function isValidModel(value: string, apiEndpoint: string): boolean {
+  if (modelSet.has(value)) return true
+  // A custom model name is only meaningful against a custom endpoint.
+  return apiEndpoint !== '' && CUSTOM_MODEL_PATTERN.test(value)
 }
 
 /**
@@ -75,6 +106,12 @@ export function normaliseSettings(value: unknown): StoredSettings {
   // A chord that is no longer allowed (e.g. a bare modifier saved by an older
   // build) falls back to the default rather than being rejected at runtime.
   const shortcut = validateChord(chord.keys).ok ? chord : DEFAULT_CHORD
+  const apiEndpoint =
+    typeof candidate.apiEndpoint === 'string' &&
+    candidate.apiEndpoint.length <= MAX_ENDPOINT_LENGTH &&
+    isValidEndpoint(candidate.apiEndpoint)
+      ? candidate.apiEndpoint
+      : ''
 
   return {
     version: SETTINGS_VERSION,
@@ -93,6 +130,10 @@ export function normaliseSettings(value: unknown): StoredSettings {
       typeof candidate.removeFillers === 'boolean'
         ? candidate.removeFillers
         : DEFAULT_SETTINGS.removeFillers,
+    playSounds:
+      typeof candidate.playSounds === 'boolean'
+        ? candidate.playSounds
+        : DEFAULT_SETTINGS.playSounds,
     launchAtLogin:
       typeof candidate.launchAtLogin === 'boolean'
         ? candidate.launchAtLogin
@@ -105,12 +146,13 @@ export function normaliseSettings(value: unknown): StoredSettings {
         ? candidate.historyRetentionDays
         : DEFAULT_SETTINGS.historyRetentionDays,
     model:
-      typeof candidate.model === 'string' && modelSet.has(candidate.model)
+      typeof candidate.model === 'string' && isValidModel(candidate.model, apiEndpoint)
         ? candidate.model
         : DEFAULT_SETTINGS.model,
     language: isLanguageCode(candidate.language)
       ? candidate.language
       : DEFAULT_SETTINGS.language,
+    apiEndpoint,
     encryptedApiKey:
       typeof candidate.encryptedApiKey === 'string' ? candidate.encryptedApiKey : ''
   }
@@ -179,8 +221,27 @@ export class SettingsStore {
     ) {
       this.settings.historyRetentionDays = update.historyRetentionDays
     }
-    if (typeof update.model === 'string' && modelSet.has(update.model)) {
-      this.settings.model = update.model
+    if (typeof update.playSounds === 'boolean') this.settings.playSounds = update.playSounds
+    if (typeof update.apiEndpoint === 'string' && update.apiEndpoint !== this.settings.apiEndpoint) {
+      const endpoint = update.apiEndpoint.trim()
+      if (endpoint.length > MAX_ENDPOINT_LENGTH || !isValidEndpoint(endpoint)) {
+        throw new Error(
+          'That API endpoint is not valid. Use an https:// URL, or http://localhost for a local transcription server.'
+        )
+      }
+      this.settings.apiEndpoint = endpoint
+      // A custom model name is only valid while an endpoint is configured;
+      // clearing the endpoint must fall back to a known model.
+      if (!isValidModel(this.settings.model, endpoint)) {
+        this.settings.model = DEFAULT_SETTINGS.model
+      }
+    }
+    if (typeof update.model === 'string' && update.model !== this.settings.model) {
+      const model = update.model.trim()
+      if (!isValidModel(model, this.settings.apiEndpoint)) {
+        throw new Error('That model name is not recognised.')
+      }
+      this.settings.model = model
     }
     if (isLanguageCode(update.language)) this.settings.language = update.language
 

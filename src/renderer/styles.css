@@ -329,7 +329,7 @@ select:focus-visible {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 13px;
   margin-bottom: 20px;
 }
@@ -1062,6 +1062,82 @@ select:focus-visible {
 .fatal-error h1 {
   margin: 0;
   font-size: 20px;
+}
+
+/* --- Settings additions: endpoint, custom model, mic meter ---------------- */
+
+.field > span em {
+  color: #97a0b3;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.field small code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #eef1f7;
+  font-size: 10.5px;
+}
+
+.model-custom-input {
+  margin-top: 8px;
+}
+
+.model-custom-input.is-hidden {
+  display: none;
+}
+
+.mic-meter {
+  display: none;
+  height: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #e6eaf3;
+}
+
+.mic-meter.is-active {
+  display: block;
+}
+
+.mic-meter-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #55d79f, #f5b45c 60%, #ff647e);
+  transition: width 70ms linear;
+}
+
+/* --- History additions: day headers, highlight, export --------------------- */
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.history-day {
+  margin: 18px 2px 8px;
+  color: #8a93a6;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.history-day:first-child {
+  margin-top: 2px;
+}
+
+.history-text mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  background: #ffe08a;
+  color: inherit;
+}
+
+.show-more {
+  display: block;
+  margin: 12px auto 4px;
 }
 
 @media (max-width: 900px) {

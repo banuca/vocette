@@ -31,6 +31,35 @@ export interface ReadResult<T> {
   problem?: string
 }
 
+const RENAME_ATTEMPTS = 4
+const RENAME_RETRY_DELAY_MS = 60
+
+/**
+ * Windows rename can fail transiently with EPERM/EACCES when antivirus or
+ * Explorer holds the target. A few short retries make those failures
+ * invisible instead of surfacing a cryptic OS error in the settings UI.
+ */
+async function renameWithRetry(temporaryPath: string, path: string): Promise<void> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= RENAME_ATTEMPTS; attempt += 1) {
+    try {
+      await rename(temporaryPath, path)
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt < RENAME_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, RENAME_RETRY_DELAY_MS * attempt))
+      }
+    }
+  }
+  const code = (lastError as NodeJS.ErrnoException | null)?.code ?? 'UNKNOWN'
+  throw new Error(
+    `Could not finish saving the data file (${code}). ` +
+      'Close any app that has it open and try again.',
+    { cause: lastError }
+  )
+}
+
 function parse<T>(path: string): T | null {
   const raw = readFileSync(path, 'utf8')
   if (!raw.trim()) return null
@@ -90,6 +119,28 @@ function preserveCorrupt(path: string): string | null {
   }
 }
 
+function renameWithRetrySync(temporaryPath: string, path: string): void {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= RENAME_ATTEMPTS; attempt += 1) {
+    try {
+      renameSync(temporaryPath, path)
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt < RENAME_ATTEMPTS) {
+        // Blocking retry backoff; the main thread is doing nothing else here.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, RENAME_RETRY_DELAY_MS * attempt)
+      }
+    }
+  }
+  const code = (lastError as NodeJS.ErrnoException | null)?.code ?? 'UNKNOWN'
+  throw new Error(
+    `Could not finish saving the data file (${code}). ` +
+      'Close any app that has it open and try again.',
+    { cause: lastError }
+  )
+}
+
 export function writeJsonAtomic(path: string, value: unknown): void {
   const temporaryPath = `${path}.tmp`
   const payload = `${JSON.stringify(value)}\n`
@@ -112,7 +163,7 @@ export function writeJsonAtomic(path: string, value: unknown): void {
     }
   }
 
-  renameSync(temporaryPath, path)
+  renameWithRetrySync(temporaryPath, path)
 }
 
 /**
@@ -120,7 +171,7 @@ export function writeJsonAtomic(path: string, value: unknown): void {
  *
  * History is rewritten in full after every dictation, so doing it
  * synchronously stalled the main process for longer and longer as the file
- * grew. Callers must still flush synchronously on quit.
+ * grew. Callers still flush — now asynchronously — on quit.
  */
 export async function writeJsonAtomicAsync(path: string, value: unknown): Promise<void> {
   const temporaryPath = `${path}.tmp`
@@ -142,5 +193,5 @@ export async function writeJsonAtomicAsync(path: string, value: unknown): Promis
     }
   }
 
-  await rename(temporaryPath, path)
+  await renameWithRetry(temporaryPath, path)
 }

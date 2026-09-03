@@ -37,6 +37,7 @@ async function mount(): Promise<void> {
   let activePage: Page = 'history'
   let workflowStatus: WorkflowStatus = { phase: 'idle', message: 'Ready' }
   let historyView: { refresh: () => void } | null = null
+  let settingsView: { apply: (next: PublicSettings) => void; dispose: () => void } | null = null
 
   appRoot.innerHTML = `
     <div class="app-shell">
@@ -108,10 +109,21 @@ async function mount(): Promise<void> {
     appRoot.querySelectorAll<HTMLButtonElement>('.nav-item').forEach((button) => {
       button.classList.toggle('active', button.dataset.page === activePage)
     })
+    // Tear down the previous page's subscriptions first: a settings page left
+    // mid-shortcut-capture must not keep the hook hijacked from a dead UI.
+    settingsView?.dispose()
+    settingsView = null
     historyView = null
-    if (activePage === 'history') historyView = renderHistory(context)
-    if (activePage === 'settings') renderSettings(context)
-    if (activePage === 'about') renderAbout(context)
+    try {
+      if (activePage === 'history') historyView = renderHistory(context)
+      if (activePage === 'settings') settingsView = renderSettings(context)
+      if (activePage === 'about') renderAbout(context)
+    } catch (error) {
+      // A page bug must be visible — once, a render error after the HTML was
+      // drawn left the page looking fine but with zero event listeners, so
+      // the Save button silently did nothing.
+      content.innerHTML = `<div class="fatal-error"><h1>This page could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
+    }
     updateSidebar()
   }
 
@@ -133,8 +145,10 @@ async function mount(): Promise<void> {
 
   window.voiceHotkey.onSettingsChanged((next) => {
     context.applySettings(next)
-    // The tray can toggle hold-to-talk while Settings is open.
-    if (activePage === 'settings') renderPage()
+    // The tray can toggle hold-to-talk / launch-at-login while Settings is
+    // open. Patch the controls in place — a full re-render here used to wipe
+    // whatever the user had typed into the API-key field.
+    if (activePage === 'settings') settingsView?.apply(next)
   })
 
   window.voiceHotkey.onHistoryChanged(() => {

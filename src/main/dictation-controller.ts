@@ -1,0 +1,445 @@
+import { randomUUID } from 'node:crypto'
+import { lightCleanup } from '../shared/cleanup'
+import type {
+  Page,
+  RecorderAudioPayload,
+  RecorderErrorPayload,
+  RecorderStartedPayload,
+  WorkflowStatus
+} from '../shared/types'
+
+/** Hard stop for a single take. */
+const MAX_RECORDING_MS = 5 * 60 * 1000
+/** The microphone must report back within this long, or the take is abandoned. */
+const START_WATCHDOG_MS = 8000
+/** A stop request must produce audio or an error within this long. */
+const STOP_WATCHDOG_MS = 10_000
+/** How long a success/error status lingers before the overlay hides. */
+const SUCCESS_RESET_MS = 1600
+const ERROR_RESET_MS = 4500
+/** Small settle delay before the synthetic Ctrl+V, so clipboard writes propagate. */
+const PASTE_DELAY_MS = 80
+
+export type SoundKind = 'start' | 'success' | 'error'
+
+/** The settings fields the workflow needs, read fresh at decision time. */
+export interface WorkflowSettings {
+  autoPaste: boolean
+  removeFillers: boolean
+  playSounds: boolean
+  model: string
+  language: string
+  microphoneId: string
+  apiKeyConfigured: boolean
+}
+
+/** Foreground-window verdict taken at paste time (null = tracking unavailable). */
+export interface ForegroundState {
+  /** The focused window is the one that had focus when the take started. */
+  sameWindow: boolean
+  /** The focused window's process runs elevated; injected keystrokes cannot reach it. */
+  elevated: boolean
+}
+
+export interface TranscriptionPayload {
+  audio: Uint8Array
+  mimeType: string
+  durationMs: number
+  model: string
+  language: string
+}
+
+export interface DictationDeps {
+  /** Sends a message to the hidden recorder window. */
+  sendToRecorder(
+    channel: 'recorder:start' | 'recorder:stop' | 'recorder:cancel',
+    payload: unknown
+  ): void
+  getSettings(): WorkflowSettings
+  transcribe(payload: TranscriptionPayload): Promise<string>
+  writeClipboard(text: string): void
+  /** Injects Ctrl+V into the focused app. */
+  paste(): void
+  playSound(kind: SoundKind): void
+  /** Shows the overlay/main window status. Reset timing is owned here. */
+  broadcastStatus(status: WorkflowStatus): void
+  showMain(page: Page): void
+  recordHistory(text: string, durationMs: number, model: string): void
+  /** Remembers which window has focus, for the paste-target check. */
+  captureForeground(): void
+  getForegroundState(): ForegroundState | null
+  /** Display label of the configured chord, for the overlay's release hint. */
+  shortcutLabel(): string
+  /** Fired when a failed take becomes retryable (or stops being retryable). */
+  onRetryChanged?(available: boolean): void
+}
+
+interface RetryTake {
+  audio: Uint8Array
+  mimeType: string
+  durationMs: number
+}
+
+function clearTimer(timer: NodeJS.Timeout | null): null {
+  if (timer) clearTimeout(timer)
+  return null
+}
+
+/**
+ * The dictation phase machine: hold → starting → recording → processing →
+ * success/error → idle, with watchdogs on every step where a peer (the
+ * recorder window or the network) has to respond.
+ *
+ * Extracted from the app entry point so every transition is unit-testable,
+ * because the two most damaging bugs in the previous build (a lost stop
+ * request and a tray reset wedging the recorder) lived exactly here.
+ */
+export class DictationController {
+  private currentStatus: WorkflowStatus = { phase: 'idle', message: 'Ready' }
+  private currentRequestId = ''
+  private releaseRequested = false
+  private stopRequested = false
+
+  private statusResetTimer: NodeJS.Timeout | null = null
+  private maximumRecordingTimer: NodeJS.Timeout | null = null
+  private startWatchdog: NodeJS.Timeout | null = null
+  private stopWatchdog: NodeJS.Timeout | null = null
+
+  /** The last take that failed during transcription, kept for "Retry last dictation". */
+  private retryTake: RetryTake | null = null
+
+  constructor(private readonly deps: DictationDeps) {}
+
+  getStatus(): WorkflowStatus {
+    return this.currentStatus
+  }
+
+  canRetry(): boolean {
+    return this.retryTake !== null
+  }
+
+  onShortcutPressed(): void {
+    const phase = this.currentStatus.phase
+    if (phase === 'starting' || phase === 'recording' || phase === 'processing') return
+
+    // `success` and `error` linger on screen for a few seconds. Pressing the
+    // shortcut during that window used to be ignored, forcing a wait of up to
+    // 4.5s between dictations.
+    if (phase === 'success' || phase === 'error') {
+      this.statusResetTimer = clearTimer(this.statusResetTimer)
+    }
+
+    const settings = this.deps.getSettings()
+    if (!settings.apiKeyConfigured) {
+      this.fail('Add your own OpenAI API key in Settings before recording.', true)
+      return
+    }
+
+    // A new take replaces any retryable one; its audio is zeroed and released.
+    this.setRetryTake(null)
+    this.deps.captureForeground()
+    this.currentRequestId = randomUUID()
+    this.releaseRequested = false
+    this.stopRequested = false
+    this.clearDictationTimers()
+
+    this.broadcast({
+      phase: 'starting',
+      message: 'Starting microphone…',
+      detail: 'Keep holding the shortcut'
+    })
+
+    this.startWatchdog = setTimeout(() => {
+      this.startWatchdog = null
+      this.fail('The microphone did not start in time. Check it is connected and try again.')
+    }, START_WATCHDOG_MS)
+
+    this.deps.sendToRecorder('recorder:start', {
+      requestId: this.currentRequestId,
+      microphoneId: settings.microphoneId
+    })
+  }
+
+  onShortcutReleased(): void {
+    if (this.currentStatus.phase === 'starting') {
+      this.releaseRequested = true
+      return
+    }
+    if (this.currentStatus.phase === 'recording') this.requestStop()
+  }
+
+  onRecorderStarted(payload: RecorderStartedPayload): void {
+    if (payload.requestId !== this.currentRequestId || this.currentStatus.phase !== 'starting') {
+      return
+    }
+    this.startWatchdog = clearTimer(this.startWatchdog)
+    this.broadcast({
+      phase: 'recording',
+      message: 'Listening…',
+      detail: `Release ${this.deps.shortcutLabel()} to finish`,
+      startedAt: Date.now()
+    })
+    this.deps.playSound('start')
+    this.maximumRecordingTimer = setTimeout(this.forceStop, MAX_RECORDING_MS)
+    if (this.releaseRequested) this.requestStop()
+  }
+
+  async onRecorderAudio(payload: RecorderAudioPayload): Promise<void> {
+    if (payload.requestId !== this.currentRequestId) return
+    if (this.currentStatus.phase !== 'recording' && this.currentStatus.phase !== 'starting') {
+      return
+    }
+    this.clearDictationTimers()
+
+    this.broadcast({
+      phase: 'processing',
+      message: 'Transcribing…',
+      detail: 'Your audio is being converted to text'
+    })
+
+    // The payload arrives over IPC as a structured clone: this process is the
+    // sole owner, so it is safe (and thriftier) to use it directly and zero
+    // it in place once the take settles.
+    const audio = payload.audio
+    const take: RetryTake = {
+      audio,
+      mimeType: payload.mimeType,
+      durationMs: Math.max(0, payload.durationMs)
+    }
+
+    try {
+      const settings = this.deps.getSettings()
+      const rawText = await this.deps.transcribe({
+        ...take,
+        model: settings.model,
+        language: settings.language
+      })
+      const text = settings.removeFillers ? lightCleanup(rawText) : rawText.trim()
+      if (!text) throw new Error('Only filler words or silence were detected.')
+
+      this.deps.recordHistory(text, take.durationMs, settings.model)
+
+      this.deps.writeClipboard(text)
+      let message: string
+      if (settings.autoPaste) {
+        const foreground = this.deps.getForegroundState()
+        if (foreground?.elevated) {
+          // UIPI blocks synthetic input into elevated windows; telling the
+          // truth is better than claiming a paste that never happened.
+          message = 'Copied — paste manually (focused app runs elevated)'
+        } else if (foreground && !foreground.sameWindow) {
+          message = 'Copied — paste manually (focus moved)'
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
+          this.deps.paste()
+          message = 'Copied and pasted'
+        }
+      } else {
+        message = 'Copied to clipboard'
+      }
+
+      this.broadcast(
+        {
+          phase: 'success',
+          message,
+          detail: text.length > 68 ? `${text.slice(0, 68)}…` : text
+        },
+        SUCCESS_RESET_MS
+      )
+      this.deps.playSound('success')
+      audio.fill(0)
+      this.setRetryTake(null)
+    } catch (error) {
+      // Keep the audio so the user can retry without re-speaking.
+      this.setRetryTake(take)
+      this.fail(error instanceof Error ? error.message : 'An unexpected error occurred.')
+    } finally {
+      this.releaseRequested = false
+      this.stopRequested = false
+    }
+  }
+
+  onRecorderError(payload: RecorderErrorPayload): void {
+    if (payload.requestId !== this.currentRequestId) return
+    this.fail(payload.message)
+  }
+
+  /** Shows a dictation error from outside the workflow (e.g. a hook fault). */
+  reportError(message: string): void {
+    this.fail(message)
+  }
+
+  /**
+   * Tray recovery for a missed key-up (e.g. the chord was released while an
+   * elevated window had focus). Also used by tests to hard-reset the machine.
+   */
+  resetKeyState(): void {
+    this.fail('Dictation cancelled.', false, true)
+  }
+
+  /** Re-runs transcription on the last failed take without touching the mic. */
+  async retryLast(): Promise<void> {
+    const take = this.retryTake
+    // Allowed while the error message still lingers: retrying is exactly what
+    // a user wants to do the moment they see it.
+    if (!take || (this.currentStatus.phase !== 'idle' && this.currentStatus.phase !== 'error')) {
+      return
+    }
+
+    // A fresh id invalidates any stale recorder events still in flight.
+    this.currentRequestId = randomUUID()
+    this.deps.captureForeground()
+    this.broadcast({
+      phase: 'processing',
+      message: 'Transcribing…',
+      detail: 'Retrying your last recording'
+    })
+
+    try {
+      const settings = this.deps.getSettings()
+      const rawText = await this.deps.transcribe({
+        ...take,
+        model: settings.model,
+        language: settings.language
+      })
+      const text = settings.removeFillers ? lightCleanup(rawText) : rawText.trim()
+      if (!text) throw new Error('Only filler words or silence were detected.')
+
+      this.deps.recordHistory(text, take.durationMs, settings.model)
+      this.deps.writeClipboard(text)
+
+      let message: string
+      if (settings.autoPaste) {
+        const foreground = this.deps.getForegroundState()
+        if (foreground?.elevated) {
+          message = 'Copied — paste manually (focused app runs elevated)'
+        } else if (foreground && !foreground.sameWindow) {
+          message = 'Copied — paste manually (focus moved)'
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
+          this.deps.paste()
+          message = 'Copied and pasted'
+        }
+      } else {
+        message = 'Copied to clipboard'
+      }
+
+      this.broadcast(
+        {
+          phase: 'success',
+          message,
+          detail: text.length > 68 ? `${text.slice(0, 68)}…` : text
+        },
+        SUCCESS_RESET_MS
+      )
+      this.deps.playSound('success')
+      take.audio.fill(0)
+      this.setRetryTake(null)
+    } catch (error) {
+      this.fail(error instanceof Error ? error.message : 'An unexpected error occurred.')
+    }
+  }
+
+  /** Stops timers and releases memory. Call before quitting. */
+  shutdown(): void {
+    this.clearDictationTimers()
+    this.statusResetTimer = clearTimer(this.statusResetTimer)
+    this.setRetryTake(null)
+  }
+
+  private broadcast(status: WorkflowStatus, resetAfterMs = 0): void {
+    this.currentStatus = status
+    this.deps.broadcastStatus(status)
+
+    this.statusResetTimer = clearTimer(this.statusResetTimer)
+    if (resetAfterMs > 0) {
+      this.statusResetTimer = setTimeout(() => {
+        this.statusResetTimer = null
+        this.goIdle()
+      }, resetAfterMs)
+    }
+  }
+
+  private clearDictationTimers(): void {
+    this.maximumRecordingTimer = clearTimer(this.maximumRecordingTimer)
+    this.startWatchdog = clearTimer(this.startWatchdog)
+    this.stopWatchdog = clearTimer(this.stopWatchdog)
+  }
+
+  private setRetryTake(take: RetryTake | null): void {
+    const hadRetry = this.retryTake !== null
+    if (this.retryTake && this.retryTake !== take) this.retryTake.audio.fill(0)
+    this.retryTake = take
+    if (hadRetry !== (take !== null)) this.deps.onRetryChanged?.(take !== null)
+  }
+
+  /**
+   * Tells the recorder to abandon a take it may still be working on. Without
+   * this, a watchdog firing while the recorder window was still opening the
+   * microphone left it recording forever — the mic stayed hot and every later
+   * dictation failed with "The microphone is already recording."
+   */
+  private abandonRecorder(): void {
+    const phase = this.currentStatus.phase
+    if (
+      this.currentRequestId &&
+      (phase === 'starting' || phase === 'recording' || phase === 'processing')
+    ) {
+      this.deps.sendToRecorder('recorder:cancel', { requestId: this.currentRequestId })
+    }
+  }
+
+  private goIdle(): void {
+    this.abandonRecorder()
+    this.currentRequestId = ''
+    this.releaseRequested = false
+    this.stopRequested = false
+    this.clearDictationTimers()
+    this.broadcast({ phase: 'idle', message: 'Ready' })
+  }
+
+  private fail(message: string, openSettings = false, silent = false): void {
+    this.abandonRecorder()
+    this.currentRequestId = ''
+    this.releaseRequested = false
+    this.stopRequested = false
+    this.clearDictationTimers()
+    if (silent) {
+      // Still show something: a silent phase change would strand the overlay.
+      this.broadcast({ phase: 'idle', message: 'Ready' })
+    } else {
+      this.broadcast({ phase: 'error', message: 'Dictation failed', detail: message }, ERROR_RESET_MS)
+    }
+    if (openSettings) this.deps.showMain('settings')
+  }
+
+  private requestStop(): void {
+    if (!this.currentRequestId || this.currentStatus.phase !== 'recording' || this.stopRequested) {
+      return
+    }
+    this.stopRequested = true
+    this.deps.sendToRecorder('recorder:stop', { requestId: this.currentRequestId })
+    this.armStopWatchdog()
+  }
+
+  /**
+   * Used by the maximum-duration timer. Unlike `requestStop` this ignores
+   * `stopRequested`: if the first stop request was lost, retrying is the only
+   * way to finish the take. The previous build shared one guarded function
+   * between both paths, so a lost stop wedged the app in `recording` forever.
+   */
+  private readonly forceStop = (): void => {
+    if (!this.currentRequestId) return
+    this.stopRequested = true
+    this.deps.sendToRecorder('recorder:stop', { requestId: this.currentRequestId })
+    this.armStopWatchdog()
+  }
+
+  private armStopWatchdog(): void {
+    this.stopWatchdog = clearTimer(this.stopWatchdog)
+    this.stopWatchdog = setTimeout(() => {
+      this.stopWatchdog = null
+      this.fail('The recording could not be finalised. Try again.')
+    }, STOP_WATCHDOG_MS)
+  }
+}

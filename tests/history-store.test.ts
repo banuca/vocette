@@ -100,8 +100,17 @@ describe('HistoryStore', () => {
       store.add({ text: `entry ${index}`, durationMs: 1, model: 'm' })
     }
     await new Promise((resolve) => setTimeout(resolve, 60))
-    store.flush()
+    await store.flush()
     expect(JSON.parse(readFileSync(file, 'utf8'))).toHaveLength(25)
+  })
+
+  it('waits for an in-flight write when flushed immediately', async () => {
+    const store = new HistoryStore(file)
+    store.add({ text: 'just dictated', durationMs: 1, model: 'm' })
+    // flush() must not return until the async write has landed, or quitting
+    // here would lose the entry.
+    await store.flush()
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toHaveLength(1)
   })
 
   it('returns copies, so callers cannot mutate the store', () => {

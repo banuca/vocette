@@ -38,6 +38,22 @@ export const KEY = {
   ArrowRight: 0xe04d,
   ArrowDown: 0xe050,
 
+  Numpad0: 0x0052,
+  Numpad1: 0x004f,
+  Numpad2: 0x0050,
+  Numpad3: 0x0051,
+  Numpad4: 0x004b,
+  Numpad5: 0x004c,
+  Numpad6: 0x004d,
+  Numpad7: 0x0047,
+  Numpad8: 0x0048,
+  Numpad9: 0x0049,
+  NumpadMultiply: 0x0037,
+  NumpadAdd: 0x004e,
+  NumpadSubtract: 0x004a,
+  NumpadDecimal: 0x0053,
+  NumpadDivide: 0x0e35,
+
   Digit0: 0x000b,
   Digit1: 0x0002,
   Digit2: 0x0003,
@@ -217,8 +233,23 @@ const TYPING_LABELS: Record<number, string> = {
 
 const TYPING_SET = new Set(Object.keys(TYPING_LABELS).map(Number))
 
+/** Numpad digits type numbers, so a solo chord on them is rejected too. */
+const NUMERIC_TYPING_SET = new Set<number>([
+  KEY.Numpad0,
+  KEY.Numpad1,
+  KEY.Numpad2,
+  KEY.Numpad3,
+  KEY.Numpad4,
+  KEY.Numpad5,
+  KEY.Numpad6,
+  KEY.Numpad7,
+  KEY.Numpad8,
+  KEY.Numpad9,
+  KEY.NumpadDecimal
+])
+
 export function isTypingKey(keycode: number): boolean {
-  return TYPING_SET.has(keycode) || keycode === KEY.Space
+  return TYPING_SET.has(keycode) || NUMERIC_TYPING_SET.has(keycode) || keycode === KEY.Space
 }
 
 const NAMED_LABELS: Record<number, string> = {
@@ -248,7 +279,22 @@ const NAMED_LABELS: Record<number, string> = {
   [KEY.ArrowLeft]: '←',
   [KEY.ArrowUp]: '↑',
   [KEY.ArrowRight]: '→',
-  [KEY.ArrowDown]: '↓'
+  [KEY.ArrowDown]: '↓',
+  [KEY.Numpad0]: 'Numpad 0',
+  [KEY.Numpad1]: 'Numpad 1',
+  [KEY.Numpad2]: 'Numpad 2',
+  [KEY.Numpad3]: 'Numpad 3',
+  [KEY.Numpad4]: 'Numpad 4',
+  [KEY.Numpad5]: 'Numpad 5',
+  [KEY.Numpad6]: 'Numpad 6',
+  [KEY.Numpad7]: 'Numpad 7',
+  [KEY.Numpad8]: 'Numpad 8',
+  [KEY.Numpad9]: 'Numpad 9',
+  [KEY.NumpadMultiply]: 'Numpad *',
+  [KEY.NumpadAdd]: 'Numpad +',
+  [KEY.NumpadSubtract]: 'Numpad −',
+  [KEY.NumpadDecimal]: 'Numpad .',
+  [KEY.NumpadDivide]: 'Numpad /'
 }
 
 const FUNCTION_LABELS: Record<number, string> = Object.fromEntries(

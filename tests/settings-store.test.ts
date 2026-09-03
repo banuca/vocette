@@ -42,7 +42,7 @@ describe('v1 → v2 migration', () => {
 
   it('turns the preset id into keycodes', () => {
     const result = normaliseSettings(v1)
-    expect(result.version).toBe(2)
+    expect(result.version).toBe(3)
     expect(result.shortcut).toEqual({ keys: [KEY.Ctrl, KEY.Alt] })
   })
 
@@ -77,7 +77,7 @@ describe('v1 → v2 migration', () => {
     // Saving rewrites the file in the v2 shape without touching the key.
     store.update({ autoPaste: false })
     const written = JSON.parse(readFileSync(file, 'utf8'))
-    expect(written.version).toBe(2)
+    expect(written.version).toBe(3)
     expect(written.encryptedApiKey).toBe('ZW5jOnNrLXRlc3Q=')
     expect(new SettingsStore(file).getApiKey()).toBe('sk-test')
   })
@@ -134,6 +134,49 @@ describe('validation', () => {
     store.update({ holdDelayMs: 400, historyRetentionDays: 365 })
     expect(store.getPublic().holdDelayMs).toBe(400)
     expect(store.getPublic().historyRetentionDays).toBe(365)
+  })
+
+  it('persists the sound preference and defaults it to on', () => {
+    const store = new SettingsStore(file)
+    expect(store.getPublic().playSounds).toBe(true)
+    store.update({ playSounds: false })
+    expect(store.getPublic().playSounds).toBe(false)
+    expect(new SettingsStore(file).getPublic().playSounds).toBe(false)
+    expect(normaliseSettings({ playSounds: false }).playSounds).toBe(false)
+    expect(normaliseSettings({ playSounds: 'yes' }).playSounds).toBe(true)
+  })
+
+  it('validates API endpoints', () => {
+    const store = new SettingsStore(file)
+    store.update({ apiEndpoint: 'https://api.groq.com/openai/v1' })
+    expect(store.getPublic().apiEndpoint).toBe('https://api.groq.com/openai/v1')
+
+    // Local transcription servers may use plain http.
+    store.update({ apiEndpoint: 'http://127.0.0.1:8080/v1' })
+    expect(store.getPublic().apiEndpoint).toBe('http://127.0.0.1:8080/v1')
+
+    expect(() => store.update({ apiEndpoint: 'ftp://example.com/v1' })).toThrow()
+    expect(() => store.update({ apiEndpoint: 'not a url' })).toThrow()
+    // Remote endpoints must be https — plain http would leak the API key.
+    expect(() => store.update({ apiEndpoint: 'http://api.groq.com/v1' })).toThrow()
+    // A rejected endpoint must not clobber the saved one.
+    expect(store.getPublic().apiEndpoint).toBe('http://127.0.0.1:8080/v1')
+  })
+
+  it('allows a custom model name only against a custom endpoint', () => {
+    const store = new SettingsStore(file)
+    expect(() => store.update({ model: 'whisper-large-v3' })).toThrow()
+
+    store.update({ apiEndpoint: 'http://localhost:8080/v1' })
+    store.update({ model: 'whisper-large-v3' })
+    expect(store.getPublic().model).toBe('whisper-large-v3')
+    expect(new SettingsStore(file).getPublic().model).toBe('whisper-large-v3')
+
+    // Malformed names are still rejected, even with an endpoint.
+    expect(() => store.update({ model: 'has spaces' })).toThrow()
+    // Clearing the endpoint falls back to a known model.
+    store.update({ apiEndpoint: '' })
+    expect(store.getPublic().model).toBe(DEFAULT_SETTINGS.model)
   })
 
   it('rejects an absurdly long API key', () => {

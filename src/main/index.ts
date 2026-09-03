@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { writeFile } from 'node:fs/promises'
 import {
   BrowserWindow,
   Menu,
@@ -12,13 +12,22 @@ import {
   screen,
   session,
   shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
   type MenuItemConstructorOptions
 } from 'electron'
+import {
+  DictationController,
+  type SoundKind,
+  type TranscriptionPayload,
+  type WorkflowSettings
+} from './dictation-controller'
+import { ForegroundTracker } from './foreground'
 import { HistoryStore } from './history-store'
 import { SettingsStore } from './settings-store'
 import { ShortcutController } from './shortcut-controller'
 import { TranscriptionService } from './transcription-service'
-import { lightCleanup } from '../shared/cleanup'
+import { formatDuration } from '../shared/format'
 import { chordLabel } from '../shared/keycodes'
 import type {
   Page,
@@ -29,16 +38,12 @@ import type {
   WorkflowStatus
 } from '../shared/types'
 
-/** Hard stop for a single take. */
-const MAX_RECORDING_MS = 5 * 60 * 1000
-/** The microphone must report back within this long, or the take is abandoned. */
-const START_WATCHDOG_MS = 8000
-/** A stop request must produce audio or an error within this long. */
-const STOP_WATCHDOG_MS = 10_000
 /** Long enough for the overlay's exit animation to finish. */
 const OVERLAY_HIDE_MS = 220
 /** Shortcut capture gives up on its own so the hook can never stay hijacked. */
 const CAPTURE_TIMEOUT_MS = 10_000
+/** Upper bound for waiting on the final history flush before quitting. */
+const QUIT_FLUSH_TIMEOUT_MS = 3000
 
 let mainWindow: BrowserWindow | null = null
 let recorderWindow: BrowserWindow | null = null
@@ -48,6 +53,8 @@ let tray: Tray | null = null
 let settingsStore: SettingsStore
 let historyStore: HistoryStore
 let shortcutController: ShortcutController
+let dictation: DictationController
+let foreground: ForegroundTracker
 
 const transcriber = new TranscriptionService()
 
@@ -55,29 +62,14 @@ let isQuitting = false
 let mainWindowReady = false
 let pendingNavigation: Page | null = null
 
-let currentStatus: WorkflowStatus = { phase: 'idle', message: 'Ready' }
-let currentRequestId = ''
-let releaseRequested = false
-let stopRequested = false
-let recordingStartedAt = 0
-
-let statusResetTimer: NodeJS.Timeout | null = null
-let maximumRecordingTimer: NodeJS.Timeout | null = null
-let startWatchdog: NodeJS.Timeout | null = null
-let stopWatchdog: NodeJS.Timeout | null = null
 let overlayHideTimer: NodeJS.Timeout | null = null
 let captureTimeout: NodeJS.Timeout | null = null
 let overlayVisible = false
+let quitFlushed = false
 
 function clearTimer(timer: NodeJS.Timeout | null): null {
   if (timer) clearTimeout(timer)
   return null
-}
-
-function clearDictationTimers(): void {
-  maximumRecordingTimer = clearTimer(maximumRecordingTimer)
-  startWatchdog = clearTimer(startWatchdog)
-  stopWatchdog = clearTimer(stopWatchdog)
 }
 
 function resourcePath(name: string): string {
@@ -115,12 +107,21 @@ function positionOverlay(): void {
   )
 }
 
-function broadcastStatus(status: WorkflowStatus, resetAfterMs = 0): void {
-  currentStatus = status
+function broadcastStatus(status: WorkflowStatus): void {
   mainWindow?.webContents.send('workflow:status', status)
   overlayWindow?.webContents.send('workflow:status', status)
 
-  statusResetTimer = clearTimer(statusResetTimer)
+  // The tray tooltip mirrors the workflow so the state is visible even with
+  // the overlay off-screen.
+  const tooltipByPhase: Record<WorkflowStatus['phase'], string> = {
+    idle: 'Voice Hotkey',
+    starting: 'Voice Hotkey — starting microphone…',
+    recording: 'Voice Hotkey — listening…',
+    processing: 'Voice Hotkey — transcribing…',
+    success: 'Voice Hotkey — copied to clipboard',
+    error: `Voice Hotkey — ${status.detail ?? 'dictation failed'}`
+  }
+  tray?.setToolTip(tooltipByPhase[status.phase])
 
   if (status.phase === 'idle') {
     // Let the overlay play its exit animation before the window disappears.
@@ -141,20 +142,6 @@ function broadcastStatus(status: WorkflowStatus, resetAfterMs = 0): void {
     overlayWindow.showInactive()
     overlayVisible = true
   }
-
-  if (resetAfterMs > 0) {
-    statusResetTimer = setTimeout(() => {
-      statusResetTimer = null
-      goIdle()
-    }, resetAfterMs)
-  }
-}
-
-function goIdle(): void {
-  currentRequestId = ''
-  releaseRequested = false
-  stopRequested = false
-  broadcastStatus({ phase: 'idle', message: 'Ready' })
 }
 
 function shortcutLabel(): string {
@@ -175,162 +162,58 @@ function showMain(page: Page = 'history'): void {
   }
 }
 
-function failDictation(message: string, openSettings = false): void {
-  clearDictationTimers()
-  currentRequestId = ''
-  releaseRequested = false
-  stopRequested = false
-  broadcastStatus({ phase: 'error', message: 'Dictation failed', detail: message }, 4500)
-  if (openSettings) showMain('settings')
-}
-
-function requestStop(): void {
-  if (!currentRequestId || currentStatus.phase !== 'recording' || stopRequested) return
-  stopRequested = true
-  recorderWindow?.webContents.send('recorder:stop', { requestId: currentRequestId })
-  armStopWatchdog()
-}
-
-/**
- * Used by the maximum-duration timer. Unlike `requestStop` this ignores
- * `stopRequested`: if the first stop request was lost, retrying is the only way
- * to finish the take. The previous build shared one guarded function between
- * both paths, so a lost stop wedged the app in `recording` permanently.
- */
-function forceStop(): void {
-  if (!currentRequestId) return
-  stopRequested = true
-  recorderWindow?.webContents.send('recorder:stop', { requestId: currentRequestId })
-  armStopWatchdog()
-}
-
-function armStopWatchdog(): void {
-  stopWatchdog = clearTimer(stopWatchdog)
-  stopWatchdog = setTimeout(() => {
-    stopWatchdog = null
-    failDictation('The recording could not be finalised. Try again.')
-  }, STOP_WATCHDOG_MS)
-}
-
-function onShortcutPressed(): void {
-  const phase = currentStatus.phase
-  if (phase === 'starting' || phase === 'recording' || phase === 'processing') return
-
-  // `success` and `error` linger on screen for a few seconds. Pressing the
-  // shortcut during that window used to be ignored, forcing a wait of up to
-  // 4.5s between dictations.
-  if (phase === 'success' || phase === 'error') {
-    statusResetTimer = clearTimer(statusResetTimer)
-  }
-
-  if (!settingsStore.getPublic().apiKeyConfigured) {
-    failDictation('Add your own OpenAI API key in Settings before recording.', true)
-    return
-  }
-
-  currentRequestId = randomUUID()
-  releaseRequested = false
-  stopRequested = false
-  recordingStartedAt = 0
-  clearDictationTimers()
-
-  broadcastStatus({
-    phase: 'starting',
-    message: 'Starting microphone…',
-    detail: 'Keep holding the shortcut'
-  })
-
-  startWatchdog = setTimeout(() => {
-    startWatchdog = null
-    failDictation('The microphone did not start in time. Check it is connected and try again.')
-  }, START_WATCHDOG_MS)
-
-  recorderWindow?.webContents.send('recorder:start', {
-    requestId: currentRequestId,
-    microphoneId: settingsStore.getInternal().microphoneId
-  })
-}
-
-function onShortcutReleased(): void {
-  if (currentStatus.phase === 'starting') {
-    releaseRequested = true
-    return
-  }
-  if (currentStatus.phase === 'recording') requestStop()
-}
-
-function handleRecorderStarted(payload: RecorderStartedPayload): void {
-  if (payload.requestId !== currentRequestId || currentStatus.phase !== 'starting') return
-  startWatchdog = clearTimer(startWatchdog)
-  recordingStartedAt = Date.now()
-  broadcastStatus({
-    phase: 'recording',
-    message: 'Listening…',
-    detail: `Release ${shortcutLabel()} to finish`,
-    startedAt: recordingStartedAt
-  })
-  maximumRecordingTimer = setTimeout(forceStop, MAX_RECORDING_MS)
-  if (releaseRequested) requestStop()
-}
-
-async function handleRecorderAudio(payload: RecorderAudioPayload): Promise<void> {
-  if (payload.requestId !== currentRequestId) return
-  if (currentStatus.phase !== 'recording' && currentStatus.phase !== 'starting') return
-  clearDictationTimers()
-
-  broadcastStatus({
-    phase: 'processing',
-    message: 'Transcribing…',
-    detail: 'Your audio is being converted to text'
-  })
-
-  const audio = new Uint8Array(payload.audio)
-  try {
-    const settings = settingsStore.getInternal()
-    const rawText = await transcriber.transcribe({
-      audio,
-      mimeType: payload.mimeType,
-      apiKey: settingsStore.getApiKey(),
-      model: settings.model,
-      language: settings.language
-    })
-    const text = settings.removeFillers ? lightCleanup(rawText) : rawText.trim()
-    if (!text) throw new Error('Only filler words or silence were detected.')
-
-    historyStore.add({
-      text,
-      durationMs: Math.max(0, payload.durationMs),
-      model: settings.model
-    })
-    historyStore.prune(settings.historyRetentionDays)
-    mainWindow?.webContents.send('history:changed')
-
-    clipboard.writeText(text)
-    if (settings.autoPaste) {
-      await new Promise((resolve) => setTimeout(resolve, 80))
-      shortcutController.paste()
-    }
-
-    broadcastStatus(
-      {
-        phase: 'success',
-        message: settings.autoPaste ? 'Copied and pasted' : 'Copied to clipboard',
-        detail: text.length > 68 ? `${text.slice(0, 68)}…` : text
-      },
-      1600
-    )
-  } catch (error) {
-    failDictation(error instanceof Error ? error.message : 'An unexpected error occurred.')
-  } finally {
-    audio.fill(0)
-    releaseRequested = false
-    stopRequested = false
+function workflowSettings(): WorkflowSettings {
+  const settings = settingsStore.getInternal()
+  return {
+    autoPaste: settings.autoPaste,
+    removeFillers: settings.removeFillers,
+    playSounds: settings.playSounds,
+    model: settings.model,
+    language: settings.language,
+    microphoneId: settings.microphoneId,
+    apiKeyConfigured: settingsStore.getPublic().apiKeyConfigured
   }
 }
 
-function handleRecorderError(payload: RecorderErrorPayload): void {
-  if (payload.requestId !== currentRequestId) return
-  failDictation(payload.message)
+function playSound(kind: SoundKind): void {
+  if (!settingsStore.getInternal().playSounds) return
+  const beeps = kind === 'start' ? 1 : 2
+  for (let index = 0; index < beeps; index += 1) shell.beep()
+}
+
+function recordHistory(text: string, durationMs: number, model: string): void {
+  historyStore.add({ text, durationMs, model })
+  historyStore.prune(settingsStore.getInternal().historyRetentionDays)
+  mainWindow?.webContents.send('history:changed')
+}
+
+function transcribe(payload: TranscriptionPayload): Promise<string> {
+  return transcriber.transcribe({
+    audio: payload.audio,
+    mimeType: payload.mimeType,
+    apiKey: settingsStore.getApiKey(),
+    model: payload.model,
+    language: payload.language,
+    endpoint: settingsStore.getInternal().apiEndpoint
+  })
+}
+
+function createDictationController(): DictationController {
+  return new DictationController({
+    sendToRecorder: (channel, payload) => recorderWindow?.webContents.send(channel, payload),
+    getSettings: workflowSettings,
+    transcribe,
+    writeClipboard: (text) => clipboard.writeText(text),
+    paste: () => shortcutController.paste(),
+    playSound,
+    broadcastStatus,
+    showMain,
+    recordHistory,
+    captureForeground: () => foreground.capture(),
+    getForegroundState: () => foreground.check(),
+    shortcutLabel,
+    onRetryChanged: () => rebuildTrayMenu()
+  })
 }
 
 function hardenWebContents(window: BrowserWindow): void {
@@ -387,7 +270,7 @@ async function createWindows(): Promise<void> {
   hardenWebContents(recorderWindow)
 
   overlayWindow = new BrowserWindow({
-    width: 400,
+    width: 480,
     height: 96,
     show: false,
     frame: false,
@@ -416,13 +299,18 @@ function applyLaunchAtLogin(enabled: boolean): void {
 }
 
 function rebuildTrayMenu(): void {
-  if (!tray) return
+  if (!tray || !dictation) return
   const settings = settingsStore.getPublic()
   const template: MenuItemConstructorOptions[] = [
     { label: `Hold ${shortcutLabel()} to talk`, enabled: false },
     { type: 'separator' },
     { label: 'Open history', click: () => showMain('history') },
     { label: 'Settings', click: () => showMain('settings') },
+    {
+      label: 'Retry last dictation',
+      enabled: dictation.canRetry(),
+      click: () => void dictation.retryLast()
+    },
     { type: 'separator' },
     {
       label: 'Enable hold-to-talk',
@@ -449,11 +337,12 @@ function rebuildTrayMenu(): void {
     { type: 'separator' },
     {
       // Recovery for a missed keyup, which happens when the chord is released
-      // while an elevated window has focus.
+      // while an elevated window has focus. Also cancels a stuck take, which
+      // used to wedge the recorder until the app was restarted.
       label: 'Reset shortcut state',
       click: () => {
         shortcutController.resetKeyState()
-        if (currentStatus.phase !== 'idle') goIdle()
+        dictation.resetKeyState()
       }
     },
     {
@@ -477,12 +366,27 @@ function createTray(): void {
 function endCapture(): void {
   captureTimeout = clearTimer(captureTimeout)
   shortcutController.cancelCapture()
+  // A settings page mid-capture must reset its UI, even when the capture was
+  // torn down from the main side (window hidden, timeout).
+  mainWindow?.webContents.send('shortcut:capture', { keys: [], done: true })
+}
+
+/** Only the window that owns a channel may use it; everything else is denied. */
+function fromWindow(event: IpcMainEvent | IpcMainInvokeEvent, window: BrowserWindow | null): boolean {
+  return window !== null && event.sender === window.webContents
 }
 
 function registerIpc(): void {
-  ipcMain.handle('settings:get', () => settingsStore.getPublic())
+  const fromMain = (event: IpcMainEvent | IpcMainInvokeEvent): boolean =>
+    fromWindow(event, mainWindow)
 
-  ipcMain.handle('settings:save', (_event, update: SettingsUpdate) => {
+  ipcMain.handle('settings:get', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return settingsStore.getPublic()
+  })
+
+  ipcMain.handle('settings:save', (event, update: SettingsUpdate) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
     const before = settingsStore.getInternal()
     const result = settingsStore.update(update ?? {})
     const after = settingsStore.getInternal()
@@ -505,33 +409,67 @@ function registerIpc(): void {
     return result
   })
 
-  ipcMain.handle('settings:clear-api-key', () => settingsStore.clearApiKey())
+  ipcMain.handle('settings:clear-api-key', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return settingsStore.clearApiKey()
+  })
 
-  ipcMain.handle('history:list', () => historyStore.list())
-  ipcMain.handle('history:delete', (_event, id: unknown) => {
+  ipcMain.handle('history:list', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return historyStore.list()
+  })
+  ipcMain.handle('history:delete', (event, id: unknown) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
     if (typeof id !== 'string' || id.length > 128) throw new Error('Invalid history entry.')
     return historyStore.delete(id)
   })
-  ipcMain.handle('history:clear', () => {
+  ipcMain.handle('history:clear', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
     historyStore.clear()
     mainWindow?.webContents.send('history:changed')
   })
+  ipcMain.handle('history:export', async (event, format: unknown) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    if (format !== 'json' && format !== 'txt') throw new Error('Invalid export format.')
+    if (!mainWindow) return { saved: false, path: null }
+    const entries = historyStore.list()
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export transcript history',
+      defaultPath: `voice-hotkey-history-${new Date().toISOString().slice(0, 10)}.${format}`,
+      filters: [{ name: format === 'json' ? 'JSON document' : 'Text document', extensions: [format] }]
+    })
+    if (result.canceled || !result.filePath) return { saved: false, path: null }
+    const content =
+      format === 'json'
+        ? `${JSON.stringify(entries, null, 2)}\n`
+        : `${entries
+            .map((entry) => `${entry.createdAt}  [${formatDuration(entry.durationMs)}]  ${entry.text}`)
+            .join('\n\n')}\n`
+    await writeFile(result.filePath, content, 'utf8')
+    return { saved: true, path: result.filePath }
+  })
 
-  ipcMain.handle('clipboard:write', (_event, text: unknown) => {
+  ipcMain.handle('clipboard:write', (event, text: unknown) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
     if (typeof text !== 'string' || text.length > 250_000) throw new Error('Invalid clipboard text.')
     clipboard.writeText(text)
   })
 
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }))
-  ipcMain.handle('app:hide-window', () => mainWindow?.hide())
-  ipcMain.handle('app:ready', () => {
+  ipcMain.handle('app:hide-window', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    mainWindow?.hide()
+  })
+  ipcMain.handle('app:ready', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
     mainWindowReady = true
     if (pendingNavigation) {
       mainWindow?.webContents.send('app:navigate', pendingNavigation)
       pendingNavigation = null
     }
   })
-  ipcMain.handle('app:open-external', async (_event, target: unknown) => {
+  ipcMain.handle('app:open-external', async (event, target: unknown) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
     const targets: Record<string, string> = {
       'api-keys': 'https://platform.openai.com/api-keys',
       'transcription-docs': 'https://developers.openai.com/api/docs/guides/speech-to-text'
@@ -541,26 +479,31 @@ function registerIpc(): void {
     await shell.openExternal(url)
   })
 
-  ipcMain.handle('shortcut:begin-capture', () => {
+  ipcMain.handle('shortcut:begin-capture', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
     shortcutController.beginCapture()
     captureTimeout = clearTimer(captureTimeout)
-    captureTimeout = setTimeout(() => {
-      captureTimeout = null
-      shortcutController.cancelCapture()
-      mainWindow?.webContents.send('shortcut:capture', { keys: [], done: true })
-    }, CAPTURE_TIMEOUT_MS)
+    captureTimeout = setTimeout(endCapture, CAPTURE_TIMEOUT_MS)
   })
-  ipcMain.handle('shortcut:cancel-capture', () => endCapture())
+  ipcMain.handle('shortcut:cancel-capture', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    endCapture()
+  })
 
-  ipcMain.on('recorder:started', (_event, payload: RecorderStartedPayload) => {
-    if (payload && typeof payload.requestId === 'string') handleRecorderStarted(payload)
+  const fromRecorder = (event: IpcMainEvent): boolean => fromWindow(event, recorderWindow)
+
+  ipcMain.on('recorder:started', (event, payload: RecorderStartedPayload) => {
+    if (!fromRecorder(event)) return
+    if (payload && typeof payload.requestId === 'string') dictation.onRecorderStarted(payload)
   })
-  ipcMain.on('recorder:audio', (_event, payload: RecorderAudioPayload) => {
-    if (payload && typeof payload.requestId === 'string') void handleRecorderAudio(payload)
+  ipcMain.on('recorder:audio', (event, payload: RecorderAudioPayload) => {
+    if (!fromRecorder(event)) return
+    if (payload && typeof payload.requestId === 'string') void dictation.onRecorderAudio(payload)
   })
-  ipcMain.on('recorder:error', (_event, payload: RecorderErrorPayload) => {
+  ipcMain.on('recorder:error', (event, payload: RecorderErrorPayload) => {
+    if (!fromRecorder(event)) return
     if (payload && typeof payload.requestId === 'string' && typeof payload.message === 'string') {
-      handleRecorderError(payload)
+      dictation.onRecorderError(payload)
     }
   })
 }
@@ -579,18 +522,20 @@ async function bootstrap(): Promise<void> {
   )
 
   const initial = settingsStore.getInternal()
+  foreground = new ForegroundTracker()
   shortcutController = new ShortcutController({
     chord: initial.shortcut,
     holdDelayMs: initial.holdDelayMs,
-    onPress: onShortcutPressed,
-    onRelease: onShortcutReleased,
-    onError: (message) => failDictation(message),
+    onPress: () => dictation.onShortcutPressed(),
+    onRelease: () => dictation.onShortcutReleased(),
+    onError: (message) => dictation.reportError(message),
     onCapture: (keys, done) => {
       if (done) captureTimeout = clearTimer(captureTimeout)
       mainWindow?.webContents.send('shortcut:capture', { keys, done })
     }
   })
   shortcutController.setEnabled(initial.hotkeyEnabled)
+  dictation = createDictationController()
 
   registerIpc()
   await createWindows()
@@ -629,14 +574,23 @@ if (!app.requestSingleInstanceLock()) {
   })
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isQuitting = true
-  clearDictationTimers()
-  statusResetTimer = clearTimer(statusResetTimer)
-  overlayHideTimer = clearTimer(overlayHideTimer)
-  captureTimeout = clearTimer(captureTimeout)
+  dictation?.shutdown()
   shortcutController?.stop()
-  historyStore?.flush()
+  captureTimeout = clearTimer(captureTimeout)
+  overlayHideTimer = clearTimer(overlayHideTimer)
+
+  if (quitFlushed || !historyStore) return
+  // History writes are async and coalesced; quitting must wait for the last
+  // one or the newest transcript can be lost between fsync and rename.
+  event.preventDefault()
+  quitFlushed = true
+  const forceQuit = setTimeout(() => app.exit(0), QUIT_FLUSH_TIMEOUT_MS)
+  void historyStore.flush().finally(() => {
+    clearTimeout(forceQuit)
+    app.quit()
+  })
 })
 
 // Voice Hotkey lives in the tray; closing the window must not quit it.

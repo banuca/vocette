@@ -1,6 +1,6 @@
 {
   "name": "voice-hotkey",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Open-source push-to-talk dictation for Windows",
   "main": "./out/main/index.js",
   "author": "Voice Hotkey contributors",
@@ -21,13 +21,15 @@
     "build:win": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
+    "koffi": "^2.16.3",
     "uiohook-napi": "1.5.5"
   },
   "allowScripts": {
     "uiohook-napi@1.5.5": true,
     "esbuild@0.25.12": true,
     "esbuild@0.28.2": true,
-    "electron-winstaller@5.4.0": true
+    "electron-winstaller@5.4.0": true,
+    "koffi@2.16.3": true
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

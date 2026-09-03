@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   RecorderAudioPayload,
+  RecorderCancelRequest,
   RecorderErrorPayload,
   RecorderStartRequest,
   RecorderStartedPayload,
@@ -17,6 +18,11 @@ const api = {
     const listener = (_event: unknown, request: RecorderStopRequest): void => callback(request)
     ipcRenderer.on('recorder:stop', listener)
     return () => ipcRenderer.removeListener('recorder:stop', listener)
+  },
+  onCancel: (callback: (request: RecorderCancelRequest) => void): (() => void) => {
+    const listener = (_event: unknown, request: RecorderCancelRequest): void => callback(request)
+    ipcRenderer.on('recorder:cancel', listener)
+    return () => ipcRenderer.removeListener('recorder:cancel', listener)
   },
   sendStarted: (payload: RecorderStartedPayload): void =>
     ipcRenderer.send('recorder:started', payload),

@@ -3,6 +3,86 @@
 All notable changes to this project are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.3.1] — 2026-08-27
+
+### Changed
+
+- Reworked the Windows dictation overlay around a state-driven voice animation:
+  an active waveform and microphone while listening, a rotating document while
+  transcribing, and a clear check when the transcript is ready. Unlike the
+  fixed six-second reference SVG, every scene remains synchronized with the
+  real dictation workflow.
+
+## [0.3.0] — 2026-08-14
+
+### Added
+
+- **Model and language selectors.** Settings now has real dropdowns for the
+  four transcription models and ~30 languages; the transcription prompt adapts
+  to the chosen language. (Previously they were stored but unreachable from
+  the UI.)
+- **Custom API endpoints.** Any OpenAI-compatible base URL can be configured —
+  Groq, Azure OpenAI, or `http://localhost:8080/v1` for a locally hosted
+  transcription server. Custom model names are accepted when an endpoint is
+  configured. Remote endpoints must be `https`; plain `http` is allowed for
+  localhost only.
+- **Retry last dictation.** A failed transcription keeps the recording in
+  memory; the tray menu can resend the exact same take. The buffer is zeroed
+  when a new take starts, when the retry succeeds, and on quit.
+- **Silence trimming.** Leading and trailing silence is removed and audio is
+  re-encoded to 16 kHz WAV before upload — less money per dictation, better
+  recognition. Falls back to the original container if processing fails.
+- **Honest auto-paste.** The foreground window is captured at press time and
+  checked at paste time (via Win32 through koffi, failing open). If focus
+  moved, or the focused app runs elevated — where injected keystrokes cannot
+  go — the app copies and says so instead of claiming a paste that never
+  happened.
+- **Microphone test** with a live level meter in Settings.
+- **Optional sound cues**: one beep when recording starts, two when the
+  transcript lands.
+- **History upgrades**: grouped by day, search highlights matches, entries
+  load incrementally instead of all at once, a "last 30 days" metric, and
+  export as `.txt` or `.json`.
+- **Tray improvements**: the tooltip mirrors the workflow state, and
+  **Reset shortcut state** now also cancels a stuck take.
+- Dev builds allow the Vite HMR websocket in the CSP, so `npm run dev` hot
+  reloads again (production builds keep `connect-src 'none'`).
+- Unit tests for the dictation phase machine, the transcription request shape,
+  audio prep, and foreground tracking (136 tests).
+
+### Changed
+
+- Settings files move to version 3 (new fields: `playSounds`, `apiEndpoint`).
+  Migration keeps existing values and the encrypted API key.
+- Numpad keys are now in the keycode table, with labels, and numpad digits
+  count as typing keys for chord validation.
+- The tray toggle no longer wipes whatever you were typing in Settings — only
+  the affected controls update.
+- Deleting a single history entry asks for confirmation.
+- History writes are flushed (awaited) on quit, so quitting right after a
+  dictation cannot lose the newest transcript.
+- Writes to the data files retry briefly when Windows transiently locks the
+  file (antivirus scans), and surface a friendly error if they still fail.
+
+### Fixed
+
+- **Tray "Reset shortcut state" during a recording permanently wedged the
+  microphone.** The main process forgot the take without telling the recorder;
+  the mic stayed hot and every later dictation failed with "already recording"
+  until restart. Abandoned takes now send an explicit cancel, and the recorder
+  aborts late microphone opens.
+- **Watchdog failures could strand a recording the same way** — every failure
+  path now cancels the recorder for the abandoned request.
+- **Shortcut capture leaked key state.** Navigating away from Settings
+  mid-capture left the hook hijacked, and keys still held after capture
+  committed could auto-repeat their way into starting a dictation. Capture
+  now tears down on page leave and re-seeds held keys exactly.
+- A tray toggle while Settings was open erased a half-typed API key.
+- The dev build had silently dead HMR because the production CSP blocks
+  websockets.
+
 ## [0.2.0] — 2026-08-10
 
 The first published source release. `0.1.0` existed only as an unsigned Windows

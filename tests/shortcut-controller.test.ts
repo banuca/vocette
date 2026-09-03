@@ -163,6 +163,47 @@ describe('capture mode', () => {
     const lastCall = onCapture.mock.calls.at(-1)
     expect(lastCall?.[0]).toHaveLength(4)
   })
+
+  it('tracks keys still held after a capture commit', () => {
+    // Regression: capture committed on the first keyup, but keys still held
+    // were left untracked. Their auto-repeat keydowns then satisfied the chord
+    // on their own, starting a dictation nobody asked for.
+    const { controller, onPress } = makeController({ holdDelayMs: 0 })
+    controller.beginCapture()
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    keyUp(KEY.Shift) // commit: Ctrl is still physically held
+    expect(controller.isCapturing()).toBe(false)
+
+    // The held Ctrl keeps auto-repeating; the repeats must not arm the chord.
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Ctrl)
+    expect(onPress).not.toHaveBeenCalled()
+
+    // A deliberate chord press from here behaves normally.
+    keyUp(KEY.Ctrl)
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
+
+  it('seeds held keys when a capture is cancelled', () => {
+    const { controller, onPress } = makeController({ holdDelayMs: 0 })
+    controller.beginCapture()
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    controller.cancelCapture()
+
+    // Both keys are still held: repeats must not trigger the chord.
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    expect(onPress).not.toHaveBeenCalled()
+
+    // Releasing one and pressing it again is a fresh, deliberate chord.
+    keyUp(KEY.Shift)
+    keyDown(KEY.Shift)
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('enable and reset', () => {

@@ -32,7 +32,7 @@ const PASTE_ECHO_MS = 180
  *    Ctrl+Shift+key shortcut in the OS.
  */
 export class ShortcutController {
-  private readonly pressed = new Set<number>()
+  private pressed = new Set<number>()
   private chord: ShortcutChord
   private holdDelayMs: number
   private armTimer: NodeJS.Timeout | null = null
@@ -118,6 +118,11 @@ export class ShortcutController {
   }
 
   cancelCapture(): void {
+    // While capturing, every recorded key is still physically held — any
+    // earlier release would have committed the capture. Seed `pressed` from
+    // them so a key held across the cancel cannot auto-repeat its way into
+    // triggering a chord the user never intended.
+    this.pressed = new Set(this.captureKeys)
     this.capturing = false
     this.captureKeys = []
   }
@@ -210,6 +215,9 @@ export class ShortcutController {
         const keys = [...this.captureKeys]
         this.capturing = false
         this.captureKeys = []
+        // Keys still physically held must stay tracked, or their auto-repeat
+        // keydowns could later satisfy the chord spuriously.
+        this.pressed = new Set(keys.filter((key) => key !== event.keycode))
         this.options.onCapture(keys, true)
       }
       return

@@ -19,6 +19,7 @@ extraResources:
 
 asarUnpack:
   - '**/node_modules/uiohook-napi/**'
+  - '**/node_modules/koffi/**'
 
 # uiohook-napi ships N-API prebuilds, which are ABI-stable across Electron
 # versions and selected at require time by node-gyp-build. Rebuilding from source

@@ -11,11 +11,7 @@ export function friendlyError(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.'
 }
 
-export function formatDuration(milliseconds: number): string {
-  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000))
-  if (totalSeconds < 60) return `${totalSeconds}s`
-  return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`
-}
+export { formatDuration, wordCount } from '../shared/format'
 
 export function formatDate(iso: string): string {
   const date = new Date(iso)
@@ -26,11 +22,6 @@ export function formatDate(iso: string): string {
     hour: '2-digit',
     minute: '2-digit'
   }).format(date)
-}
-
-export function wordCount(text: string): number {
-  const trimmed = text.trim()
-  return trimmed ? trimmed.split(/\s+/u).length : 0
 }
 
 /** Renders a chord as a row of `<kbd>` chips. */

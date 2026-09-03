@@ -2,7 +2,7 @@
 
 Open-source push-to-talk dictation for Windows. Hold a shortcut, speak, release — the transcript lands in your clipboard and is pasted into whatever you were typing in.
 
-No subscription, no shared backend, no maintainer holding your transcription bill. You bring your own OpenAI API key, and audio goes straight from your machine to the provider you configured.
+No subscription, no shared backend, no maintainer holding your transcription bill. You bring your own OpenAI API key — or point the app at any OpenAI-compatible transcription endpoint, including a local one — and audio goes straight from your machine to the provider you configured.
 
 ![Listening](docs/overlay-listening.png)
 
@@ -12,7 +12,9 @@ No subscription, no shared backend, no maintainer holding your transcription bil
 2. Speak. A small overlay near the bottom of your screen shows that it is listening, and for how long.
 3. Release. The audio is transcribed, copied to your clipboard, pasted into the active app, and saved to your local history.
 
-Audio is held in memory only as long as it takes to transcribe, and is never written to disk. Transcript text and basic timing are stored locally in `%APPDATA%\voice-hotkey\history.json`.
+Before upload, leading and trailing silence is trimmed so you are not billed for it, and the audio is converted to 16 kHz WAV — the format these models transcribe best. Audio is held in memory only as long as it takes to transcribe, and is never written to disk. Transcript text and basic timing are stored locally in `%APPDATA%\voice-hotkey\history.json`.
+
+A transcription failure keeps the recording in memory, so **Retry last dictation** (in the tray menu) can send the exact same take again — no need to re-speak.
 
 ## Install
 
@@ -47,13 +49,21 @@ Safe solo keys — `Right Ctrl`, `Right Alt`, `Right Shift`, `Scroll Lock`, `F13
 | Hold-to-talk enabled | Turns the global hook off without quitting. Also in the tray menu. |
 | Paste automatically | Sends Ctrl + V after copying. Turn off to copy only. |
 | Light cleanup | Removes “um”, “uh”, “erm”, “hmm” and repairs spacing and capitalisation. Never rewrites your wording. |
+| Play sounds | A short beep when recording starts, two when the transcript lands. |
 | Start with Windows | Launches minimised to the tray. |
-| Microphone | Windows default, or a specific device. A saved device that is unplugged stays selected. |
+| Microphone | Windows default, or a specific device. A saved device that is unplugged stays selected. **Test** shows a live level meter so you can check a device before dictating. |
 | Keep transcripts | Forever, 30 days, 90 days, or 1 year. |
+| API endpoint | Optional. Leave empty for OpenAI, or enter any OpenAI-compatible base URL — `https://api.groq.com/openai/v1`, Azure OpenAI, or `http://localhost:8080/v1` for a locally hosted transcription server. |
+| Model | `gpt-transcribe` (default), `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `whisper-1` — or any custom model name when a custom endpoint is configured. |
+| Language | Automatic or a specific ISO-639-1 language; the transcription prompt adapts to it. |
 
-The tray menu also has **Reset shortcut state**, for the rare case where a key-up is missed — which happens if you release the chord while a UAC prompt has focus, since the hook cannot see input in elevated windows.
+Auto-paste is honest about its limits: injected keystrokes cannot reach elevated (administrator) windows, and transcription takes seconds during which you may switch apps. When either happens, the app copies the transcript and tells you to paste manually instead of claiming a paste that never landed.
+
+The tray menu also has **Reset shortcut state**, for the rare case where a key-up is missed — which happens if you release the chord while a UAC prompt has focus, since the hook cannot see input in elevated windows — and **Retry last dictation** after a failed transcription.
 
 ![History](docs/history.png)
+
+History is grouped by day, searchable (with match highlighting), exportable as `.txt` or `.json`, and rendered incrementally so thousands of entries stay smooth.
 
 ## Build from source
 
@@ -63,7 +73,7 @@ Requires Node 22.12+ and npm 10+.
 git clone https://github.com/banuca/voice-hotkey.git
 cd voice-hotkey
 npm install
-npm run dev            # run against the dev server
+npm run dev            # run against the dev server (HMR included)
 npm test               # unit tests
 npm run typecheck      # tsc --noEmit
 npm run lint
@@ -76,21 +86,23 @@ npm run build:win      # installer + portable zip into dist/
 
 ```text
 src/main/       Electron main: windows, tray, IPC, the dictation phase machine,
-                the global shortcut controller, the transcription client, and
-                crash-safe JSON storage.
+                the global shortcut controller, the transcription client,
+                foreground-window tracking, and crash-safe JSON storage.
 src/preload/    contextBridge APIs for the UI and the recorder.
-src/renderer/   The settings/history window, plus a separate tiny entry point
-                for the overlay so it does not load the whole app.
-src/shared/     Keycode table, chord matching and validation, text cleanup, types.
+src/renderer/   The settings/history window, plus separate tiny entry points
+                for the overlay and the recorder so they do not load the whole
+                app. Audio prep (trim + 16 kHz WAV) lives here too.
+src/shared/     Keycode table, chord matching and validation, text cleanup,
+                types.
 tests/          Vitest unit tests.
 ```
 
-Every window runs with `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, a restrictive CSP, and navigation and `window.open` denied. The network request to the transcription API is made from the main process; renderers have `connect-src 'none'`.
+Every window runs with `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, a restrictive CSP, and navigation and `window.open` denied. The network request to the transcription API is made from the main process; renderers have `connect-src 'none'` in production builds.
 
 ## Privacy
 
-- Completed recordings are sent to `api.openai.com` using **your** key, and nowhere else.
-- Audio never touches disk. It is zeroed in memory after the request.
+- Completed recordings are sent to `api.openai.com` using **your** key — or to the endpoint you configured — and nowhere else.
+- Audio never touches disk. It is zeroed in memory after the request (and after a retry is replaced or dropped).
 - History is a plain local JSON file you can read or delete. **Delete all transcript history** in Settings wipes it.
 - The API key is encrypted at rest with Windows DPAPI and scoped to your user account.
 - No telemetry, no analytics, no auto-update calls.

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readJsonWithBackup, writeJsonAtomic, writeJsonAtomicAsync } from './atomic-json'
+import { readJsonWithBackup, writeJsonAtomicAsync } from './atomic-json'
 import type { HistoryEntry } from '../shared/types'
 
 const MAX_ENTRIES = 5000
@@ -21,6 +21,7 @@ export class HistoryStore {
   private warning: string | null = null
   private writing = false
   private writeAgain = false
+  private pending: Promise<void> | null = null
 
   constructor(private readonly filePath: string) {
     const { value, problem } = readJsonWithBackup<unknown>(filePath)
@@ -71,14 +72,19 @@ export class HistoryStore {
     return true
   }
 
-  /** Writes any pending changes synchronously. Call before quitting. */
-  flush(): void {
-    if (!this.writing && !this.writeAgain) return
-    this.writeAgain = false
-    try {
-      writeJsonAtomic(this.filePath, this.entries)
-    } catch {
-      // Nothing useful to do while shutting down.
+  /**
+   * Waits until every scheduled write has landed on disk. The previous build
+   * returned immediately while a write was in flight, so quitting within
+   * moments of a dictation could kill the process between the fsync and the
+   * rename — losing the newest transcript on the next launch.
+   */
+  async flush(): Promise<void> {
+    while (this.writing) {
+      // `pending` is assigned synchronously by `scheduleWrite` before the
+      // first await, and re-assigned whenever the follow-up write starts.
+      const pending = this.pending
+      if (!pending) return
+      await pending
     }
   }
 
@@ -92,12 +98,13 @@ export class HistoryStore {
       return
     }
     this.writing = true
-    void writeJsonAtomicAsync(this.filePath, this.entries)
+    this.pending = writeJsonAtomicAsync(this.filePath, this.entries)
       .catch(() => {
         // Surfaced on next launch by the backup recovery path.
       })
       .finally(() => {
         this.writing = false
+        this.pending = null
         if (this.writeAgain) {
           this.writeAgain = false
           this.scheduleWrite()
