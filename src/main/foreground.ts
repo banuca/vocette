@@ -16,7 +16,7 @@ import type { ForegroundState } from './dictation-controller'
  *
  * All Win32 calls go through koffi (N-API, no build toolchain). If the module
  * is unavailable for any reason, every method degrades to "unknown" and the
- * app behaves exactly like before: it pastes and hopes for the best.
+ * controller conservatively leaves the transcript on the clipboard.
  *
  * The loader is injectable so the whole class is testable without the native
  * module; production code uses the bundled `require`.
@@ -34,7 +34,7 @@ function defaultKoffiLoader(): typeof import('koffi') | null {
 
 export class ForegroundTracker {
   private readonly getForegroundWindow: (() => bigint | null) | null
-  private readonly isElevatedWindow: ((hwnd: bigint) => boolean) | null
+  private readonly isElevatedWindow: ((hwnd: bigint) => boolean | null) | null
   private target: bigint | null = null
 
   constructor(loadKoffi: KoffiLoader = defaultKoffiLoader) {
@@ -81,19 +81,19 @@ export class ForegroundTracker {
         const processId = [0]
         try {
           const threadId = GetWindowThreadProcessId(hwnd, processId)
-          if (!threadId || processId[0] === 0) return false
+          if (!threadId || processId[0] === 0) return null
 
           const process = asHandle(OpenProcess(0x1000 /* QUERY_LIMITED_INFORMATION */, 0, processId[0]))
-          if (!process) return false
+          if (!process) return null
           try {
             const token = [null]
-            if (!OpenProcessToken(process, 0x0008 /* TOKEN_QUERY */, token)) return false
+            if (!OpenProcessToken(process, 0x0008 /* TOKEN_QUERY */, token)) return null
             const tokenHandle = asHandle(token[0])
-            if (!tokenHandle) return false
+            if (!tokenHandle) return null
             try {
               const elevated = [0]
               const ok = GetTokenInformation(tokenHandle, 20 /* TokenElevation */, elevated, 4, [0])
-              return ok && elevated[0] !== 0
+              return ok ? elevated[0] !== 0 : null
             } finally {
               CloseHandle(tokenHandle)
             }
@@ -101,7 +101,7 @@ export class ForegroundTracker {
             CloseHandle(process)
           }
         } catch {
-          return false
+          return null
         }
       }
     } catch {
@@ -131,9 +131,11 @@ export class ForegroundTracker {
     try {
       const current = this.getForegroundWindow()
       if (current === null) return null
+      const elevated = this.isElevatedWindow(current)
+      if (elevated === null) return null
       return {
         sameWindow: current === this.target,
-        elevated: this.isElevatedWindow(current)
+        elevated
       }
     } catch {
       return null

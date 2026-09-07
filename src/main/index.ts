@@ -187,14 +187,15 @@ function recordHistory(text: string, durationMs: number, model: string): void {
   mainWindow?.webContents.send('history:changed')
 }
 
-function transcribe(payload: TranscriptionPayload): Promise<string> {
+function transcribe(payload: TranscriptionPayload, signal: AbortSignal): Promise<string> {
   return transcriber.transcribe({
     audio: payload.audio,
     mimeType: payload.mimeType,
     apiKey: settingsStore.getApiKey(),
     model: payload.model,
     language: payload.language,
-    endpoint: settingsStore.getInternal().apiEndpoint
+    endpoint: settingsStore.getInternal().apiEndpoint,
+    signal
   })
 }
 

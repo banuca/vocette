@@ -29,6 +29,15 @@ export interface SettingsView {
   dispose(): void
 }
 
+interface MicTestAttempt {
+  stream: MediaStream | null
+  audioContext: AudioContext | null
+  frame: number
+  timeout: number | undefined
+  cancelled: boolean
+  cleaned: boolean
+}
+
 export function renderSettings(context: AppContext): SettingsView {
   context.setHeading('Settings', 'Set up your key, microphone, shortcut, and local history.')
 
@@ -38,7 +47,8 @@ export function renderSettings(context: AppContext): SettingsView {
   let pendingKeys: number[] | null = null
   let capturing = false
   let releaseCaptureListener: (() => void) | null = null
-  let stopMicTest: (() => void) | null = null
+  let micTestAttempt: MicTestAttempt | null = null
+  let disposed = false
 
   const currentKeys = (): number[] => pendingKeys ?? settings.shortcut.keys
   const modelIsCustom = !TRANSCRIPTION_MODELS.includes(
@@ -361,25 +371,69 @@ export function renderSettings(context: AppContext): SettingsView {
   const microphoneSelect = query<HTMLSelectElement>('#microphone')
   const micFeedback = query<HTMLElement>('#microphone-feedback')
 
+  const finishMicTest = (attempt: MicTestAttempt, feedback = 'Test finished.'): void => {
+    if (attempt.cleaned) return
+    attempt.cleaned = true
+    attempt.cancelled = true
+    if (attempt.timeout !== undefined) window.clearTimeout(attempt.timeout)
+    attempt.timeout = undefined
+    if (attempt.frame) cancelAnimationFrame(attempt.frame)
+    attempt.frame = 0
+    attempt.stream?.getTracks().forEach((track) => track.stop())
+    attempt.stream = null
+    if (attempt.audioContext) void attempt.audioContext.close().catch(() => undefined)
+    attempt.audioContext = null
+
+    if (micTestAttempt !== attempt) return
+    micTestAttempt = null
+    if (disposed) return
+    if (micMeter) micMeter.classList.remove('is-active')
+    if (micMeterBar) micMeterBar.style.width = '0%'
+    if (micTestButton) micTestButton.textContent = 'Test'
+    if (micFeedback) micFeedback.textContent = feedback
+  }
+
   micTestButton?.addEventListener('click', async () => {
-    if (stopMicTest) {
-      stopMicTest()
+    if (micTestAttempt) {
+      finishMicTest(micTestAttempt)
       return
     }
+
+    // Claim the slot before microphone access begins so rapid clicks cannot
+    // open overlapping streams.
+    const attempt: MicTestAttempt = {
+      stream: null,
+      audioContext: null,
+      frame: 0,
+      timeout: undefined,
+      cancelled: false,
+      cleaned: false
+    }
+    micTestAttempt = attempt
+    if (micTestButton) micTestButton.textContent = 'Cancel'
+    if (micFeedback) micFeedback.textContent = 'Opening microphone…'
+
     try {
       const deviceId = microphoneSelect?.value ?? ''
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: deviceId ? { deviceId: { exact: deviceId } } : true,
         video: false
       })
+      if (attempt.cancelled || disposed || micTestAttempt !== attempt) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+      attempt.stream = stream
+
       const audioContext = new AudioContext()
+      attempt.audioContext = audioContext
       const analyser = audioContext.createAnalyser()
       analyser.fftSize = 1024
       audioContext.createMediaStreamSource(stream).connect(analyser)
       const samples = new Uint8Array(analyser.fftSize)
 
-      let frame = 0
       const tick = (): void => {
+        if (attempt.cancelled || micTestAttempt !== attempt) return
         analyser.getByteTimeDomainData(samples)
         let peak = 0
         for (const sample of samples) {
@@ -387,27 +441,20 @@ export function renderSettings(context: AppContext): SettingsView {
           peak = Math.max(peak, Math.abs(deviation))
         }
         if (micMeterBar) micMeterBar.style.width = `${Math.min(100, Math.round(peak * 140))}%`
-        frame = requestAnimationFrame(tick)
+        attempt.frame = requestAnimationFrame(tick)
       }
-      frame = requestAnimationFrame(tick)
+      attempt.frame = requestAnimationFrame(tick)
       if (micMeter) micMeter.classList.add('is-active')
       if (micTestButton) micTestButton.textContent = 'Stop'
       if (micFeedback) micFeedback.textContent = 'Say something — the bar should move.'
 
-      const timeout = window.setTimeout(() => stopMicTest?.(), MIC_TEST_DURATION_MS)
-      stopMicTest = () => {
-        window.clearTimeout(timeout)
-        cancelAnimationFrame(frame)
-        stream.getTracks().forEach((track) => track.stop())
-        void audioContext.close().catch(() => undefined)
-        if (micMeter) micMeter.classList.remove('is-active')
-        if (micMeterBar) micMeterBar.style.width = '0%'
-        if (micTestButton) micTestButton.textContent = 'Test'
-        stopMicTest = null
-        if (micFeedback) micFeedback.textContent = 'Test finished.'
-      }
+      attempt.timeout = window.setTimeout(
+        () => finishMicTest(attempt),
+        MIC_TEST_DURATION_MS
+      )
     } catch (error) {
-      if (micFeedback) micFeedback.textContent = friendlyError(error)
+      const message = friendlyError(error)
+      finishMicTest(attempt, message)
     }
   })
 
@@ -497,9 +544,10 @@ export function renderSettings(context: AppContext): SettingsView {
       if (pendingKeys) paintChips(pendingKeys)
     },
     dispose: () => {
+      disposed = true
       releaseCaptureListener?.()
       releaseCaptureListener = null
-      stopMicTest?.()
+      if (micTestAttempt) finishMicTest(micTestAttempt)
       if (capturing) {
         capturing = false
         // The main side owns the hook; make sure it is not left in capture

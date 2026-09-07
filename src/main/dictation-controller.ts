@@ -56,7 +56,7 @@ export interface DictationDeps {
     payload: unknown
   ): void
   getSettings(): WorkflowSettings
-  transcribe(payload: TranscriptionPayload): Promise<string>
+  transcribe(payload: TranscriptionPayload, signal: AbortSignal): Promise<string>
   writeClipboard(text: string): void
   /** Injects Ctrl+V into the focused app. */
   paste(): void
@@ -78,6 +78,13 @@ interface RetryTake {
   audio: Uint8Array
   mimeType: string
   durationMs: number
+}
+
+interface ProcessingAttempt {
+  readonly controller: AbortController
+  readonly take: RetryTake
+  /** Normal takes own their audio; Retry borrows the retained retry take. */
+  readonly releaseAudioOnCancel: boolean
 }
 
 function clearTimer(timer: NodeJS.Timeout | null): null {
@@ -107,6 +114,8 @@ export class DictationController {
 
   /** The last take that failed during transcription, kept for "Retry last dictation". */
   private retryTake: RetryTake | null = null
+  /** The only attempt currently allowed to produce user-visible side effects. */
+  private activeAttempt: ProcessingAttempt | null = null
 
   constructor(private readonly deps: DictationDeps) {}
 
@@ -191,12 +200,6 @@ export class DictationController {
     }
     this.clearDictationTimers()
 
-    this.broadcast({
-      phase: 'processing',
-      message: 'Transcribing…',
-      detail: 'Your audio is being converted to text'
-    })
-
     // The payload arrives over IPC as a structured clone: this process is the
     // sole owner, so it is safe (and thriftier) to use it directly and zero
     // it in place once the take settles.
@@ -206,57 +209,8 @@ export class DictationController {
       mimeType: payload.mimeType,
       durationMs: Math.max(0, payload.durationMs)
     }
-
-    try {
-      const settings = this.deps.getSettings()
-      const rawText = await this.deps.transcribe({
-        ...take,
-        model: settings.model,
-        language: settings.language
-      })
-      const text = settings.removeFillers ? lightCleanup(rawText) : rawText.trim()
-      if (!text) throw new Error('Only filler words or silence were detected.')
-
-      this.deps.recordHistory(text, take.durationMs, settings.model)
-
-      this.deps.writeClipboard(text)
-      let message: string
-      if (settings.autoPaste) {
-        const foreground = this.deps.getForegroundState()
-        if (foreground?.elevated) {
-          // UIPI blocks synthetic input into elevated windows; telling the
-          // truth is better than claiming a paste that never happened.
-          message = 'Copied — paste manually (focused app runs elevated)'
-        } else if (foreground && !foreground.sameWindow) {
-          message = 'Copied — paste manually (focus moved)'
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
-          this.deps.paste()
-          message = 'Copied and pasted'
-        }
-      } else {
-        message = 'Copied to clipboard'
-      }
-
-      this.broadcast(
-        {
-          phase: 'success',
-          message,
-          detail: text.length > 68 ? `${text.slice(0, 68)}…` : text
-        },
-        SUCCESS_RESET_MS
-      )
-      this.deps.playSound('success')
-      audio.fill(0)
-      this.setRetryTake(null)
-    } catch (error) {
-      // Keep the audio so the user can retry without re-speaking.
-      this.setRetryTake(take)
-      this.fail(error instanceof Error ? error.message : 'An unexpected error occurred.')
-    } finally {
-      this.releaseRequested = false
-      this.stopRequested = false
-    }
+    const attempt = this.beginProcessingAttempt(take, true)
+    await this.processTake(attempt, 'Your audio is being converted to text', false)
   }
 
   onRecorderError(payload: RecorderErrorPayload): void {
@@ -289,40 +243,98 @@ export class DictationController {
     // A fresh id invalidates any stale recorder events still in flight.
     this.currentRequestId = randomUUID()
     this.deps.captureForeground()
-    this.broadcast({
-      phase: 'processing',
-      message: 'Transcribing…',
-      detail: 'Retrying your last recording'
-    })
+    const attempt = this.beginProcessingAttempt(take, false)
+    await this.processTake(attempt, 'Retrying your last recording', true)
+  }
+
+  private beginProcessingAttempt(
+    take: RetryTake,
+    releaseAudioOnCancel: boolean
+  ): ProcessingAttempt {
+    this.cancelActiveAttempt()
+    const attempt: ProcessingAttempt = {
+      controller: new AbortController(),
+      take,
+      releaseAudioOnCancel
+    }
+    this.activeAttempt = attempt
+    return attempt
+  }
+
+  private ownsAttempt(attempt: ProcessingAttempt): boolean {
+    return this.activeAttempt === attempt && !attempt.controller.signal.aborted
+  }
+
+  private cancelActiveAttempt(): void {
+    const attempt = this.activeAttempt
+    if (!attempt) return
+    this.activeAttempt = null
+    attempt.controller.abort()
+    if (attempt.releaseAudioOnCancel) attempt.take.audio.fill(0)
+  }
+
+  private manualPasteMessage(foreground: ForegroundState | null): string | null {
+    if (!foreground) return 'Copied — paste manually (focus could not be verified)'
+    if (foreground.elevated) {
+      return 'Copied — paste manually (focused app runs elevated)'
+    }
+    if (!foreground.sameWindow) return 'Copied — paste manually (focus moved)'
+    return null
+  }
+
+  private async pasteOrExplain(
+    attempt: ProcessingAttempt,
+    autoPaste: boolean
+  ): Promise<string | null> {
+    if (!autoPaste) return 'Copied to clipboard'
+    if (!this.ownsAttempt(attempt)) return null
+
+    let message = this.manualPasteMessage(this.deps.getForegroundState())
+    if (!this.ownsAttempt(attempt)) return null
+    if (message) return message
+
+    await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
+    if (!this.ownsAttempt(attempt)) return null
+
+    message = this.manualPasteMessage(this.deps.getForegroundState())
+    if (!this.ownsAttempt(attempt)) return null
+    if (message) return message
+
+    this.deps.paste()
+    return 'Copied and pasted'
+  }
+
+  private async processTake(
+    attempt: ProcessingAttempt,
+    detail: string,
+    isRetry: boolean
+  ): Promise<void> {
+    this.broadcast({ phase: 'processing', message: 'Transcribing…', detail })
 
     try {
       const settings = this.deps.getSettings()
-      const rawText = await this.deps.transcribe({
-        ...take,
-        model: settings.model,
-        language: settings.language
-      })
+      const rawText = await this.deps.transcribe(
+        {
+          ...attempt.take,
+          model: settings.model,
+          language: settings.language
+        },
+        attempt.controller.signal
+      )
+      if (!this.ownsAttempt(attempt)) return
+
       const text = settings.removeFillers ? lightCleanup(rawText) : rawText.trim()
       if (!text) throw new Error('Only filler words or silence were detected.')
+      if (!this.ownsAttempt(attempt)) return
 
-      this.deps.recordHistory(text, take.durationMs, settings.model)
+      this.deps.recordHistory(text, attempt.take.durationMs, settings.model)
+      if (!this.ownsAttempt(attempt)) return
+
       this.deps.writeClipboard(text)
+      if (!this.ownsAttempt(attempt)) return
 
-      let message: string
-      if (settings.autoPaste) {
-        const foreground = this.deps.getForegroundState()
-        if (foreground?.elevated) {
-          message = 'Copied — paste manually (focused app runs elevated)'
-        } else if (foreground && !foreground.sameWindow) {
-          message = 'Copied — paste manually (focus moved)'
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
-          this.deps.paste()
-          message = 'Copied and pasted'
-        }
-      } else {
-        message = 'Copied to clipboard'
-      }
+      const message = await this.pasteOrExplain(attempt, settings.autoPaste)
+      if (!message || !this.ownsAttempt(attempt)) return
 
       this.broadcast(
         {
@@ -332,16 +344,35 @@ export class DictationController {
         },
         SUCCESS_RESET_MS
       )
+      if (!this.ownsAttempt(attempt)) return
+
       this.deps.playSound('success')
-      take.audio.fill(0)
+      if (!this.ownsAttempt(attempt)) return
+
+      attempt.take.audio.fill(0)
+      if (!this.ownsAttempt(attempt)) return
       this.setRetryTake(null)
     } catch (error) {
+      if (!this.ownsAttempt(attempt)) return
+
+      // Transfer a normal take to Retry only for a genuine processing error.
+      // Explicit cancellation invalidates the attempt before this catch runs.
+      this.activeAttempt = null
+      if (!isRetry) this.setRetryTake(attempt.take)
       this.fail(error instanceof Error ? error.message : 'An unexpected error occurred.')
+    } finally {
+      // A stale attempt must not reset flags belonging to a newer recording.
+      if (this.activeAttempt === attempt) {
+        this.activeAttempt = null
+        this.releaseRequested = false
+        this.stopRequested = false
+      }
     }
   }
 
   /** Stops timers and releases memory. Call before quitting. */
   shutdown(): void {
+    this.cancelActiveAttempt()
     this.clearDictationTimers()
     this.statusResetTimer = clearTimer(this.statusResetTimer)
     this.setRetryTake(null)
@@ -399,6 +430,7 @@ export class DictationController {
   }
 
   private fail(message: string, openSettings = false, silent = false): void {
+    this.cancelActiveAttempt()
     this.abandonRecorder()
     this.currentRequestId = ''
     this.releaseRequested = false

@@ -27,6 +27,7 @@ function stubFetch(response: Response | Promise<Response>): ReturnType<typeof vi
 }
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -109,6 +110,66 @@ describe('TranscriptionService', () => {
     })
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe('http://localhost:8080/v1/audio/transcriptions')
+  })
+
+  it('propagates caller cancellation while retaining the service timeout', async () => {
+    const timeout = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal)
+    const caller = new AbortController()
+    let resolveFetch!: (response: Response) => void
+    const fetchMock = vi.fn<FetchFn>(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve
+        })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const transcription = service.transcribe({
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      apiKey: key,
+      model: 'gpt-transcribe',
+      language: 'auto',
+      endpoint: '',
+      signal: caller.signal
+    })
+
+    const requestSignal = fetchMock.mock.calls[0]?.[1]?.signal
+    expect(timeoutSpy).toHaveBeenCalledWith(120_000)
+    expect(requestSignal?.aborted).toBe(false)
+    caller.abort()
+    expect(requestSignal?.aborted).toBe(true)
+
+    // The mock deliberately ignores abort, matching a provider or test double
+    // that resolves late. Controller ownership guards handle that case.
+    resolveFetch(respond('late response'))
+    await expect(transcription).resolves.toBe('late response')
+  })
+
+  it('keeps the 120 second timeout failure mapping', async () => {
+    const timeout = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal)
+    const fetchMock = vi.fn<FetchFn>(async (_input, init) => {
+      const signal = init?.signal
+      return await new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const transcription = service.transcribe({
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      apiKey: key,
+      model: 'gpt-transcribe',
+      language: 'auto',
+      endpoint: ''
+    })
+    timeout.abort(new DOMException('timed out', 'TimeoutError'))
+
+    await expect(transcription).rejects.toThrow('Transcription timed out')
+    expect(timeoutSpy).toHaveBeenCalledWith(120_000)
   })
 
   it('turns a 401 into an actionable message', async () => {

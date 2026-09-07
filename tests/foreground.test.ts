@@ -91,11 +91,11 @@ describe('ForegroundTracker', () => {
     expect(tracker.check()).toBeNull()
   })
 
-  it('treats a failed process open as non-elevated rather than crashing', () => {
+  it('treats a failed elevation lookup as unknown', () => {
     const tracker = new ForegroundTracker(fakeLoader)
     tracker.capture()
     state.failElevation = true
-    expect(tracker.check()).toEqual({ sameWindow: true, elevated: false })
+    expect(tracker.check()).toBeNull()
   })
 
   it('clears the target on clear()', () => {

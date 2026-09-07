@@ -81,6 +81,7 @@ afterEach(() => {
 describe('hold → recording → release', () => {
   it('walks the happy path and hands the transcript over', async () => {
     const { controller, deps, beginRecording } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
     const requestId = beginRecording()
 
     expect(deps.sendToRecorder).toHaveBeenCalledWith('recorder:start', {
@@ -104,16 +105,18 @@ describe('hold → recording → release', () => {
     await vi.advanceTimersByTimeAsync(80)
     await promise
 
-    expect(deps.transcribe).toHaveBeenCalledWith({
-      audio: expect.any(Uint8Array),
-      mimeType: 'audio/wav',
-      durationMs: 2100,
-      model: 'gpt-transcribe',
-      language: 'en'
-    })
+    expect(deps.transcribe).toHaveBeenCalledWith(
+      {
+        audio: expect.any(Uint8Array),
+        mimeType: 'audio/wav',
+        durationMs: 2100,
+        model: 'gpt-transcribe',
+        language: 'en'
+      },
+      expect.any(AbortSignal)
+    )
     expect(deps.writeClipboard).toHaveBeenCalledWith('Hello world.')
     expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 2100, 'gpt-transcribe')
-    // Tracking unavailable → legacy behaviour: paste anyway.
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success' })
@@ -122,8 +125,9 @@ describe('hold → recording → release', () => {
     expect([...audio]).toEqual([0, 0, 0, 0])
   })
 
-  it('pastes when foreground tracking is unavailable (legacy behaviour)', async () => {
+  it('falls back to clipboard-only when foreground tracking is unavailable', async () => {
     const { controller, deps, beginRecording } = makeHarness()
+    deps.getForegroundState.mockReturnValue(null)
     const requestId = beginRecording()
     controller.onShortcutReleased()
 
@@ -136,9 +140,10 @@ describe('hold → recording → release', () => {
     await vi.advanceTimersByTimeAsync(80)
     await promise
 
-    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.writeClipboard).toHaveBeenCalledWith('Hello world.')
+    expect(deps.paste).not.toHaveBeenCalled()
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
-      expect.objectContaining({ message: 'Copied and pasted' })
+      expect.objectContaining({ phase: 'success', message: expect.stringContaining('Copied') })
     )
   })
 
@@ -226,6 +231,210 @@ describe('paste honesty', () => {
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ message: 'Copied and pasted' })
     )
+  })
+
+  it('rechecks the target after the clipboard settle delay before pasting', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+
+    const promise = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array(8),
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    await Promise.resolve()
+    expect(deps.getForegroundState).toHaveBeenCalledTimes(1)
+
+    deps.getForegroundState.mockReturnValue({ sameWindow: false, elevated: false })
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+
+    expect(deps.getForegroundState).toHaveBeenCalledTimes(2)
+    expect(deps.paste).not.toHaveBeenCalled()
+  })
+})
+
+describe('cancellation ownership', () => {
+  it('does not commit a transcription that resolves after the take was cancelled', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    let resolveTranscription!: (text: string) => void
+    let signal!: AbortSignal
+    deps.transcribe.mockImplementation(
+      (_payload, attemptSignal) =>
+        new Promise<string>((resolve) => {
+          signal = attemptSignal
+          resolveTranscription = resolve
+        })
+    )
+
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    await Promise.resolve()
+    expect(controller.getStatus().phase).toBe('processing')
+    expect(signal.aborted).toBe(false)
+
+    controller.resetKeyState()
+    expect(signal.aborted).toBe(true)
+    const newerRequestId = beginRecording()
+    expect(controller.getStatus().phase).toBe('recording')
+
+    resolveTranscription('Cancelled words must not escape.')
+    await vi.advanceTimersByTimeAsync(80)
+    await processing
+
+    expect(deps.recordHistory).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).not.toHaveBeenCalled()
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(controller.getStatus().phase).toBe('recording')
+    expect(deps.sendToRecorder).toHaveBeenLastCalledWith('recorder:start', {
+      requestId: newerRequestId,
+      microphoneId: 'mic-1'
+    })
+  })
+
+  it('ignores a cancelled rejection after a newer take starts', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    let rejectTranscription!: (error: Error) => void
+    deps.transcribe.mockImplementation(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectTranscription = reject
+        })
+    )
+
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([4, 5, 6]),
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    await Promise.resolve()
+
+    controller.resetKeyState()
+    beginRecording()
+    rejectTranscription(new Error('late network failure'))
+    await processing
+
+    expect(controller.getStatus().phase).toBe('recording')
+    expect(controller.canRetry()).toBe(false)
+    expect(deps.broadcastStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'error', detail: 'late network failure' })
+    )
+  })
+
+  it('cancels Retry without turning the cancellation into a failure', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.transcribe.mockRejectedValueOnce(new Error('temporary failure'))
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const audio = new Uint8Array([7, 8, 9])
+    await controller.onRecorderAudio({
+      requestId,
+      audio,
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    expect(controller.canRetry()).toBe(true)
+
+    let resolveRetry!: (text: string) => void
+    let retrySignal!: AbortSignal
+    deps.transcribe.mockImplementation(
+      (_payload, signal) =>
+        new Promise<string>((resolve) => {
+          retrySignal = signal
+          resolveRetry = resolve
+        })
+    )
+    deps.recordHistory.mockClear()
+    deps.writeClipboard.mockClear()
+    deps.paste.mockClear()
+
+    const retry = controller.retryLast()
+    await Promise.resolve()
+    controller.resetKeyState()
+    expect(retrySignal.aborted).toBe(true)
+
+    resolveRetry('late retry result')
+    await retry
+
+    expect(deps.recordHistory).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).not.toHaveBeenCalled()
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(controller.getStatus().phase).toBe('idle')
+    expect(controller.canRetry()).toBe(true)
+    expect([...audio]).toEqual([7, 8, 9])
+  })
+
+  it('suppresses a late rejection after shutdown and releases owned audio', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    let rejectTranscription!: (error: Error) => void
+    let signal!: AbortSignal
+    deps.transcribe.mockImplementation(
+      (_payload, attemptSignal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal = attemptSignal
+          rejectTranscription = reject
+        })
+    )
+
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const audio = new Uint8Array([3, 2, 1])
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio,
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    await Promise.resolve()
+
+    controller.shutdown()
+    const broadcastsAfterShutdown = deps.broadcastStatus.mock.calls.length
+    expect(signal.aborted).toBe(true)
+    expect([...audio]).toEqual([0, 0, 0])
+
+    rejectTranscription(new Error('late shutdown rejection'))
+    await processing
+
+    expect(deps.broadcastStatus).toHaveBeenCalledTimes(broadcastsAfterShutdown)
+    expect(controller.canRetry()).toBe(false)
+  })
+
+  it('does not paste or announce success when cancelled during the paste delay', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    await Promise.resolve()
+    expect(deps.recordHistory).toHaveBeenCalledTimes(1)
+    expect(deps.writeClipboard).toHaveBeenCalledTimes(1)
+    expect(deps.getForegroundState).toHaveBeenCalledTimes(1)
+
+    controller.resetKeyState()
+    await vi.advanceTimersByTimeAsync(80)
+    await processing
+
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.playSound).not.toHaveBeenCalledWith('success')
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith({ phase: 'idle', message: 'Ready' })
   })
 })
 
@@ -352,6 +561,10 @@ describe('errors and retry', () => {
 
     expect(deps.transcribe).toHaveBeenCalledTimes(2)
     expect(deps.writeClipboard).toHaveBeenCalledWith('On the second try.')
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('paste manually') })
+    )
     expect(controller.canRetry()).toBe(false)
     expect(deps.onRetryChanged).toHaveBeenLastCalledWith(false)
     expect([...audio]).toEqual([0, 0, 0])

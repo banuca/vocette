@@ -10,11 +10,13 @@ export interface TranscribeInput {
   language: string
   /** Base URL of an OpenAI-compatible API. Empty = api.openai.com. */
   endpoint: string
+  /** Cancels this caller's request without removing the service timeout. */
+  signal?: AbortSignal
 }
 
 /**
- * Transcription-quality hints per language. Whisper-family models read these;
- * `gpt-transcribe` does not accept a prompt at all, so it is skipped there.
+ * Transcription-quality hints per language. Every curated model accepts a
+ * prompt; it should match the audio language.
  */
 const PROMPTS: Record<string, string> = {
   en: 'English dictation. Use natural punctuation and capitalisation. Preserve the speaker’s wording.',
@@ -90,11 +92,15 @@ export class TranscriptionService {
     try {
       let response: Response
       try {
+        const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+        const signal = input.signal
+          ? AbortSignal.any([input.signal, timeoutSignal])
+          : timeoutSignal
         response = await fetch(endpoint, {
           method: 'POST',
           headers: { Authorization: `Bearer ${input.apiKey}` },
           body,
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+          signal
         })
       } catch (error) {
         if (error instanceof DOMException && error.name === 'TimeoutError') {
