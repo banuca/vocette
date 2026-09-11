@@ -107,8 +107,8 @@ History is grouped by day, searchable (with match highlighting), exportable as `
 Requires Node 22.12+ and npm 10+.
 
 ```bash
-git clone https://github.com/banuca/voice-hotkey.git
-cd voice-hotkey
+git clone https://github.com/banuca/murmur.git
+cd murmur
 npm install
 npm run dev            # run against the dev server (HMR included)
 npm test               # unit tests
