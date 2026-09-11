@@ -3,7 +3,134 @@
 All notable changes to this project are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] — 2026-09-11
+
+### Changed — the product is now called Murmur
+
+- **Voice Hotkey is Murmur.** The name, the window, the tray, the installer,
+  the application id (`dev.murmur.app`), the Linux desktop entry and the
+  preload bridge (`window.murmur`) all follow. Requested after the milestone
+  was agreed; see `docs/design-requests.md`.
+- **Existing profiles are carried across.** The storage folder is named after
+  the application, so the rename would otherwise orphan a user's settings and
+  transcripts. On first run Murmur copies `settings.json` and `history.json`
+  out of the old folder — but only when its own is empty, and it never deletes
+  the originals. A failure is reported and startup continues.
+- **The saved API key survives on Windows only**, where `safeStorage` encrypts
+  against the user account rather than the path. On macOS and Linux the secret
+  is held in a keychain entry named after the application and cannot follow a
+  rename: there Murmur says so and asks for the key again, rather than
+  appearing to have one it cannot read.
+- The application name is now pinned in code, so a development run and a
+  packaged run share one profile folder instead of quietly using two.
+
+### Added
+
+- **macOS and Linux support.** Murmur now targets Windows, macOS (Apple
+  Silicon and Intel) and Linux (X11 and Wayland). Every platform can open the
+  app, configure a provider, record from the window, transcribe, copy and keep
+  local history; a global shortcut and automatic paste vary, and the app says
+  which it has.
+- **A main-process platform boundary** (`src/main/platform/`) covering global
+  shortcuts, paste-target capture and verification, key injection, permission
+  and capability reporting, and launch-at-login. Every native integration loads
+  lazily: a missing library, a refused permission or an absent desktop service
+  becomes a reported capability instead of a failed startup.
+- **A light theme, and a switch for it at the foot of the sidebar.** Modelled
+  on Visual Studio Code's Light Modern. The choice is saved with the rest of
+  the settings, so it survives a restart, and the overlay follows it rather
+  than floating a black pill over a light window. Modern Dark stays the
+  default. Requested after the milestone was agreed; see
+  `docs/design-requests.md`.
+- **Toggle recording mode.** Press to start, press again to stop, alongside the
+  original hold-to-talk. The stored preference is never overwritten by a
+  platform that cannot honour it.
+- **Record, Stop and Cancel in the window**, on every page, and in the tray.
+  They drive the same dictation controller as the shortcut — there is still
+  exactly one microphone owner. A recording started from the window is
+  delivered to the clipboard, because the window in front is Murmur.
+- **Cancellation.** A take can be abandoned before or during transcription: no
+  transcript, no history entry, no paste, and the audio buffer zeroed. It is
+  reported as an acknowledgement, not an error.
+- **Session-only API keys.** Where the operating system has no storage fit to
+  hold a credential — a Linux desktop with no unlocked keyring, where Electron
+  falls back to a hard-coded key — Murmur refuses to write the key and
+  offers to keep it in memory for the session instead. Plaintext is never
+  written silently.
+- **First-run guidance** that lists only what is genuinely outstanding — API
+  key, microphone access, and any platform permission — with a button for each,
+  and clears itself as each is satisfied.
+- **Platform support and verification matrix** in `docs/platform-support.md`,
+  which keeps what a platform *can* do separate from what has actually been
+  *run* there.
+- **macOS and Linux packaging**: DMG and ZIP for arm64 and x64, AppImage and
+  deb for x64, alongside the existing NSIS installer and portable ZIP. Signing
+  and notarisation are configured without credentials, and CI never publishes.
+- **`scripts/check-native-packaging.mjs`**, which fails the build if koffi or
+  uiohook-napi did not survive packaging for the architecture actually built.
+  Both failure modes are otherwise silent: the app still starts, and merely
+  loses the global shortcut and every paste-target check.
+- CI now verifies on Windows, macOS and Linux, and packages on each.
+
+### Changed
+
+- **History opens with the recording control**, not with a log: a large round
+  Record button, the phase beneath it, and one line of guidance. The same
+  control moves into the top bar on other pages, so there is still exactly one
+  of it. Statistics are hairline-separated figures rather than outlined cards,
+  and transcripts are rows that light up under the pointer rather than a ruled
+  table.
+- **A drawn icon set** (`src/renderer/icons.ts`): eleven interface icons on a
+  24×24 grid with a 2px stroke, inline and inheriting `currentColor`. No icon
+  font, no sprite, no package, no request. They replace text glyphs that were
+  rendered by whatever font each operating system resolved.
+- **A new visual identity across the whole app and the overlay**, driven by
+  centralized CSS tokens: a warm near-black and warm off-white in place of the
+  cold editor greys, an indigo accent, larger radii, soft shadows instead of
+  drawn grid lines, pill-shaped primary controls, a rounded pill for the active
+  navigation item, and more room around cards and transcripts. Requested after
+  the milestone was agreed; see `docs/design-requests.md`. Dark remains the
+  default. Segoe UI-first system stack with real macOS and
+  Linux fallbacks, no remote or bundled fonts, compact spacing, modest radii
+  and restrained motion. Reduced-motion preferences are honoured, focus is
+  always visible, and the layout was checked at 100% and 150%.
+- Settings disables any control the operating system will not honour and shows
+  the reason next to it, rather than silently doing nothing when it is used.
+- Wording is no longer Windows-only: "Start with Windows" becomes "Open at
+  login" or "Start when I sign in", the paste chord follows the platform, and
+  the microphone default is "System default microphone".
+- Settings file version 5 adds `recordingMode` and `theme`. Older files load
+  with the hold-to-talk and Modern Dark defaults, and the saved API key is
+  carried across untouched.
+
+### Fixed
+
+- **Toggle recording started but never stopped.** The hold delay that keeps a
+  chord from firing when it is the prefix of a longer shortcut was applied to
+  the press that stops a dictation too, so a normal tap was discarded and
+  recording ran on. A tap now counts in toggle mode; the guard against longer
+  shortcuts, and hold-to-talk's indifference to taps, are unchanged.
+- **The window shell could grow past the screen.** A long page stretched the
+  layout grid, carrying the sidebar's status footer off the bottom of the
+  display where it could not be seen at all.
+- **The record button kept the idle colour while recording.** The same hazard
+  as the overlay badge below: a transition on a value that comes from a custom
+  property. Its computed style was correct throughout, which is why nothing but
+  a screenshot could have caught it.
+- **The window said "Ready" while telling the user no API key was set.**
+- **The overlay badge kept the previous phase's colour** — showing the idle
+  blue while the microphone was live. It transitioned a colour that comes from
+  a custom property, which Chromium does not reliably re-target.
+- The transcription payload no longer carries the take's internal delivery
+  state to the provider.
+
+### Documentation
+
+- Corrected an unsupported claim in the Windows verification record: 2,000
+  successful native calls do not prove the absence of a handle leak. What that
+  loop shows is narrower — no fast leak on the success path — and the real
+  evidence for cleanup is the `finally`-based closing and the per-path tests
+  that assert exactly which handles are closed.
 
 ## [0.3.1] — 2026-08-27
 
