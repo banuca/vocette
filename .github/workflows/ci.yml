@@ -7,9 +7,16 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The checks are platform-independent, but they are run on all three anyway:
+  # the keycode table is asserted against the real uiohook-napi enum, and that
+  # is a native module with a different prebuild on every host.
   verify:
-    # Windows-only: the app targets Windows and uiohook-napi loads a native hook.
-    runs-on: windows-latest
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -33,3 +40,65 @@ jobs:
 
       - name: Build
         run: npx electron-vite build
+
+  # Native-host packaging: each installer is produced on its own operating
+  # system and architecture, because the native prebuilds are selected at
+  # install time and cannot be cross-built from another host.
+  #
+  # Nothing is signed here and nothing is published. Signing needs credentials
+  # this workflow deliberately does not have; see electron-builder.yml.
+  package:
+    name: Package (${{ matrix.os }})
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: pack:win
+            artifact: windows
+          - os: macos-latest
+            script: pack:mac
+            artifact: macos
+          - os: ubuntu-latest
+            script: pack:linux
+            artifact: linux
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer and main
+        run: npx electron-vite build
+
+      - name: Package
+        run: npm run ${{ matrix.script }}
+        env:
+          # Without a token electron-builder still packages; this only stops it
+          # trying to reach GitHub for a release it must never create.
+          GH_TOKEN: ''
+
+      - name: Check the native modules survived packaging
+        shell: bash
+        run: node scripts/check-native-packaging.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: murmur-${{ matrix.artifact }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+          retention-days: 14

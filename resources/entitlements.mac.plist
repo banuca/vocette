@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!--
+      The minimum a hardened-runtime Electron app needs, plus the two things
+      Voice Hotkey actually does.
+
+      allow-jit and allow-unsigned-executable-memory are Chromium's V8
+      requirements. disable-library-validation is needed because koffi dlopens
+      system frameworks (AppKit, Carbon, CoreGraphics) for the foreground and
+      secure-input checks. device.audio-input is the microphone.
+
+      Nothing here grants network access beyond the outgoing request the main
+      process makes to the transcription endpoint the user configured.
+    -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+  </dict>
+</plist>

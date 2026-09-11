@@ -1,7 +1,12 @@
 node_modules/
 out/
 dist/
+dist-verify/
 release/
+
+# The supplied Figma file-type icon sheet: 1.3 MB, unused, and a different
+# kind of icon set entirely. See docs/design-requests.md.
+/icons
 
 *.log
 npm-debug.log*

@@ -11,7 +11,7 @@ import type { Plugin } from 'vite'
 function devCspAllowHmr(): Plugin {
   let serving = false
   return {
-    name: 'voice-hotkey-dev-csp',
+    name: 'murmur-dev-csp',
     configResolved(config) {
       serving = config.command === 'serve'
     },
