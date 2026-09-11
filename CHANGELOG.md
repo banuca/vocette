@@ -3,6 +3,39 @@
 All notable changes to this project are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Your words — a custom vocabulary.** A new Settings card takes a list of
+  names, acronyms and product terms, one per line, and biases the recogniser
+  towards them on every dictation. `gpt-transcribe` and `gpt-live-transcribe`
+  receive them in the `keywords` field that OpenAI documents for exactly this;
+  every other model — `gpt-4o-transcribe`, `whisper-1`, Groq, a local server —
+  is given them at the end of the transcription prompt, because that is the
+  only biasing channel an OpenAI-compatible endpoint is guaranteed to accept.
+  The line under the box says which of the two is in use for the model you have
+  selected, and changes when you change the model.
+- **The terms are sent to your provider**, on every dictation, in the request
+  that was already being made. That is how they work, and it is now said in
+  the box, in the README, on the About page and in SECURITY.md: this is not a
+  place for a secret.
+- Blank lines, duplicates (ignoring case) and terms over 48 characters are
+  dropped rather than truncated. The list is capped at 100 terms, and the
+  2000-character ceiling cuts on a line boundary so a half-word can never be
+  biased into a request.
+- On the prompt path the list is budgeted to about 480 characters, because
+  `whisper-1` keeps only the last 224 tokens of a prompt and an unbounded list
+  would push out the language hint it is appended to. The note under the box
+  says how many terms are actually being sent.
+- The terms are appended as a bare list rather than an English sentence:
+  Whisper echoes prompt prose into the transcript when the audio is short, and
+  an English sentence welded onto a French prompt shifts the decoder.
+- `keywords` is only sent to OpenAI itself, never to a custom endpoint that may
+  reject an unknown field — and if a request carrying it is rejected anyway,
+  Murmur retries once with the terms in the prompt instead, so an unverified
+  parameter can cost one request some accuracy but cannot break dictation.
+
 ## [0.4.0] — 2026-09-11
 
 ### Changed — the product is now called Murmur

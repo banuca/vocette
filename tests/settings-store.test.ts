@@ -17,6 +17,7 @@ vi.mock('electron', () => ({
   }
 }))
 
+const { MAX_VOCABULARY_CHARS } = await import('../src/shared/vocabulary')
 const { KEY } = await import('../src/shared/keycodes')
 const { DEFAULT_SETTINGS, SETTINGS_VERSION, SettingsStore, normaliseSettings } = await import(
   '../src/main/settings-store'
@@ -374,5 +375,113 @@ describe('session keys alongside a stored key', () => {
     store.update({ apiKey: 'sk-temporary', apiKeyScope: 'session' })
     expect(store.clearApiKey().apiKeySource).toBe('none')
     expect(store.getApiKey()).toBe('')
+  })
+})
+
+describe('vocabulary', () => {
+  it('defaults to empty when the settings file predates the field', () => {
+    const v5 = {
+      version: 5,
+      shortcut: { keys: [KEY.Ctrl, KEY.Shift] },
+      holdDelayMs: 250,
+      recordingMode: 'hold',
+      hotkeyEnabled: true,
+      autoPaste: true,
+      removeFillers: true,
+      playSounds: true,
+      launchAtLogin: false,
+      theme: 'light',
+      microphoneId: 'mic-7',
+      historyRetentionDays: 90,
+      model: 'whisper-1',
+      language: 'de',
+      apiEndpoint: '',
+      encryptedApiKey: 'ZW5jOnNrLXRlc3Q='
+    }
+    const result = normaliseSettings(v5)
+    expect(result.vocabulary).toBe('')
+    // Every other value survives: adding the field must not disturb the file.
+    expect(result.theme).toBe('light')
+    expect(result.microphoneId).toBe('mic-7')
+    expect(result.historyRetentionDays).toBe(90)
+    expect(result.model).toBe('whisper-1')
+    expect(result.language).toBe('de')
+    expect(result.encryptedApiKey).toBe('ZW5jOnNrLXRlc3Q=')
+  })
+
+  it('ignores a non-string value on the load path', () => {
+    expect(normaliseSettings({ vocabulary: ['Kirinde'] }).vocabulary).toBe('')
+    expect(normaliseSettings({ vocabulary: 42 }).vocabulary).toBe('')
+    expect(normaliseSettings({ vocabulary: null }).vocabulary).toBe('')
+  })
+
+  it('clamps an over-long stored value rather than discarding it', () => {
+    const raw = `${'x'.repeat(30)}\n`.repeat(200)
+    const result = normaliseSettings({ vocabulary: raw })
+    expect(result.vocabulary.length).toBeLessThanOrEqual(MAX_VOCABULARY_CHARS)
+    expect(result.vocabulary.length).toBeGreaterThan(0)
+    // Cut on a line boundary: no half-term may reach a request.
+    for (const term of result.vocabulary.split('\n')) expect(term).toBe('x'.repeat(30))
+  })
+
+  it('keeps nothing rather than half a term when one line overruns the ceiling', () => {
+    const raw = 'x'.repeat(MAX_VOCABULARY_CHARS + 500)
+    expect(normaliseSettings({ vocabulary: raw }).vocabulary).toBe('')
+  })
+
+  it('saves a multi-line list and reads it back after a restart', () => {
+    const store = new SettingsStore(file, {
+      writeJsonAtomic,
+      removeJsonRecoveryCopies,
+      refreshJsonRecoveryBackup
+    })
+    const list = 'Kirinde\nITU-T\nDataverse'
+    const saved = store.update({ vocabulary: list })
+    expect(saved.vocabulary).toBe(list)
+
+    const reopened = new SettingsStore(file, {
+      writeJsonAtomic,
+      removeJsonRecoveryCopies,
+      refreshJsonRecoveryBackup
+    })
+    expect(reopened.getPublic().vocabulary).toBe(list)
+    expect(reopened.getInternal().vocabulary).toBe(list)
+  })
+
+  it('clamps on save without throwing, as the other free-text fields do', () => {
+    const store = new SettingsStore(file, {
+      writeJsonAtomic,
+      removeJsonRecoveryCopies,
+      refreshJsonRecoveryBackup
+    })
+    const saved = store.update({ vocabulary: `${'y'.repeat(25)}\n`.repeat(200) })
+    expect(saved.vocabulary.length).toBeLessThanOrEqual(MAX_VOCABULARY_CHARS)
+    for (const term of saved.vocabulary.split('\n')) expect(term).toBe('y'.repeat(25))
+  })
+
+  it('leaves the list alone when an update does not mention it', () => {
+    const store = new SettingsStore(file, {
+      writeJsonAtomic,
+      removeJsonRecoveryCopies,
+      refreshJsonRecoveryBackup
+    })
+    store.update({ vocabulary: 'Kirinde' })
+    const after = store.update({ playSounds: false })
+    expect(after.vocabulary).toBe('Kirinde')
+    expect(after.playSounds).toBe(false)
+  })
+
+  it('can be emptied again', () => {
+    const store = new SettingsStore(file, {
+      writeJsonAtomic,
+      removeJsonRecoveryCopies,
+      refreshJsonRecoveryBackup
+    })
+    store.update({ vocabulary: 'Kirinde' })
+    expect(store.update({ vocabulary: '' }).vocabulary).toBe('')
+  })
+
+  it('is defaulted empty', () => {
+    expect(DEFAULT_SETTINGS.vocabulary).toBe('')
   })
 })

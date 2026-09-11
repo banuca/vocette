@@ -44,6 +44,7 @@ function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
     playSounds: false,
     model: 'gpt-transcribe',
     language: 'en',
+    vocabulary: [],
     microphoneId: 'mic-1',
     apiKeyConfigured: true
   }

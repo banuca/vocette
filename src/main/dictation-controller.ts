@@ -46,6 +46,8 @@ export interface WorkflowSettings {
   playSounds: boolean
   model: string
   language: string
+  /** Parsed once by the caller; the controller only forwards it. */
+  vocabulary: string[]
   microphoneId: string
   apiKeyConfigured: boolean
 }
@@ -70,6 +72,7 @@ export interface TranscriptionPayload {
   durationMs: number
   model: string
   language: string
+  vocabulary: string[]
 }
 
 export interface DictationDeps {
@@ -428,7 +431,8 @@ export class DictationController {
           mimeType: attempt.take.mimeType,
           durationMs: attempt.take.durationMs,
           model: settings.model,
-          language: settings.language
+          language: settings.language,
+          vocabulary: settings.vocabulary
         },
         attempt.controller.signal
       )

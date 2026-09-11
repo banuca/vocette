@@ -116,6 +116,12 @@ export interface PublicSettings {
   historyRetentionDays: number
   model: string
   language: string
+  /**
+   * The user's own words, one per line, sent as recognition bias with every
+   * dictation. Stored verbatim so the text area round-trips; parsed into terms
+   * at the point of use by `parseVocabulary`.
+   */
+  vocabulary: string
   /** Empty = api.openai.com. Otherwise an OpenAI-compatible transcription endpoint. */
   apiEndpoint: string
   apiKeySource: ApiKeySource
@@ -135,6 +141,7 @@ export interface SettingsUpdate {
   historyRetentionDays?: number
   model?: string
   language?: string
+  vocabulary?: string
   apiEndpoint?: string
   apiKey?: string
   /**

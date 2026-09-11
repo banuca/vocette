@@ -24,6 +24,7 @@ import {
   type Theme
 } from '../shared/types'
 import { RECORDING_MODES, type RecordingMode } from '../shared/capabilities'
+import { clampVocabulary } from '../shared/vocabulary'
 import { assessSecureStorage, type SecureStorageAssessment } from './secure-storage'
 
 /** v5 added `theme`; earlier files load with the default. */
@@ -44,6 +45,7 @@ export interface StoredSettings {
   historyRetentionDays: number
   model: string
   language: string
+  vocabulary: string
   apiEndpoint: string
   encryptedApiKey: string
 }
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   historyRetentionDays: 0,
   model: 'gpt-transcribe',
   language: 'en',
+  vocabulary: '',
   apiEndpoint: '',
   encryptedApiKey: ''
 }
@@ -183,6 +186,13 @@ export function normaliseSettings(value: unknown): StoredSettings {
     language: isLanguageCode(candidate.language)
       ? candidate.language
       : DEFAULT_SETTINGS.language,
+    // Clamped, never rejected: a vocabulary is free text, and losing the whole
+    // list because it grew too long would be the wrong trade. The clamp cuts
+    // on a line boundary so a half-term is never biased into a request.
+    vocabulary:
+      typeof candidate.vocabulary === 'string'
+        ? clampVocabulary(candidate.vocabulary)
+        : DEFAULT_SETTINGS.vocabulary,
     apiEndpoint,
     encryptedApiKey:
       typeof candidate.encryptedApiKey === 'string' ? candidate.encryptedApiKey : ''
@@ -315,6 +325,9 @@ export class SettingsStore {
       this.settings.model = model
     }
     if (isLanguageCode(update.language)) this.settings.language = update.language
+    if (typeof update.vocabulary === 'string') {
+      this.settings.vocabulary = clampVocabulary(update.vocabulary)
+    }
 
     if (typeof update.apiKey === 'string' && update.apiKey.trim()) {
       const apiKey = update.apiKey.trim()

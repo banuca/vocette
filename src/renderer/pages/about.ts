@@ -35,7 +35,7 @@ export function renderAbout(context: AppContext): void {
     </div>
     <section class="notice-card">
       <h3>Independent open-source project</h3>
-      <p>Murmur is an independent MIT-licensed project with no affiliation to any commercial dictation product. It sends audio only to the transcription provider you configure, using your own API key.</p>
+      <p>Murmur is an independent MIT-licensed project with no affiliation to any commercial dictation product. It sends your audio — and the vocabulary you set in Settings, which is what makes those words come back spelled correctly — only to the transcription provider you configure, using your own API key. Nothing else leaves this computer.</p>
       <button class="secondary-button" id="open-transcription-docs" type="button">Read the transcription API documentation</button>
     </section>
   `

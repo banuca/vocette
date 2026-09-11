@@ -21,6 +21,14 @@ import {
   type PublicSettings,
   type SettingsUpdate
 } from '../../shared/types'
+import {
+  MAX_PROMPT_TERM_CHARS,
+  MAX_VOCABULARY_TERMS,
+  MAX_VOCABULARY_TERM_CHARS,
+  budgetPromptTerms,
+  parseVocabulary,
+  supportsKeywordList
+} from '../../shared/vocabulary'
 
 /** Requesting the mic once per session is what makes device labels readable. */
 let microphonePermissionRequested = false
@@ -123,6 +131,17 @@ export function renderSettings(context: AppContext): SettingsView {
           </label>
         </div>
         <div class="key-actions" id="key-actions"></div>
+      </section>
+
+      <section class="settings-card">
+        <div class="settings-heading">
+          <div><h2>Your words</h2><p>Names, acronyms and product terms Murmur should expect to hear.</p></div>
+          <span class="configured-badge" id="vocabulary-badge"></span>
+        </div>
+        <label class="field field-wide"><span>Vocabulary</span>
+          <textarea id="vocabulary" class="vocabulary-input" rows="6" spellcheck="false" autocomplete="off" aria-describedby="vocabulary-note" placeholder="Kirinde&#10;ITU-T&#10;Dataverse&#10;koffi"></textarea>
+        </label>
+        <small class="field-note" id="vocabulary-note" aria-live="polite"></small>
       </section>
 
       <section class="settings-card">
@@ -232,6 +251,65 @@ export function renderSettings(context: AppContext): SettingsView {
   const modeToggle = query<HTMLInputElement>('#mode-toggle')
   const sessionScope = query<HTMLInputElement>('#api-key-session')
   const keyActions = query<HTMLElement>('#key-actions')
+  const vocabulary = query<HTMLTextAreaElement>('#vocabulary')
+  const vocabularyNote = query<HTMLElement>('#vocabulary-note')
+  const vocabularyBadge = query<HTMLElement>('#vocabulary-badge')
+
+  /**
+   * True once the user has typed in the box and not yet saved.
+   *
+   * Settings can change out of band — the tray toggles the shortcut, the theme
+   * switch saves — and each of those repaints this page. Without this flag,
+   * `syncControlValues` would overwrite a half-written vocabulary with the
+   * saved one. The shortcut editor already makes the same promise through
+   * `pendingKeys`; this is the same promise for the only free-text field long
+   * enough to hurt when it is lost.
+   */
+  let vocabularyDirty = false
+
+  /**
+   * The count and the mechanism, stated from the control values rather than
+   * from saved settings, so the line is true while the user is still typing.
+   *
+   * Honesty matters more here than brevity: the two biasing channels behave
+   * differently, and a user whose terms are riding the prompt should know that
+   * most of a long list will not be sent.
+   */
+  const paintVocabularyNote = (): void => {
+    if (!vocabularyNote && !vocabularyBadge) return
+    const terms = parseVocabulary(vocabulary?.value ?? '')
+    const selected = modelSelect?.value ?? settings.model
+    const model =
+      selected === CUSTOM_MODEL_OPTION ? modelCustom?.value.trim() ?? '' : selected
+    const endpoint = endpointInput?.value.trim() ?? settings.apiEndpoint
+
+    if (vocabularyBadge) {
+      const count =
+        terms.length === 0 ? 'No terms' : terms.length === 1 ? '1 term' : `${terms.length} terms`
+      // Never claim saved state for text that has not been saved: the green
+      // badge means "this is what Murmur will send", not "this is typed".
+      vocabularyBadge.textContent = vocabularyDirty ? `${count} — unsaved` : count
+      vocabularyBadge.className = `configured-badge ${
+        terms.length > 0 && !vocabularyDirty ? 'is-configured' : ''
+      }`
+    }
+    if (!vocabularyNote) return
+
+    const limits = `One term per line, up to ${MAX_VOCABULARY_TERMS} terms of ${MAX_VOCABULARY_TERM_CHARS} characters. They are sent to your transcription provider with every dictation.`
+    if (supportsKeywordList(model, endpoint)) {
+      vocabularyNote.textContent = `${limits} ${model} takes them as a dedicated keyword list, so every term is used.`
+      return
+    }
+    const sent = budgetPromptTerms(terms).length
+    const dropped = terms.length - sent
+    const fit =
+      dropped > 0
+        ? ` Only the first ${sent} fit, so ${dropped} ${dropped === 1 ? 'is' : 'are'} not being sent — shorten the list.`
+        : ''
+    // textContent, not innerHTML: the model name is user input and must not be
+    // parsed as markup, and must not be double-escaped either.
+    vocabularyNote.textContent = `${limits} ${model || 'This model'} has no keyword field, so they are added to the transcription prompt, which has room for about ${MAX_PROMPT_TERM_CHARS} characters of terms.${fit}`
+  }
 
   const syncControlValues = (next: PublicSettings): void => {
     settings = next
@@ -268,6 +346,10 @@ export function renderSettings(context: AppContext): SettingsView {
       modelCustom.classList.toggle('is-hidden', !custom)
       if (custom) modelCustom.value = next.model
     }
+    // An unsaved edit outranks the stored value, exactly as a pending chord
+    // outranks the stored shortcut.
+    if (vocabulary && !vocabularyDirty) vocabulary.value = next.vocabulary
+    paintVocabularyNote()
   }
 
   // --- Capability-driven state --------------------------------------------
@@ -478,7 +560,23 @@ export function renderSettings(context: AppContext): SettingsView {
     const custom = modelSelect.value === CUSTOM_MODEL_OPTION
     modelCustom?.classList.toggle('is-hidden', !custom)
     if (custom) modelCustom?.focus()
+    // Which biasing channel the terms take depends on the model, so the note
+    // under the vocabulary box is part of this control's state.
+    paintVocabularyNote()
   })
+
+  modelCustom?.addEventListener('input', paintVocabularyNote)
+
+  // --- Vocabulary ---------------------------------------------------------
+
+  vocabulary?.addEventListener('input', () => {
+    vocabularyDirty = true
+    paintVocabularyNote()
+  })
+
+  // Whether the keyword field is available depends on the endpoint as well as
+  // the model, so the note is part of this control's state too.
+  endpointInput?.addEventListener('input', paintVocabularyNote)
 
   // --- Microphones --------------------------------------------------------
 
@@ -674,6 +772,7 @@ export function renderSettings(context: AppContext): SettingsView {
       historyRetentionDays: Number(retention?.value ?? 0),
       model,
       language: languageSelect?.value ?? 'en',
+      vocabulary: vocabulary?.value ?? '',
       apiEndpoint: endpointInput?.value.trim() ?? '',
       ...(apiKey
         ? { apiKey, apiKeyScope: sessionScope?.checked ? ('session' as const) : ('persist' as const) }
@@ -684,6 +783,9 @@ export function renderSettings(context: AppContext): SettingsView {
       const next = await window.murmur.saveSettings(update)
       context.applySettings(next)
       pendingKeys = null
+      // Saved: the box may now be repainted from the stored value again, and
+      // the clamp is shown by repainting it from what actually persisted.
+      vocabularyDirty = false
       // Update in place: a full re-render would drop the view reference the
       // shell holds and orphan the capture listener.
       syncControlValues(next)

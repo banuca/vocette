@@ -1125,6 +1125,43 @@ a:focus-visible {
   color: var(--text-muted);
 }
 
+/* The vocabulary list. Self-contained rather than folded into the shared
+   .field input rule, because it wants a monospace column, a resize grip and a
+   focus ring the shared rule deliberately suppresses. */
+.vocabulary-input {
+  width: 100%;
+  min-height: 108px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+
+.vocabulary-input:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.vocabulary-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* The vocabulary note sits outside its <label> on purpose: inside, its text is
+   concatenated into the text area's accessible name, and it is long. */
+.field-note {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .password-row,
 .inline-control {
   display: flex;

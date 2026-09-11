@@ -105,7 +105,10 @@ async function makeFocusedMicHarness() {
     '#open-api-keys',
     '#clear-history',
     '#save-settings',
-    '#settings-feedback'
+    '#settings-feedback',
+    '#vocabulary',
+    '#vocabulary-note',
+    '#vocabulary-badge'
   ]
   selectors.forEach((selector) => elements.set(selector, new FakeElement()))
 
@@ -123,6 +126,7 @@ async function makeFocusedMicHarness() {
     historyRetentionDays: 0,
     model: 'gpt-transcribe',
     language: 'en',
+    vocabulary: '',
     apiEndpoint: '',
     apiKeySource: 'none'
   }
@@ -277,7 +281,10 @@ describe('settings microphone test ownership', () => {
       '#open-api-keys',
       '#clear-history',
       '#save-settings',
-      '#settings-feedback'
+      '#settings-feedback',
+      '#vocabulary',
+      '#vocabulary-note',
+      '#vocabulary-badge'
     ]
     selectors.forEach((selector) => elements.set(selector, new FakeElement()))
     const content = new FakeElement(elements)
@@ -296,6 +303,7 @@ describe('settings microphone test ownership', () => {
       historyRetentionDays: 0,
       model: 'gpt-transcribe',
       language: 'en',
+      vocabulary: '',
       apiEndpoint: '',
       apiKeySource: 'none'
     }

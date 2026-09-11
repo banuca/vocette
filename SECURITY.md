@@ -86,6 +86,12 @@ window to make a paste succeed.
 - Completed recordings are sent to `https://api.openai.com/v1/audio/transcriptions`
   using your own API key — or, if you configured one, to your custom
   OpenAI-compatible endpoint — and to no other host.
+- **Your vocabulary is sent with them.** The terms in Settings > Your words go
+  to the same endpoint on every dictation, either in the request's `keywords`
+  field or appended to its transcription prompt. That is what makes them
+  work. Anything typed into that box is disclosed to the provider you
+  configured, so it is not a place for a secret. It is stored in
+  `settings.json` in plain text, and it is not stored anywhere else.
 - Audio is never written to disk. The in-memory buffer is zeroed after the
   request. A failed transcription keeps the recording in memory so **Retry last
   dictation** can resend it; it is zeroed when a new take starts, when the

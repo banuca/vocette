@@ -17,6 +17,7 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
     playSounds: false,
     model: 'gpt-transcribe',
     language: 'en',
+    vocabulary: [],
     microphoneId: 'mic-1',
     apiKeyConfigured: true,
     ...overrides.settings
@@ -115,7 +116,8 @@ describe('hold → recording → release', () => {
         mimeType: 'audio/wav',
         durationMs: 2100,
         model: 'gpt-transcribe',
-        language: 'en'
+        language: 'en',
+        vocabulary: []
       },
       expect.any(AbortSignal)
     )
@@ -127,6 +129,30 @@ describe('hold → recording → release', () => {
     )
     // The audio copy must be zeroed after a successful take.
     expect([...audio]).toEqual([0, 0, 0, 0])
+  })
+
+  it('forwards the configured vocabulary to the transcriber', async () => {
+    // Read at decision time from getSettings, like every other field, so a
+    // list edited mid-take applies to the take that follows it.
+    const { controller, deps, beginRecording } = makeHarness({
+      settings: { vocabulary: ['Kirinde', 'ITU-T'] }
+    })
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const promise = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2]),
+      mimeType: 'audio/wav',
+      durationMs: 900
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+
+    expect(deps.transcribe).toHaveBeenCalledWith(
+      expect.objectContaining({ vocabulary: ['Kirinde', 'ITU-T'] }),
+      expect.any(AbortSignal)
+    )
   })
 
   it('falls back to clipboard-only when foreground tracking is unavailable', async () => {

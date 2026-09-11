@@ -33,6 +33,7 @@ import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { SettingsStore } from './settings-store'
 import { TranscriptionService } from './transcription-service'
+import { parseVocabulary } from '../shared/vocabulary'
 import {
   autoPasteSupported,
   effectiveRecordingMode,
@@ -211,6 +212,7 @@ function workflowSettings(): WorkflowSettings {
     playSounds: settings.playSounds,
     model: settings.model,
     language: settings.language,
+    vocabulary: parseVocabulary(settings.vocabulary),
     microphoneId: settings.microphoneId,
     apiKeyConfigured: hasApiKey(settingsStore.getPublic())
   }
@@ -308,6 +310,7 @@ function transcribe(payload: TranscriptionPayload, signal: AbortSignal): Promise
     apiKey: settingsStore.getApiKey(),
     model: payload.model,
     language: payload.language,
+    terms: payload.vocabulary,
     endpoint: settingsStore.getInternal().apiEndpoint,
     signal
   })

@@ -82,6 +82,7 @@ On Wayland the shortcut is registered with the desktop portal rather than observ
 | Start after holding for | Instantly / 150 / 250 / 400 ms. Keep a delay for modifier-only chords. |
 | Global shortcut enabled | Turns the system-wide shortcut off without quitting. Also in the tray menu. |
 | Paste automatically | Sends the platform's paste chord after copying. Disabled, with a reason, where the OS will not allow it. |
+| Your words | A vocabulary of names, acronyms and product terms, one per line. **Sent to your transcription provider with every dictation** — that is how they work, so it is not a place for a secret. Against OpenAI, `gpt-transcribe` takes them as a dedicated `keywords` list. Every other model, and every custom endpoint, is given them through the transcription prompt instead, which has room for about 480 characters of terms; the line under the box says which is in use and warns when the list no longer fits. |
 | Light cleanup | For explicitly English dictation, removes “um”, “uh”, “erm”, “hmm” and repairs spacing and capitalisation. Automatic and other languages are only outer-whitespace trimmed. |
 | Play sounds | A short beep when recording starts, two when the transcript lands. |
 | Start with Windows / Open at login / Start when I sign in | Launches minimised to the tray. |
