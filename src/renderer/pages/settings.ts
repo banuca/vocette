@@ -1,5 +1,13 @@
 import type { AppContext } from '../app-context'
 import { escapeHtml, friendlyError, keyChips } from '../dom'
+import {
+  autoPasteSupported,
+  clipboardOnlyReason,
+  globalShortcutUsable,
+  isAvailable,
+  recordingModeIsForced,
+  type Capability
+} from '../../shared/capabilities'
 import { chordLabel, keyLabel } from '../../shared/keycodes'
 import {
   HOLD_DELAY_OPTIONS,
@@ -55,21 +63,43 @@ export function renderSettings(context: AppContext): SettingsView {
     settings.model as (typeof TRANSCRIPTION_MODELS)[number]
   )
 
+  const capabilities = (): AppContext['platform']['capabilities'] =>
+    context.platform.capabilities
+  /** Secure storage unfit for a credential means the key stays in memory. */
+  const storageUnusable = (): boolean => !isAvailable(capabilities().secureKeyStorage)
+
+  const keyBadgeText = (source: PublicSettings['apiKeySource']): string =>
+    source === 'stored' ? 'Key saved' : source === 'session' ? 'Key for this session' : 'Key required'
+
+  const launchLabel =
+    context.platform.platform === 'windows'
+      ? 'Start with Windows'
+      : context.platform.platform === 'macos'
+        ? 'Open at login'
+        : 'Start when I sign in'
+
   context.content.innerHTML = `
     <div class="settings-stack">
       <section class="settings-card">
         <div class="settings-heading">
-          <div><h2>Transcription API</h2><p>Your key is encrypted by Windows and never displayed again.</p></div>
-          <span class="configured-badge ${settings.apiKeyConfigured ? 'is-configured' : ''}" id="key-badge">${settings.apiKeyConfigured ? 'Key configured' : 'Key required'}</span>
+          <div><h2>Transcription API</h2><p>Your key is encrypted by the operating system and never displayed again.</p></div>
+          <span class="configured-badge ${settings.apiKeySource !== 'none' ? 'is-configured' : ''}" id="key-badge">${keyBadgeText(settings.apiKeySource)}</span>
         </div>
         <div class="form-grid">
-          <label class="field field-wide"><span>OpenAI API key</span>
+          <label class="field field-wide"><span>API key</span>
             <div class="password-row">
-              <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="${settings.apiKeyConfigured ? 'Enter a new key to replace the saved key' : 'sk-…'}" />
+              <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="${settings.apiKeySource !== 'none' ? 'Enter a new key to replace the current key' : 'sk-…'}" />
               <button class="secondary-button" id="open-api-keys" type="button">Get a key</button>
             </div>
-            <small>The app sends each completed recording directly to OpenAI using your key.</small>
+            <small>The app sends each completed recording directly to your provider using your key.</small>
           </label>
+          <div class="field field-wide key-scope" id="key-scope">
+            <label class="checkbox-row">
+              <input id="api-key-session" type="checkbox" />
+              <span>Keep this key for this session only</span>
+            </label>
+            <small id="key-scope-note"></small>
+          </div>
           <label class="field field-wide"><span>API endpoint <em>(optional)</em></span>
             <input id="api-endpoint" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.openai.com/v1" value="${escapeHtml(settings.apiEndpoint)}" />
             <small>Leave empty for OpenAI. For another OpenAI-compatible provider, paste its base URL — for example <code>https://api.groq.com/openai/v1</code>, or <code>http://localhost:8080/v1</code> for a local transcription server.</small>
@@ -92,11 +122,23 @@ export function renderSettings(context: AppContext): SettingsView {
             </select>
           </label>
         </div>
-        ${settings.apiKeyConfigured ? '<button class="danger-link" id="clear-api-key" type="button">Remove saved API key</button>' : ''}
+        <div class="key-actions" id="key-actions"></div>
       </section>
 
       <section class="settings-card">
-        <div class="settings-heading"><div><h2>Hold-to-talk</h2><p>The shortcut works system-wide while Voice Hotkey is in the tray.</p></div></div>
+        <div class="settings-heading"><div><h2>Recording</h2><p>How a dictation starts, and which microphone it uses.</p></div></div>
+
+        <div class="mode-choice" role="radiogroup" aria-label="Recording mode">
+          <label class="mode-option">
+            <input type="radio" name="recording-mode" value="hold" id="mode-hold" />
+            <div><strong>Hold to talk</strong><span>Hold the shortcut while you speak, release to finish.</span></div>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="recording-mode" value="toggle" id="mode-toggle" />
+            <div><strong>Press to start and stop</strong><span>One press begins recording, the next ends it.</span></div>
+          </label>
+        </div>
+        <p class="capability-note" id="mode-note" hidden></p>
 
         <div class="shortcut-editor">
           <div class="shortcut-current">
@@ -106,6 +148,7 @@ export function renderSettings(context: AppContext): SettingsView {
               <span class="shortcut-action" id="shortcut-action">Change</span>
             </button>
             <small id="shortcut-feedback">Click Change, then hold the keys you want.</small>
+            <p class="capability-note" id="shortcut-note" hidden></p>
           </div>
           <div class="shortcut-presets">
             <span class="field-label">Quick picks</span>
@@ -129,7 +172,7 @@ export function renderSettings(context: AppContext): SettingsView {
           </label>
           <label class="field"><span>Microphone</span>
             <div class="inline-control">
-              <select id="microphone"><option value="">Windows default microphone</option></select>
+              <select id="microphone"><option value="">System default microphone</option></select>
               <button class="icon-refresh" id="refresh-microphones" type="button" aria-label="Refresh microphones">↻</button>
               <button class="secondary-button" id="mic-test" type="button">Test</button>
             </div>
@@ -139,11 +182,11 @@ export function renderSettings(context: AppContext): SettingsView {
         </div>
 
         <div class="toggle-list">
-          <label class="toggle-row"><div><strong>Hold-to-talk enabled</strong><span>Turn the global shortcut off without quitting the app.</span></div><input id="hotkey-enabled" type="checkbox" /><i></i></label>
-          <label class="toggle-row"><div><strong>Paste automatically</strong><span>Copy the transcript and press Ctrl + V in the active app.</span></div><input id="auto-paste" type="checkbox" /><i></i></label>
-          <label class="toggle-row"><div><strong>Light cleanup</strong><span>Remove “um”, “uh”, “erm”, and repair spacing without rewriting you.</span></div><input id="remove-fillers" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-hotkey"><div><strong>Global shortcut enabled</strong><span>Turn the system-wide shortcut off without quitting the app.</span><small class="capability-note" id="hotkey-note" hidden></small></div><input id="hotkey-enabled" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-auto-paste"><div><strong>Paste automatically</strong><span>Copy the transcript and send ${escapeHtml(context.platform.pasteLabel)} to the app you were using.</span><small class="capability-note" id="auto-paste-note" hidden></small></div><input id="auto-paste" type="checkbox" /><i></i></label>
+          <label class="toggle-row"><div><strong>Light cleanup</strong><span>For explicitly English dictation, remove “um”, “uh”, “erm”, and repair spacing without rewriting you.</span></div><input id="remove-fillers" type="checkbox" /><i></i></label>
           <label class="toggle-row"><div><strong>Play sounds</strong><span>A short beep when recording starts, two when the transcript is ready.</span></div><input id="play-sounds" type="checkbox" /><i></i></label>
-          <label class="toggle-row"><div><strong>Start with Windows</strong><span>Keep hold-to-talk ready after you sign in.</span></div><input id="launch-at-login" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-launch"><div><strong>${escapeHtml(launchLabel)}</strong><span>Keep the shortcut ready after you sign in.</span><small class="capability-note" id="launch-note" hidden></small></div><input id="launch-at-login" type="checkbox" /><i></i></label>
         </div>
       </section>
 
@@ -185,6 +228,10 @@ export function renderSettings(context: AppContext): SettingsView {
   const shortcutButton = query<HTMLButtonElement>('#shortcut-capture')
   const shortcutAction = query<HTMLSpanElement>('#shortcut-action')
   const shortcutFeedback = query<HTMLElement>('#shortcut-feedback')
+  const modeHold = query<HTMLInputElement>('#mode-hold')
+  const modeToggle = query<HTMLInputElement>('#mode-toggle')
+  const sessionScope = query<HTMLInputElement>('#api-key-session')
+  const keyActions = query<HTMLElement>('#key-actions')
 
   const syncControlValues = (next: PublicSettings): void => {
     settings = next
@@ -198,9 +245,12 @@ export function renderSettings(context: AppContext): SettingsView {
     if (languageSelect) languageSelect.value = next.language
     if (endpointInput) endpointInput.value = next.apiEndpoint
     if (keyBadge) {
-      keyBadge.textContent = next.apiKeyConfigured ? 'Key configured' : 'Key required'
-      keyBadge.className = `configured-badge ${next.apiKeyConfigured ? 'is-configured' : ''}`
+      keyBadge.textContent = keyBadgeText(next.apiKeySource)
+      keyBadge.className = `configured-badge ${next.apiKeySource !== 'none' ? 'is-configured' : ''}`
     }
+    if (modeHold) modeHold.checked = next.recordingMode === 'hold'
+    if (modeToggle) modeToggle.checked = next.recordingMode === 'toggle'
+    renderKeyActions(next)
     paintChips(next.shortcut.keys)
     const custom = !TRANSCRIPTION_MODELS.includes(
       next.model as (typeof TRANSCRIPTION_MODELS)[number]
@@ -220,6 +270,124 @@ export function renderSettings(context: AppContext): SettingsView {
     }
   }
 
+  // --- Capability-driven state --------------------------------------------
+
+  /**
+   * Removing a key means different things depending on where it lives, so the
+   * actions are rebuilt from the current source rather than guessed at once
+   * when the page is drawn.
+   */
+  const renderKeyActions = (next: PublicSettings): void => {
+    if (!keyActions) return
+    keyActions.replaceChildren()
+    const action = (label: string, run: () => Promise<void>): void => {
+      const button = document.createElement('button')
+      button.className = 'danger-link'
+      button.type = 'button'
+      button.textContent = label
+      button.addEventListener('click', () => void run())
+      keyActions.append(button)
+    }
+    if (next.apiKeySource === 'session') {
+      action('Forget the session key', async () => {
+        const updated = await window.murmur.clearSessionApiKey()
+        context.applySettings(updated)
+        syncControlValues(updated)
+      })
+    }
+    if (next.apiKeySource === 'stored') {
+      action('Remove saved API key', async () => {
+        if (!window.confirm('Remove the saved API key from this computer?')) return
+        const feedback = query('#settings-feedback')
+        try {
+          const updated = await window.murmur.clearApiKey()
+          context.applySettings(updated)
+          syncControlValues(updated)
+        } catch (error) {
+          if (feedback) feedback.textContent = friendlyError(error)
+        }
+      })
+    }
+  }
+
+  const note = (element: HTMLElement | null, capability: Capability | null): void => {
+    if (!element) return
+    const text = capability && capability.state !== 'available' ? capability.reason : ''
+    element.textContent = text
+    element.hidden = text === ''
+  }
+
+  /**
+   * Reflects what this system will actually allow.
+   *
+   * A control that cannot do anything is disabled and says why, instead of
+   * silently doing nothing when it is used. The stored preference underneath
+   * is never rewritten — only what is shown.
+   */
+  const syncCapabilities = (): void => {
+    const map = capabilities()
+    const shortcutUsable = globalShortcutUsable(map)
+
+    if (hotkeyEnabled) hotkeyEnabled.disabled = !shortcutUsable
+    note(query<HTMLElement>('#hotkey-note'), shortcutUsable ? null : map.globalToggle)
+
+    if (autoPaste) autoPaste.disabled = !autoPasteSupported(map)
+    const pasteNote = query<HTMLElement>('#auto-paste-note')
+    if (pasteNote) {
+      const reason = clipboardOnlyReason(map)
+      pasteNote.textContent = reason ?? ''
+      pasteNote.hidden = reason === null
+    }
+
+    if (launchAtLogin) launchAtLogin.disabled = !isAvailable(map.launchAtLogin)
+    note(query<HTMLElement>('#launch-note'), map.launchAtLogin)
+
+    // Holding needs a key-up the platform may never report.
+    const holdPossible = isAvailable(map.globalHold)
+    if (modeHold) modeHold.disabled = !holdPossible
+    const modeNote = query<HTMLElement>('#mode-note')
+    if (modeNote) {
+      const forced = recordingModeIsForced(settings.recordingMode, map)
+      const text = forced
+        ? `${map.globalHold.reason} Your preference is kept for a system that can.`
+        : !holdPossible
+          ? map.globalHold.reason
+          : ''
+      modeNote.textContent = text
+      modeNote.hidden = text === ''
+    }
+
+    // A desktop-registered shortcut cannot be recorded from live keystrokes.
+    const canCapture = shortcutUsable && context.platform.session !== 'wayland'
+    if (shortcutButton) shortcutButton.disabled = !canCapture
+    const shortcutNote = query<HTMLElement>('#shortcut-note')
+    if (shortcutNote) {
+      const text = !shortcutUsable
+        ? map.globalToggle.reason
+        : canCapture
+          ? ''
+          : 'This desktop cannot record a shortcut from your keystrokes. Choose one of ' +
+            'the quick picks instead — it must include a letter, number or function key.'
+      shortcutNote.textContent = text
+      shortcutNote.hidden = text === ''
+    }
+
+    // The offer of a session-only key is the whole answer to a system with no
+    // usable keyring, so it is forced on and explained rather than merely
+    // failing when Save is pressed.
+    const unusable = storageUnusable()
+    if (sessionScope) {
+      if (unusable) sessionScope.checked = true
+      sessionScope.disabled = unusable
+    }
+    const scopeNote = query<HTMLElement>('#key-scope-note')
+    if (scopeNote) {
+      scopeNote.textContent = unusable
+        ? map.secureKeyStorage.reason
+        : 'Leave this off to keep the key on this computer, encrypted by the operating system.'
+    }
+  }
+
   // --- Shortcut capture ---------------------------------------------------
 
   const paintChips = (keys: readonly number[]): void => {
@@ -231,6 +399,7 @@ export function renderSettings(context: AppContext): SettingsView {
   // (temporal dead zone), which killed every listener on the page: the Save
   // button looked fine but did nothing.
   syncControlValues(settings)
+  syncCapabilities()
 
   const setFeedback = (text: string, tone: 'muted' | 'warn' | 'error' = 'muted'): void => {
     if (!shortcutFeedback) return
@@ -262,7 +431,7 @@ export function renderSettings(context: AppContext): SettingsView {
     }
   }
 
-  releaseCaptureListener = window.voiceHotkey.onShortcutCapture(({ keys, done }) => {
+  releaseCaptureListener = window.murmur.onShortcutCapture(({ keys, done }) => {
     if (!capturing) return
     if (!done) {
       paintChips(keys)
@@ -279,7 +448,7 @@ export function renderSettings(context: AppContext): SettingsView {
 
   shortcutButton?.addEventListener('click', async () => {
     if (capturing) {
-      await window.voiceHotkey.cancelShortcutCapture()
+      await window.murmur.cancelShortcutCapture()
       endCapture()
       paintChips(currentKeys())
       setFeedback('Shortcut unchanged.')
@@ -290,14 +459,14 @@ export function renderSettings(context: AppContext): SettingsView {
     if (shortcutAction) shortcutAction.textContent = 'Cancel'
     paintChips([])
     setFeedback('Hold the keys you want, then let go.')
-    await window.voiceHotkey.beginShortcutCapture()
+    await window.murmur.beginShortcutCapture()
   })
 
   query<HTMLDivElement>('#preset-row')?.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('.preset-button')
     if (!button?.dataset.keys) return
     if (capturing) {
-      void window.voiceHotkey.cancelShortcutCapture()
+      void window.murmur.cancelShortcutCapture()
       endCapture()
     }
     commitCapture(button.dataset.keys.split(',').map(Number))
@@ -461,30 +630,25 @@ export function renderSettings(context: AppContext): SettingsView {
   // --- Actions ------------------------------------------------------------
 
   query('#open-api-keys')?.addEventListener('click', () => {
-    void window.voiceHotkey.openExternal('api-keys')
-  })
-
-  query('#clear-api-key')?.addEventListener('click', async () => {
-    if (!window.confirm('Remove the saved API key from this computer?')) return
-    const next = await window.voiceHotkey.clearApiKey()
-    context.applySettings(next)
-    syncControlValues(next)
-    // The "Remove saved API key" link must disappear once there is no key.
-    query('#clear-api-key')?.remove()
+    void window.murmur.openExternal('api-keys')
   })
 
   query('#clear-history')?.addEventListener('click', async () => {
     if (!window.confirm('Permanently delete every saved transcript? This cannot be undone.')) return
-    await window.voiceHotkey.clearHistory()
-    await context.reloadHistory()
     const feedback = query('#settings-feedback')
-    if (feedback) feedback.textContent = 'Transcript history deleted.'
+    try {
+      await window.murmur.clearHistory()
+      await context.reloadHistory()
+      if (feedback) feedback.textContent = 'Transcript history deleted.'
+    } catch (error) {
+      if (feedback) feedback.textContent = friendlyError(error)
+    }
   })
 
   query('#save-settings')?.addEventListener('click', async () => {
     const feedback = query('#settings-feedback')
     if (capturing) {
-      await window.voiceHotkey.cancelShortcutCapture()
+      await window.murmur.cancelShortcutCapture()
       endCapture()
     }
 
@@ -498,6 +662,9 @@ export function renderSettings(context: AppContext): SettingsView {
     const update: SettingsUpdate = {
       shortcut: { keys: currentKeys() },
       holdDelayMs: Number(holdDelay?.value ?? 250),
+      // Saved as chosen. A platform that cannot hold downgrades it at use
+      // time, so the preference survives a move to one that can.
+      recordingMode: modeToggle?.checked ? 'toggle' : 'hold',
       hotkeyEnabled: hotkeyEnabled?.checked ?? true,
       microphoneId: microphoneSelect?.value ?? '',
       autoPaste: autoPaste?.checked ?? true,
@@ -508,11 +675,13 @@ export function renderSettings(context: AppContext): SettingsView {
       model,
       language: languageSelect?.value ?? 'en',
       apiEndpoint: endpointInput?.value.trim() ?? '',
-      ...(apiKey ? { apiKey } : {})
+      ...(apiKey
+        ? { apiKey, apiKeyScope: sessionScope?.checked ? ('session' as const) : ('persist' as const) }
+        : {})
     }
 
     try {
-      const next = await window.voiceHotkey.saveSettings(update)
+      const next = await window.murmur.saveSettings(update)
       context.applySettings(next)
       pendingKeys = null
       // Update in place: a full re-render would drop the view reference the
@@ -522,7 +691,7 @@ export function renderSettings(context: AppContext): SettingsView {
         const keyInput = query<HTMLInputElement>('#api-key')
         if (keyInput) {
           keyInput.value = ''
-          keyInput.placeholder = 'Enter a new key to replace the saved key'
+          keyInput.placeholder = 'Enter a new key to replace the current key'
         }
       }
       if (feedback) {
@@ -539,6 +708,7 @@ export function renderSettings(context: AppContext): SettingsView {
   return {
     apply: (next) => {
       syncControlValues(next)
+      syncCapabilities()
       // A tray toggle must not discard a chord the user picked but has not
       // saved yet — repaint the pending chips over the refreshed controls.
       if (pendingKeys) paintChips(pendingKeys)
@@ -552,7 +722,7 @@ export function renderSettings(context: AppContext): SettingsView {
         capturing = false
         // The main side owns the hook; make sure it is not left in capture
         // mode behind a page that no longer exists.
-        void window.voiceHotkey.cancelShortcutCapture()
+        void window.murmur.cancelShortcutCapture()
       }
     }
   }

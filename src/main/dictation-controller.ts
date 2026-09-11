@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { lightCleanup } from '../shared/cleanup'
+import type { RecordingMode } from '../shared/capabilities'
 import type {
   Page,
   RecorderAudioPayload,
@@ -17,14 +18,30 @@ const STOP_WATCHDOG_MS = 10_000
 /** How long a success/error status lingers before the overlay hides. */
 const SUCCESS_RESET_MS = 1600
 const ERROR_RESET_MS = 4500
+/** Cancellation is an acknowledgement, not news; it clears quickly. */
+const CANCELLED_RESET_MS = 1200
 /** Small settle delay before the synthetic Ctrl+V, so clipboard writes propagate. */
 const PASTE_DELAY_MS = 80
 
 export type SoundKind = 'start' | 'success' | 'error'
 
+/**
+ * Where a dictation was started from.
+ *
+ * It decides delivery. A take started from the Murmur window has no
+ * external target — this app has focus — so it is delivered to the clipboard
+ * and nothing is typed anywhere. Only a take started by the global shortcut
+ * has a target worth capturing and verifying.
+ */
+export type DictationSource = 'shortcut' | 'ui'
+
 /** The settings fields the workflow needs, read fresh at decision time. */
 export interface WorkflowSettings {
+  /** Already resolved against platform capability by the caller. */
+  recordingMode: RecordingMode
   autoPaste: boolean
+  /** Whether this platform can verify a target and type into it at all. */
+  pasteAvailable: boolean
   removeFillers: boolean
   playSounds: boolean
   model: string
@@ -37,8 +54,14 @@ export interface WorkflowSettings {
 export interface ForegroundState {
   /** The focused window is the one that had focus when the take started. */
   sameWindow: boolean
-  /** The focused window's process runs elevated; injected keystrokes cannot reach it. */
+  /**
+   * Injected keystrokes cannot reach the focused app. On Windows that means
+   * the process runs elevated (UIPI); other platforms have their own barrier
+   * and supply their own wording in `blockedReason`.
+   */
   elevated: boolean
+  /** Platform wording for `elevated`. Windows keeps the default phrasing. */
+  blockedReason?: string
 }
 
 export interface TranscriptionPayload {
@@ -67,6 +90,8 @@ export interface DictationDeps {
   recordHistory(text: string, durationMs: number, model: string): void
   /** Remembers which window has focus, for the paste-target check. */
   captureForeground(): void
+  /** Forgets any captured target, so nothing can be pasted into it. */
+  clearForeground(): void
   getForegroundState(): ForegroundState | null
   /** Display label of the configured chord, for the overlay's release hint. */
   shortcutLabel(): string
@@ -78,6 +103,8 @@ interface RetryTake {
   audio: Uint8Array
   mimeType: string
   durationMs: number
+  /** This take was started from the app window, so it is never pasted. */
+  clipboardOnly: boolean
 }
 
 interface ProcessingAttempt {
@@ -116,6 +143,8 @@ export class DictationController {
   private retryTake: RetryTake | null = null
   /** The only attempt currently allowed to produce user-visible side effects. */
   private activeAttempt: ProcessingAttempt | null = null
+  /** Set when the current take was started from the app's own window. */
+  private clipboardOnly = false
 
   constructor(private readonly deps: DictationDeps) {}
 
@@ -127,26 +156,45 @@ export class DictationController {
     return this.retryTake !== null
   }
 
-  onShortcutPressed(): void {
+  /** True while a take is being opened, recorded or transcribed. */
+  isBusy(): boolean {
     const phase = this.currentStatus.phase
-    if (phase === 'starting' || phase === 'recording' || phase === 'processing') return
+    return phase === 'starting' || phase === 'recording' || phase === 'processing'
+  }
 
-    // `success` and `error` linger on screen for a few seconds. Pressing the
-    // shortcut during that window used to be ignored, forcing a wait of up to
-    // 4.5s between dictations.
-    if (phase === 'success' || phase === 'error') {
-      this.statusResetTimer = clearTimer(this.statusResetTimer)
-    }
+  /** True while audio is actually being captured, so a Stop button applies. */
+  isRecording(): boolean {
+    const phase = this.currentStatus.phase
+    return phase === 'starting' || phase === 'recording'
+  }
+
+  /**
+   * Starts a take. The only entry point that opens the microphone: the
+   * shortcut, the window buttons and the tray all arrive here, so there is
+   * never a second owner of the device or a second transcription pipeline.
+   */
+  startDictation(source: DictationSource): void {
+    if (this.isBusy()) return
+
+    // `success`, `error` and `cancelled` linger on screen for a few seconds.
+    // Starting again during that window used to be ignored, forcing a wait of
+    // up to 4.5s between dictations.
+    this.statusResetTimer = clearTimer(this.statusResetTimer)
 
     const settings = this.deps.getSettings()
     if (!settings.apiKeyConfigured) {
-      this.fail('Add your own OpenAI API key in Settings before recording.', true)
+      this.fail('Add your own API key in Settings before recording.', true)
       return
     }
 
     // A new take replaces any retryable one; its audio is zeroed and released.
     this.setRetryTake(null)
-    this.deps.captureForeground()
+    // Started from this app's own window, there is no external target to
+    // paste into, so none is captured and delivery stays on the clipboard.
+    this.clipboardOnly = source === 'ui'
+    if (this.clipboardOnly) this.deps.clearForeground()
+    else this.deps.captureForeground()
+
     this.currentRequestId = randomUUID()
     this.releaseRequested = false
     this.stopRequested = false
@@ -155,7 +203,7 @@ export class DictationController {
     this.broadcast({
       phase: 'starting',
       message: 'Starting microphone…',
-      detail: 'Keep holding the shortcut'
+      detail: this.startingHint(settings, source)
     })
 
     this.startWatchdog = setTimeout(() => {
@@ -169,12 +217,63 @@ export class DictationController {
     })
   }
 
-  onShortcutReleased(): void {
+  /** Ends the recording and sends it for transcription. */
+  stopDictation(): void {
     if (this.currentStatus.phase === 'starting') {
+      // The microphone has not answered yet; stop as soon as it does.
       this.releaseRequested = true
       return
     }
     if (this.currentStatus.phase === 'recording') this.requestStop()
+  }
+
+  /**
+   * Abandons the take outright: no transcription, no history, no paste, and
+   * the audio zeroed. Deliberately not an error — the user asked for this, so
+   * it is acknowledged and cleared rather than reported as a failure.
+   */
+  cancelDictation(): void {
+    if (!this.isBusy()) return
+    this.cancelActiveAttempt()
+    this.abandonRecorder()
+    this.currentRequestId = ''
+    this.releaseRequested = false
+    this.stopRequested = false
+    this.clipboardOnly = false
+    this.clearDictationTimers()
+    // A cancelled take is not offered for retry: the user did not want it.
+    this.setRetryTake(null)
+    this.broadcast({ phase: 'cancelled', message: 'Dictation cancelled' }, CANCELLED_RESET_MS)
+  }
+
+  /** One shortcut press, used where the platform cannot report a key release. */
+  toggleDictation(source: DictationSource): void {
+    if (this.isRecording()) {
+      this.stopDictation()
+      return
+    }
+    this.startDictation(source)
+  }
+
+  onShortcutPressed(): void {
+    if (this.deps.getSettings().recordingMode === 'toggle') {
+      this.toggleDictation('shortcut')
+      return
+    }
+    this.startDictation('shortcut')
+  }
+
+  onShortcutReleased(): void {
+    // In toggle mode the release is meaningless: the next press stops it.
+    if (this.deps.getSettings().recordingMode === 'toggle') return
+    this.stopDictation()
+  }
+
+  private startingHint(settings: WorkflowSettings, source: DictationSource): string {
+    if (source === 'ui') return 'Press Stop when you have finished'
+    return settings.recordingMode === 'toggle'
+      ? `Press ${this.deps.shortcutLabel()} again to finish`
+      : 'Keep holding the shortcut'
   }
 
   onRecorderStarted(payload: RecorderStartedPayload): void {
@@ -207,7 +306,8 @@ export class DictationController {
     const take: RetryTake = {
       audio,
       mimeType: payload.mimeType,
-      durationMs: Math.max(0, payload.durationMs)
+      durationMs: Math.max(0, payload.durationMs),
+      clipboardOnly: this.clipboardOnly
     }
     const attempt = this.beginProcessingAttempt(take, true)
     await this.processTake(attempt, 'Your audio is being converted to text', false)
@@ -236,13 +336,14 @@ export class DictationController {
     const take = this.retryTake
     // Allowed while the error message still lingers: retrying is exactly what
     // a user wants to do the moment they see it.
-    if (!take || (this.currentStatus.phase !== 'idle' && this.currentStatus.phase !== 'error')) {
-      return
-    }
+    if (!take || this.isBusy()) return
 
     // A fresh id invalidates any stale recorder events still in flight.
     this.currentRequestId = randomUUID()
-    this.deps.captureForeground()
+    this.clipboardOnly = take.clipboardOnly
+    // A retry of a window-started take still has no target to capture.
+    if (take.clipboardOnly) this.deps.clearForeground()
+    else this.deps.captureForeground()
     const attempt = this.beginProcessingAttempt(take, false)
     await this.processTake(attempt, 'Retrying your last recording', true)
   }
@@ -276,7 +377,7 @@ export class DictationController {
   private manualPasteMessage(foreground: ForegroundState | null): string | null {
     if (!foreground) return 'Copied — paste manually (focus could not be verified)'
     if (foreground.elevated) {
-      return 'Copied — paste manually (focused app runs elevated)'
+      return `Copied — paste manually (${foreground.blockedReason ?? 'focused app runs elevated'})`
     }
     if (!foreground.sameWindow) return 'Copied — paste manually (focus moved)'
     return null
@@ -284,9 +385,15 @@ export class DictationController {
 
   private async pasteOrExplain(
     attempt: ProcessingAttempt,
-    autoPaste: boolean
+    settings: WorkflowSettings
   ): Promise<string | null> {
-    if (!autoPaste) return 'Copied to clipboard'
+    // Three separate reasons to deliver to the clipboard and stop there: the
+    // user turned automatic paste off, this platform cannot paste safely at
+    // all, or the take was started from this app's own window and so has no
+    // target. None of them is a failure.
+    if (!settings.autoPaste || !settings.pasteAvailable || attempt.take.clipboardOnly) {
+      return 'Copied to clipboard'
+    }
     if (!this.ownsAttempt(attempt)) return null
 
     let message = this.manualPasteMessage(this.deps.getForegroundState())
@@ -313,9 +420,13 @@ export class DictationController {
 
     try {
       const settings = this.deps.getSettings()
+      // Only the audio and its shape travel to the provider; how this take is
+      // to be delivered afterwards is nobody else's business.
       const rawText = await this.deps.transcribe(
         {
-          ...attempt.take,
+          audio: attempt.take.audio,
+          mimeType: attempt.take.mimeType,
+          durationMs: attempt.take.durationMs,
           model: settings.model,
           language: settings.language
         },
@@ -323,7 +434,13 @@ export class DictationController {
       )
       if (!this.ownsAttempt(attempt)) return
 
-      const text = settings.removeFillers ? lightCleanup(rawText) : rawText.trim()
+      // The filler dictionary and punctuation rules are English-specific.
+      // For auto or another explicit language, preserve the provider text
+      // except for harmless outer-whitespace trimming.
+      const text =
+        settings.removeFillers && settings.language === 'en'
+          ? lightCleanup(rawText)
+          : rawText.trim()
       if (!text) throw new Error('Only filler words or silence were detected.')
       if (!this.ownsAttempt(attempt)) return
 
@@ -333,7 +450,7 @@ export class DictationController {
       this.deps.writeClipboard(text)
       if (!this.ownsAttempt(attempt)) return
 
-      const message = await this.pasteOrExplain(attempt, settings.autoPaste)
+      const message = await this.pasteOrExplain(attempt, settings)
       if (!message || !this.ownsAttempt(attempt)) return
 
       this.broadcast(

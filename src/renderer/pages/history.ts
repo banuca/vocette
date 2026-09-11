@@ -1,5 +1,9 @@
 import type { AppContext } from '../app-context'
-import { formatDate, formatDuration, wordCount } from '../dom'
+import { icon } from '../icons'
+import { escapeHtml, formatDate, formatDuration, friendlyError, wordCount } from '../dom'
+import { setupSteps, type SetupStep } from '../setup-guide'
+import { effectiveRecordingMode, globalShortcutUsable } from '../../shared/capabilities'
+import { chordLabel } from '../../shared/keycodes'
 import type { HistoryEntry } from '../../shared/types'
 
 /** Initial render cap; "Show more" reveals the rest in steps. */
@@ -33,11 +37,11 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
   let visibleCount = PAGE_SIZE
 
   context.content.innerHTML = `
-    ${
-      context.settings.apiKeyConfigured
-        ? ''
-        : `<div class="setup-banner"><div><strong>Finish setting up Voice Hotkey</strong><p>Add your own API key before your first dictation.</p></div><button class="primary-button" id="open-setup">Open settings</button></div>`
-    }
+    <section class="hero" aria-label="Recording">
+      <div id="hero-record"></div>
+      <p class="hero-hint" id="hero-hint"></p>
+    </section>
+    <div id="setup-guide"></div>
     <section class="metrics" aria-label="Dictation totals">
       <div class="metric-card"><span>Dictations</span><strong id="metric-count">0</strong></div>
       <div class="metric-card"><span>Words captured</span><strong id="metric-words">0</strong></div>
@@ -46,7 +50,7 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
     </section>
     <section class="history-section">
       <div class="section-toolbar">
-        <div class="search-box"><span aria-hidden="true">⌕</span><input id="history-search" type="search" placeholder="Search your dictations" aria-label="Search your dictations" /></div>
+        <div class="search-box">${icon('search', 14)}<input id="history-search" type="search" placeholder="Search your dictations" aria-label="Search your dictations" /></div>
         <span class="result-count" id="history-result-count"></span>
         <span class="toolbar-spacer"></span>
         <button class="text-button" id="export-txt" type="button">Export .txt</button>
@@ -55,6 +59,76 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
       <div class="history-list" id="history-list"></div>
     </section>
   `
+
+  /**
+   * How to make a first recording *on this system*. Telling a Wayland user to
+   * hold a shortcut that cannot exist there is worse than saying nothing.
+   */
+  const firstDictationHint = (): string => {
+    const map = context.platform.capabilities
+    if (!globalShortcutUsable(map)) return 'Press Record above, speak, then press Stop.'
+    const chord = chordLabel(context.settings.shortcut.keys)
+    return effectiveRecordingMode(context.settings.recordingMode, map) === 'toggle'
+      ? `Press ${chord}, speak, then press it again.`
+      : `Hold ${chord}, speak, and release it.`
+  }
+
+  const heroHint = context.content.querySelector<HTMLElement>('#hero-hint')
+
+  /** The hero's one line of guidance, in the terms this desktop can honour. */
+  const updateHeroHint = (): void => {
+    if (heroHint) heroHint.textContent = firstDictationHint()
+  }
+
+  const setupHost = context.content.querySelector<HTMLDivElement>('#setup-guide')
+
+  /**
+   * First-run guidance, rendered from whatever is genuinely outstanding. Each
+   * item disappears as soon as it is satisfied, so there is nothing to dismiss
+   * and no chance of nagging about a permission already granted.
+   */
+  const renderSetup = (): void => {
+    if (!setupHost) return
+    const steps = setupSteps({
+      apiKeySource: context.settings.apiKeySource,
+      capabilities: context.platform.capabilities,
+      microphone: context.microphone
+    })
+    if (!steps.length) {
+      setupHost.replaceChildren()
+      return
+    }
+
+    const card = document.createElement('section')
+    card.className = 'setup-card'
+    card.innerHTML = `<h2>Finish setting up Murmur</h2>`
+
+    const stepButton = (step: SetupStep): HTMLButtonElement | null => {
+      if (!step.action) return null
+      const button = document.createElement('button')
+      button.className = 'secondary-button'
+      button.type = 'button'
+      button.textContent = step.action.label
+      const action = step.action
+      button.addEventListener('click', () => {
+        if (action.kind === 'navigate-settings') context.navigate('settings')
+        else if (action.pane) void window.murmur.openPlatformSettings(action.pane)
+      })
+      return button
+    }
+
+    for (const step of steps) {
+      const row = document.createElement('div')
+      row.className = `setup-step${step.blocking ? ' is-blocking' : ''}`
+      row.innerHTML =
+        `<div><strong>${escapeHtml(step.title)}</strong>` +
+        `<p>${escapeHtml(step.detail)}</p></div>`
+      const button = stepButton(step)
+      if (button) row.append(button)
+      card.append(row)
+    }
+    setupHost.replaceChildren(card)
+  }
 
   const list = context.content.querySelector<HTMLDivElement>('#history-list')
   const resultCount = context.content.querySelector<HTMLSpanElement>('#history-result-count')
@@ -126,8 +200,10 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
       const empty = document.createElement('div')
       empty.className = 'empty-state'
       empty.innerHTML = needle
-        ? '<div class="empty-icon">⌕</div><h3>No matching dictations</h3><p>Try a different word or phrase.</p>'
-        : '<div class="empty-icon">◌</div><h3>Your history is empty</h3><p>Hold your shortcut, speak, and release it. Your first transcript will appear here.</p>'
+        ? `<div class="empty-icon">${icon('search', 22)}</div><h3>No matching dictations</h3><p>Try a different word or phrase.</p>`
+        : // The hero above already says how to make a first recording; saying
+          // it again here is noise, not reassurance.
+          `<div class="empty-icon">${icon('empty', 22)}</div><h3>Your history is empty</h3><p>Your first transcript will appear here.</p>`
       list.append(empty)
       return
     }
@@ -147,7 +223,7 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
       copy.className = 'text-button copy-button'
       copy.textContent = 'Copy'
       copy.addEventListener('click', async () => {
-        await window.voiceHotkey.copyText(entry.text)
+        await window.murmur.copyText(entry.text)
         copy.textContent = 'Copied'
         window.setTimeout(() => {
           copy.textContent = 'Copy'
@@ -157,14 +233,18 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
       const remove = document.createElement('button')
       remove.className = 'icon-button delete-button'
       remove.setAttribute('aria-label', 'Delete dictation')
-      remove.textContent = '×'
+      remove.innerHTML = icon('trash', 14)
       remove.addEventListener('click', async () => {
         if (!window.confirm('Delete this dictation? It is still in your clipboard if you copied it.')) {
           return
         }
-        context.history = await window.voiceHotkey.deleteHistoryEntry(entry.id)
-        renderMetrics()
-        renderList()
+        try {
+          context.history = await window.murmur.deleteHistoryEntry(entry.id)
+          renderMetrics()
+          renderList()
+        } catch (error) {
+          if (resultCount) resultCount.textContent = friendlyError(error)
+        }
       })
 
       actions.append(copy, remove)
@@ -203,10 +283,6 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
     }
   }
 
-  context.content.querySelector('#open-setup')?.addEventListener('click', () => {
-    context.navigate('settings')
-  })
-
   context.content
     .querySelector<HTMLInputElement>('#history-search')
     ?.addEventListener('input', (event) => {
@@ -225,19 +301,23 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
   }
 
   context.content.querySelector('#export-txt')?.addEventListener('click', async () => {
-    const result = await window.voiceHotkey.exportHistory('txt')
+    const result = await window.murmur.exportHistory('txt')
     exportFeedback(result.saved, result.path)
   })
   context.content.querySelector('#export-json')?.addEventListener('click', async () => {
-    const result = await window.voiceHotkey.exportHistory('json')
+    const result = await window.murmur.exportHistory('json')
     exportFeedback(result.saved, result.path)
   })
 
+  updateHeroHint()
+  renderSetup()
   renderMetrics()
   renderList()
 
   return {
     refresh: () => {
+      updateHeroHint()
+      renderSetup()
       renderMetrics()
       renderList()
     }

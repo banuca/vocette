@@ -1,9 +1,15 @@
 import './styles.css'
 import type { AppContext } from './app-context'
 import { escapeHtml, friendlyError } from './dom'
+import { createHistorySaveWarning, trackHistorySaveStatus } from './history-save-warning'
+import { createRecordingControl } from './recording-control'
+import { icon } from './icons'
+import { applyTheme, createThemeToggle, type ThemeToggle } from './theme'
+import type { MicrophoneAccess } from './setup-guide'
 import { renderAbout } from './pages/about'
 import { renderHistory } from './pages/history'
 import { renderSettings } from './pages/settings'
+import { effectiveRecordingMode, globalShortcutUsable } from '../shared/capabilities'
 import { chordLabel } from '../shared/keycodes'
 import type { AppInfo, HistoryEntry, Page, PublicSettings, WorkflowStatus } from '../shared/types'
 
@@ -12,27 +18,55 @@ if (!root) throw new Error('Application root was not found.')
 /** Non-null alias so closures inside `mount` keep the narrowed type. */
 const appRoot: HTMLDivElement = root
 
+/**
+ * Reads microphone permission without asking for it.
+ *
+ * Asking here would pop a prompt on every launch. The Permissions API answers
+ * silently where it is supported, and where it is not the answer is honestly
+ * "unknown" rather than an assumption in either direction.
+ */
+async function microphoneAccess(): Promise<MicrophoneAccess> {
+  try {
+    const status = await navigator.permissions.query({
+      name: 'microphone' as PermissionName
+    })
+    if (status.state === 'granted') return 'granted'
+    if (status.state === 'denied') return 'denied'
+    return 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
 async function mount(): Promise<void> {
   appRoot.innerHTML = `
     <div class="loading-screen">
       <div class="brand-mark" aria-hidden="true"><span></span></div>
-      <p>Opening Voice Hotkey…</p>
+      <p>Opening Murmur…</p>
     </div>
   `
+
+  // Started before anything is awaited, so a save that fails while this window
+  // is loading is already known by the time the shell can show it.
+  const saveStatus = trackHistorySaveStatus(window.murmur)
 
   let settings: PublicSettings
   let history: HistoryEntry[]
   let appInfo: AppInfo
   try {
     ;[settings, history, appInfo] = await Promise.all([
-      window.voiceHotkey.getSettings(),
-      window.voiceHotkey.getHistory(),
-      window.voiceHotkey.getAppInfo()
+      window.murmur.getSettings(),
+      window.murmur.getHistory(),
+      window.murmur.getAppInfo()
     ])
   } catch (error) {
-    appRoot.innerHTML = `<div class="fatal-error"><h1>Voice Hotkey could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
+    appRoot.innerHTML = `<div class="fatal-error"><h1>Murmur could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
     return
   }
+
+  // Applied before the shell is drawn, so a light user never sees the window
+  // paint dark first.
+  applyTheme(document.documentElement, settings.theme)
 
   let activePage: Page = 'history'
   let workflowStatus: WorkflowStatus = { phase: 'idle', message: 'Ready' }
@@ -44,23 +78,26 @@ async function mount(): Promise<void> {
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true"><span></span></div>
-          <div><strong>Voice Hotkey</strong><small>Open dictation</small></div>
+          <div><strong>Murmur</strong><small>Open dictation</small></div>
         </div>
         <nav class="navigation" aria-label="Primary navigation">
-          <button class="nav-item active" data-page="history"><span class="nav-icon" aria-hidden="true">⌁</span><span>History</span></button>
-          <button class="nav-item" data-page="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></button>
-          <button class="nav-item" data-page="about"><span class="nav-icon" aria-hidden="true">i</span><span>About</span></button>
+          <button class="nav-item active" data-page="history" title="History"><span class="nav-icon">${icon('history')}</span><span>History</span></button>
+          <button class="nav-item" data-page="settings" title="Settings"><span class="nav-icon">${icon('settings')}</span><span>Settings</span></button>
+          <button class="nav-item" data-page="about" title="About"><span class="nav-icon">${icon('info')}</span><span>About</span></button>
         </nav>
         <div class="sidebar-footer">
           <div class="live-status"><span class="status-dot" id="status-dot"></span><span id="sidebar-status">Ready</span></div>
-          <div class="shortcut-hint"><kbd id="sidebar-shortcut"></kbd><small>Hold to talk</small></div>
+          <div class="shortcut-hint"><kbd id="sidebar-shortcut"></kbd><small id="sidebar-shortcut-mode">Hold to talk</small></div>
         </div>
+        <div class="sidebar-theme" id="theme-host"></div>
       </aside>
       <main class="main-panel">
         <header class="topbar">
-          <div><h1 id="page-title">History</h1><p id="page-subtitle"></p></div>
-          <button class="window-close" id="hide-window" aria-label="Hide to system tray">×</button>
+          <div class="topbar-heading"><h1 id="page-title">History</h1><p id="page-subtitle"></p></div>
+          <div class="topbar-actions" id="record-slot"></div>
+          <button class="window-close" id="hide-window" aria-label="Hide to system tray" title="Hide to system tray">${icon('close', 15)}</button>
         </header>
+        <div id="history-save-warning"></div>
         <div class="page-content" id="page-content"></div>
       </main>
     </div>
@@ -69,17 +106,53 @@ async function mount(): Promise<void> {
   const title = appRoot.querySelector<HTMLHeadingElement>('#page-title')
   const subtitle = appRoot.querySelector<HTMLParagraphElement>('#page-subtitle')
   const content = appRoot.querySelector<HTMLDivElement>('#page-content')
-  if (!title || !subtitle || !content) throw new Error('Application layout failed to initialise.')
+  const warningHost = appRoot.querySelector<HTMLDivElement>('#history-save-warning')
+  const recordSlot = appRoot.querySelector<HTMLDivElement>('#record-slot')
+  const themeHost = appRoot.querySelector<HTMLDivElement>('#theme-host')
+  if (!title || !subtitle || !content || !warningHost || !recordSlot || !themeHost) {
+    throw new Error('Application layout failed to initialise.')
+  }
+
+  saveStatus.attach(createHistorySaveWarning(warningHost))
+  // Built once and moved, never rebuilt: History shows it large at the head of
+  // the page, every other page keeps the compact pill in the top bar.
+  const recordHost = document.createElement('div')
+  recordHost.id = 'record-host'
+  recordSlot.appendChild(recordHost)
+  const recordControl = createRecordingControl(recordHost, window.murmur)
+  let themeToggle: ThemeToggle | null = null
+
+  const updateRecordControl = (): void => {
+    recordControl.apply({
+      status: workflowStatus,
+      platform: context.platform,
+      apiKeySource: context.settings.apiKeySource
+    })
+  }
 
   const updateSidebar = (): void => {
     const status = appRoot.querySelector<HTMLElement>('#sidebar-status')
     const dot = appRoot.querySelector<HTMLElement>('#status-dot')
     const shortcut = appRoot.querySelector<HTMLElement>('#sidebar-shortcut')
+    const mode = appRoot.querySelector<HTMLElement>('#sidebar-shortcut-mode')
+    const usable = globalShortcutUsable(context.platform.capabilities)
     if (status) status.textContent = workflowStatus.message
     if (dot) {
-      dot.className = `status-dot ${workflowStatus.phase}${context.settings.hotkeyEnabled ? '' : ' off'}`
+      const off = context.settings.hotkeyEnabled && usable ? '' : ' off'
+      dot.className = `status-dot ${workflowStatus.phase}${off}`
     }
-    if (shortcut) shortcut.textContent = chordLabel(context.settings.shortcut.keys)
+    if (shortcut) {
+      shortcut.textContent = usable ? chordLabel(context.settings.shortcut.keys) : 'Not available'
+    }
+    if (mode) {
+      mode.textContent = !usable
+        ? 'Use the Record button'
+        : effectiveRecordingMode(context.settings.recordingMode, context.platform.capabilities) ===
+            'toggle'
+          ? 'Press to start and stop'
+          : 'Hold to talk'
+    }
+    updateRecordControl()
   }
 
   const context: AppContext = {
@@ -87,23 +160,47 @@ async function mount(): Promise<void> {
     settings,
     history,
     appInfo,
+    platform: appInfo.platformStatus,
+    microphone: 'unknown',
     setHeading: (nextTitle, nextSubtitle) => {
       title.textContent = nextTitle
       subtitle.textContent = nextSubtitle
     },
     applySettings: (next) => {
       context.settings = next
+      // Settings saved on the Settings page can carry a theme too.
+      themeToggle?.apply(next.theme)
       updateSidebar()
+    },
+    applyPlatform: (next) => {
+      context.platform = next
+      updateSidebar()
+      // Capability changes alter what History and Settings are allowed to
+      // promise, so both are refreshed rather than left showing stale claims.
+      historyView?.refresh()
+      settingsView?.apply(context.settings)
     },
     navigate: (page) => {
       activePage = page
       renderPage()
     },
     reloadHistory: async () => {
-      context.history = await window.voiceHotkey.getHistory()
+      context.history = await window.murmur.getHistory()
       historyView?.refresh()
     }
   }
+
+  themeToggle = createThemeToggle(
+    themeHost,
+    document.documentElement,
+    window.murmur,
+    context.settings.theme,
+    (saved) => {
+      // Keep the cached settings honest: the store is what decides.
+      context.settings = saved
+      settingsView?.apply(saved)
+    }
+  )
 
   const renderPage = (): void => {
     appRoot.querySelectorAll<HTMLButtonElement>('.nav-item').forEach((button) => {
@@ -124,6 +221,11 @@ async function mount(): Promise<void> {
       // the Save button silently did nothing.
       content.innerHTML = `<div class="fatal-error"><h1>This page could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
     }
+    // Moving the element keeps its listeners and its current state; building a
+    // second control per page would let two of them disagree.
+    const hero = content.querySelector<HTMLElement>('#hero-record')
+    ;(hero ?? recordSlot).appendChild(recordHost)
+    recordHost.classList.toggle('is-hero', hero !== null)
     updateSidebar()
   }
 
@@ -135,34 +237,48 @@ async function mount(): Promise<void> {
   })
 
   appRoot.querySelector('#hide-window')?.addEventListener('click', () => {
-    void window.voiceHotkey.hideWindow()
+    void window.murmur.hideWindow()
   })
 
-  window.voiceHotkey.onWorkflowStatus((status) => {
+  window.murmur.onWorkflowStatus((status) => {
     workflowStatus = status
     updateSidebar()
   })
 
-  window.voiceHotkey.onSettingsChanged((next) => {
+  window.murmur.onSettingsChanged((next) => {
     context.applySettings(next)
-    // The tray can toggle hold-to-talk / launch-at-login while Settings is
+    // The tray can toggle the shortcut or launch-at-login while Settings is
     // open. Patch the controls in place — a full re-render here used to wipe
     // whatever the user had typed into the API-key field.
     if (activePage === 'settings') settingsView?.apply(next)
   })
 
-  window.voiceHotkey.onHistoryChanged(() => {
+  window.murmur.onPlatformStatus((next) => {
+    context.applyPlatform(next)
+  })
+
+  window.murmur.onHistoryChanged(() => {
     void context.reloadHistory()
   })
 
-  window.voiceHotkey.onNavigate((page) => {
+  window.murmur.onNavigate((page) => {
     context.navigate(page)
   })
 
   renderPage()
   // Tells the main process the renderer can receive navigation now, instead of
   // guessing with a timeout.
-  void window.voiceHotkey.announceReady()
+  void window.murmur.announceReady()
+
+  // Neither of these may hold up the window: both only refine what is shown.
+  void microphoneAccess().then((access) => {
+    context.microphone = access
+    historyView?.refresh()
+  })
+  void window.murmur
+    .getPlatformStatus()
+    .then((next) => context.applyPlatform(next))
+    .catch(() => undefined)
 }
 
 void mount()

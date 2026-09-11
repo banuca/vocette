@@ -43,4 +43,13 @@ function render(status: WorkflowStatus): void {
   }
 }
 
-window.voiceHotkey.onWorkflowStatus(render)
+window.murmur.onWorkflowStatus(render)
+
+/*
+ * Only the attribute is set here, deliberately — not `color-scheme` as the
+ * window does. This window is transparent, and a colour scheme would have the
+ * browser paint its own opaque canvas behind the card.
+ */
+window.murmur.onTheme((theme) => {
+  document.documentElement.dataset.theme = theme
+})

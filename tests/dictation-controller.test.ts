@@ -10,7 +10,9 @@ import type { Page, WorkflowStatus } from '../src/shared/types'
 
 function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
   const settings: WorkflowSettings = {
+    recordingMode: 'hold',
     autoPaste: true,
+    pasteAvailable: true,
     removeFillers: true,
     playSounds: false,
     model: 'gpt-transcribe',
@@ -29,6 +31,7 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
   const showMain = vi.fn<(page: Page) => void>()
   const recordHistory = vi.fn<(text: string, durationMs: number, model: string) => void>()
   const captureForeground = vi.fn<() => void>()
+  const clearForeground = vi.fn<() => void>()
   const getForegroundState = vi.fn<() => ForegroundState | null>(() => null)
   const onRetryChanged = vi.fn<(available: boolean) => void>()
 
@@ -45,6 +48,7 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
     showMain,
     recordHistory,
     captureForeground,
+    clearForeground,
     getForegroundState,
     shortcutLabel: () => 'Left Ctrl + Left Shift',
     onRetryChanged
@@ -254,6 +258,77 @@ describe('paste honesty', () => {
 
     expect(deps.getForegroundState).toHaveBeenCalledTimes(2)
     expect(deps.paste).not.toHaveBeenCalled()
+  })
+})
+
+describe('language-aware cleanup', () => {
+  it('applies light cleanup to explicitly English dictation', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.transcribe.mockResolvedValue('  um hello,world!  ')
+    const requestId = beginRecording()
+
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+
+    expect(deps.recordHistory).toHaveBeenCalledWith('Hello, world!', 100, 'gpt-transcribe')
+  })
+
+  it('preserves non-English text that contains a legitimate um apart from outer whitespace', async () => {
+    const { controller, deps, beginRecording } = makeHarness({ settings: { language: 'de' } })
+    deps.transcribe.mockResolvedValue('  um ist ein Wort  ')
+    const requestId = beginRecording()
+
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+
+    expect(deps.recordHistory).toHaveBeenCalledWith('um ist ein Wort', 100, 'gpt-transcribe')
+  })
+
+  it('preserves automatic-language Retry text apart from outer whitespace', async () => {
+    const { controller, deps, beginRecording } = makeHarness({ settings: { language: 'auto' } })
+    deps.transcribe
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce('  um automatic transcript  ')
+    const requestId = beginRecording()
+
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+    await controller.retryLast()
+
+    expect(deps.recordHistory).toHaveBeenLastCalledWith(
+      'um automatic transcript',
+      100,
+      'gpt-transcribe'
+    )
+  })
+
+  it('preserves English text apart from outer whitespace when cleanup is disabled', async () => {
+    const { controller, deps, beginRecording } = makeHarness({
+      settings: { removeFillers: false }
+    })
+    deps.transcribe.mockResolvedValue('  um hello,world!  ')
+    const requestId = beginRecording()
+
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+
+    expect(deps.recordHistory).toHaveBeenCalledWith('um hello,world!', 100, 'gpt-transcribe')
   })
 })
 
@@ -673,5 +748,220 @@ describe('status lifecycle', () => {
     const { deps, beginRecording } = makeHarness({ settings: { playSounds: true } })
     beginRecording()
     expect(deps.playSound).toHaveBeenCalledWith('start')
+  })
+})
+
+describe('recording modes and window controls', () => {
+  /** Runs a take to completion from whichever entry point started it. */
+  const finish = async (
+    harness: ReturnType<typeof makeHarness>,
+    requestId: string
+  ): Promise<void> => {
+    const promise = harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3, 4]),
+      mimeType: 'audio/wav',
+      durationMs: 1200
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+  }
+
+  it('toggles with one press each way when the platform cannot report a release', () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' } })
+    const { controller, deps } = harness
+    controller.onShortcutPressed()
+    controller.onRecorderStarted({ requestId: harness.lastRequestId() })
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'recording' })
+    )
+
+    // A release means nothing in toggle mode and must not end the take.
+    controller.onShortcutReleased()
+    expect(deps.sendToRecorder).not.toHaveBeenCalledWith('recorder:stop', expect.anything())
+
+    controller.onShortcutPressed()
+    expect(deps.sendToRecorder).toHaveBeenCalledWith('recorder:stop', {
+      requestId: harness.lastRequestId()
+    })
+  })
+
+  it('tells the user how to finish, in the words that match the mode', () => {
+    const hold = makeHarness()
+    hold.controller.startDictation('shortcut')
+    expect(hold.deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ detail: 'Keep holding the shortcut' })
+    )
+
+    const toggle = makeHarness({ settings: { recordingMode: 'toggle' } })
+    toggle.controller.startDictation('shortcut')
+    expect(toggle.deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ detail: 'Press Left Ctrl + Left Shift again to finish' })
+    )
+
+    const fromWindow = makeHarness()
+    fromWindow.controller.startDictation('ui')
+    expect(fromWindow.deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ detail: 'Press Stop when you have finished' })
+    )
+  })
+
+  it('captures no target for a take started from the app window', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+
+    controller.startDictation('ui')
+    expect(deps.captureForeground).not.toHaveBeenCalled()
+    expect(deps.clearForeground).toHaveBeenCalledTimes(1)
+
+    const requestId = harness.lastRequestId()
+    controller.onRecorderStarted({ requestId })
+    controller.stopDictation()
+    await finish(harness, requestId)
+
+    // Delivered, but never typed into whatever happened to be behind us.
+    expect(deps.writeClipboard).toHaveBeenCalledWith('Hello world.')
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Copied to clipboard' })
+    )
+  })
+
+  it('still captures the target for a take started by the shortcut', () => {
+    const { controller, deps } = makeHarness()
+    controller.startDictation('shortcut')
+    expect(deps.captureForeground).toHaveBeenCalledTimes(1)
+    expect(deps.clearForeground).not.toHaveBeenCalled()
+  })
+
+  it('keeps a retried window take on the clipboard', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    deps.transcribe.mockRejectedValueOnce(new Error('Provider unavailable.'))
+
+    controller.startDictation('ui')
+    const requestId = harness.lastRequestId()
+    controller.onRecorderStarted({ requestId })
+    controller.stopDictation()
+    await finish(harness, requestId)
+    expect(controller.canRetry()).toBe(true)
+
+    deps.clearForeground.mockClear()
+    await controller.retryLast()
+    await vi.advanceTimersByTimeAsync(80)
+    expect(deps.clearForeground).toHaveBeenCalledTimes(1)
+    expect(deps.paste).not.toHaveBeenCalled()
+  })
+
+  it('copies without pasting where the platform cannot paste safely', async () => {
+    const harness = makeHarness({ settings: { pasteAvailable: false } })
+    const { controller, deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const requestId = harness.beginRecording()
+    controller.onShortcutReleased()
+    await finish(harness, requestId)
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).toHaveBeenCalledWith('Hello world.')
+  })
+
+  it('cancels a take outright: no transcription, no history, no retry', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    const requestId = harness.beginRecording()
+
+    controller.cancelDictation()
+    expect(deps.sendToRecorder).toHaveBeenCalledWith('recorder:cancel', { requestId })
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'cancelled', message: 'Dictation cancelled' })
+    )
+    expect(controller.canRetry()).toBe(false)
+
+    // Audio arriving after the cancellation belongs to a take nobody wants.
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2]),
+      mimeType: 'audio/wav',
+      durationMs: 900
+    })
+    expect(deps.transcribe).not.toHaveBeenCalled()
+    expect(deps.recordHistory).not.toHaveBeenCalled()
+  })
+
+  it('cancels during transcription and zeroes the audio', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    let settle!: (text: string) => void
+    deps.transcribe.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          settle = resolve
+        })
+    )
+    const requestId = harness.beginRecording()
+    controller.onShortcutReleased()
+    const audio = new Uint8Array([9, 9, 9, 9])
+    const promise = controller.onRecorderAudio({
+      requestId,
+      audio,
+      mimeType: 'audio/wav',
+      durationMs: 1000
+    })
+
+    controller.cancelDictation()
+    settle('Too late.')
+    await promise
+
+    expect([...audio]).toEqual([0, 0, 0, 0])
+    expect(deps.writeClipboard).not.toHaveBeenCalled()
+    expect(deps.recordHistory).not.toHaveBeenCalled()
+  })
+
+  it('does nothing when there is nothing to cancel or stop', () => {
+    const { controller, deps } = makeHarness()
+    controller.cancelDictation()
+    controller.stopDictation()
+    expect(deps.broadcastStatus).not.toHaveBeenCalled()
+  })
+
+  it('refuses to start a second take while one is running', () => {
+    const harness = makeHarness()
+    harness.beginRecording()
+    const starts = (): number =>
+      harness.deps.sendToRecorder.mock.calls.filter(([channel]) => channel === 'recorder:start')
+        .length
+    const before = starts()
+    harness.controller.startDictation('ui')
+    expect(starts()).toBe(before)
+  })
+
+  it('reports what is busy and what is recording, for the buttons', async () => {
+    const harness = makeHarness()
+    const { controller } = harness
+    expect(controller.isBusy()).toBe(false)
+    const requestId = harness.beginRecording()
+    expect(controller.isRecording()).toBe(true)
+    expect(controller.isBusy()).toBe(true)
+    controller.stopDictation()
+    const promise = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    expect(controller.isRecording()).toBe(false)
+    expect(controller.isBusy()).toBe(true)
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+  })
+
+  it('asks for a key without naming a provider it may not be using', () => {
+    const { controller, deps } = makeHarness({ settings: { apiKeyConfigured: false } })
+    controller.startDictation('ui')
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ detail: 'Add your own API key in Settings before recording.' })
+    )
+    expect(deps.showMain).toHaveBeenCalledWith('settings')
   })
 })

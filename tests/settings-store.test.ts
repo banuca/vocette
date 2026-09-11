@@ -1,7 +1,12 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  refreshJsonRecoveryBackup,
+  removeJsonRecoveryCopies,
+  writeJsonAtomic
+} from '../src/main/atomic-json'
 
 /** safeStorage only exists inside Electron; a reversible stand-in is enough. */
 vi.mock('electron', () => ({
@@ -13,7 +18,7 @@ vi.mock('electron', () => ({
 }))
 
 const { KEY } = await import('../src/shared/keycodes')
-const { DEFAULT_SETTINGS, SettingsStore, normaliseSettings } = await import(
+const { DEFAULT_SETTINGS, SETTINGS_VERSION, SettingsStore, normaliseSettings } = await import(
   '../src/main/settings-store'
 )
 
@@ -42,7 +47,7 @@ describe('v1 → v2 migration', () => {
 
   it('turns the preset id into keycodes', () => {
     const result = normaliseSettings(v1)
-    expect(result.version).toBe(3)
+    expect(result.version).toBe(SETTINGS_VERSION)
     expect(result.shortcut).toEqual({ keys: [KEY.Ctrl, KEY.Alt] })
   })
 
@@ -71,13 +76,13 @@ describe('v1 → v2 migration', () => {
     writeFileSync(file, JSON.stringify(v1, null, 2))
     const store = new SettingsStore(file)
     expect(store.getApiKey()).toBe('sk-test')
-    expect(store.getPublic().apiKeyConfigured).toBe(true)
+    expect(store.getPublic().apiKeySource).toBe('stored')
     expect(store.getPublic().shortcut).toEqual({ keys: [KEY.Ctrl, KEY.Alt] })
 
-    // Saving rewrites the file in the v2 shape without touching the key.
+    // Saving rewrites the file in the current shape without touching the key.
     store.update({ autoPaste: false })
     const written = JSON.parse(readFileSync(file, 'utf8'))
-    expect(written.version).toBe(3)
+    expect(written.version).toBe(SETTINGS_VERSION)
     expect(written.encryptedApiKey).toBe('ZW5jOnNrLXRlc3Q=')
     expect(new SettingsStore(file).getApiKey()).toBe('sk-test')
   })
@@ -188,9 +193,69 @@ describe('validation', () => {
     const store = new SettingsStore(file)
     store.update({ apiKey: 'sk-secret' })
     expect(JSON.stringify(store.getPublic())).not.toContain('sk-secret')
-    expect(store.getPublic().apiKeyConfigured).toBe(true)
+    expect(store.getPublic().apiKeySource).toBe('stored')
     store.clearApiKey()
-    expect(store.getPublic().apiKeyConfigured).toBe(false)
+    expect(store.getPublic().apiKeySource).toBe('none')
+  })
+
+  it('does not recover a cleared API key from a backup when the primary becomes unreadable', () => {
+    const store = new SettingsStore(file)
+    store.update({ apiKey: 'sk-delete-me' })
+    store.update({ autoPaste: false })
+    expect(existsSync(`${file}.bak`)).toBe(true)
+    writeFileSync(`${file}.tmp`, 'stale temporary copy')
+    writeFileSync(`${file}.corrupt`, 'stale corrupt copy')
+
+    store.clearApiKey()
+    expect(JSON.parse(readFileSync(`${file}.bak`, 'utf8')).encryptedApiKey).toBe('')
+    expect(existsSync(`${file}.tmp`)).toBe(false)
+    expect(existsSync(`${file}.corrupt`)).toBe(false)
+
+    writeFileSync(file, 'not valid json')
+    expect(new SettingsStore(file).getPublic().apiKeySource).toBe('none')
+  })
+
+  it('does not report an API-key deletion when persistence cleanup fails, and permits retry', () => {
+    const seed = new SettingsStore(file)
+    seed.update({ apiKey: 'sk-retryable-delete' })
+    seed.update({ autoPaste: false })
+
+    let cleanupFails = true
+    const store = new SettingsStore(file, {
+      writeJsonAtomic,
+      removeJsonRecoveryCopies: (path) => {
+        if (cleanupFails) throw new Error('injected cleanup failure')
+        removeJsonRecoveryCopies(path)
+      },
+      refreshJsonRecoveryBackup
+    })
+
+    expect(() => store.clearApiKey()).toThrow('injected cleanup failure')
+    expect(store.getPublic().apiKeySource).toBe('stored')
+
+    cleanupFails = false
+    expect(store.clearApiKey().apiKeySource).toBe('none')
+  })
+
+  it('does not report an API-key deletion when the write fails, and permits retry', () => {
+    const seed = new SettingsStore(file)
+    seed.update({ apiKey: 'sk-write-failure' })
+
+    let writeFails = true
+    const store = new SettingsStore(file, {
+      writeJsonAtomic: (path, value) => {
+        if (writeFails) throw new Error('injected write failure')
+        writeJsonAtomic(path, value)
+      },
+      removeJsonRecoveryCopies,
+      refreshJsonRecoveryBackup
+    })
+
+    expect(() => store.clearApiKey()).toThrow('injected write failure')
+    expect(store.getPublic().apiKeySource).toBe('stored')
+
+    writeFails = false
+    expect(store.clearApiKey().apiKeySource).toBe('none')
   })
 })
 
@@ -212,5 +277,102 @@ describe('damaged files', () => {
     const recovered = new SettingsStore(file)
     expect(recovered.takeWarning()).toContain('recovered')
     expect(recovered.getApiKey()).toBe('sk-live')
+  })
+})
+
+describe('v3 → v4 migration', () => {
+  it('gives a settings file with no recording mode the hold default', () => {
+    const v3 = { ...DEFAULT_SETTINGS, version: 3 } as Record<string, unknown>
+    delete v3.recordingMode
+    expect(normaliseSettings(v3).recordingMode).toBe('hold')
+  })
+
+  it('keeps a recording mode it recognises and rejects one it does not', () => {
+    expect(normaliseSettings({ recordingMode: 'toggle' }).recordingMode).toBe('toggle')
+    expect(normaliseSettings({ recordingMode: 'voice-activated' }).recordingMode).toBe('hold')
+  })
+
+  it('stores the preference exactly as chosen, whatever the platform can do', () => {
+    const store = new SettingsStore(file)
+    expect(store.update({ recordingMode: 'toggle' }).recordingMode).toBe('toggle')
+    expect(new SettingsStore(file).getPublic().recordingMode).toBe('toggle')
+  })
+})
+
+describe('v4 → v5 migration', () => {
+  it('gives a settings file with no theme the dark default', () => {
+    const v4 = { ...DEFAULT_SETTINGS, version: 4 } as Record<string, unknown>
+    delete v4.theme
+    expect(normaliseSettings(v4).theme).toBe('dark')
+  })
+
+  it('keeps a theme it recognises and rejects one it does not', () => {
+    expect(normaliseSettings({ theme: 'light' }).theme).toBe('light')
+    expect(normaliseSettings({ theme: 'solarized' }).theme).toBe('dark')
+  })
+
+  it('survives a restart, because a theme is a setting and not a browser cache', () => {
+    const store = new SettingsStore(file)
+    expect(store.update({ theme: 'light' }).theme).toBe('light')
+    expect(new SettingsStore(file).getPublic().theme).toBe('light')
+  })
+})
+
+describe('API keys where secure storage is unfit', () => {
+  const unusable = { usable: false, reason: 'No keyring here.', backend: 'basic_text' }
+
+  it('refuses to write a key to disk, and says why', () => {
+    const store = new SettingsStore(file, {}, unusable)
+    expect(() => store.update({ apiKey: 'sk-plain' })).toThrow('No keyring here.')
+    expect(store.getPublic().apiKeySource).toBe('none')
+    expect(existsSync(file) ? readFileSync(file, 'utf8') : '').not.toContain('sk-plain')
+  })
+
+  it('accepts a session key, uses it, and never writes it anywhere', () => {
+    const store = new SettingsStore(file, {}, unusable)
+    expect(store.update({ apiKey: 'sk-session', apiKeyScope: 'session' }).apiKeySource).toBe(
+      'session'
+    )
+    expect(store.getApiKey()).toBe('sk-session')
+    expect(readFileSync(file, 'utf8')).not.toContain('sk-session')
+    // Gone with the process: a new store sees no key at all.
+    expect(new SettingsStore(file, {}, unusable).getPublic().apiKeySource).toBe('none')
+  })
+
+  it('reports the storage problem without leaking anything about the key', () => {
+    const store = new SettingsStore(file, {}, unusable)
+    store.update({ apiKey: 'sk-session', apiKeyScope: 'session' })
+    expect(JSON.stringify(store.keyStorage())).not.toContain('sk-session')
+  })
+})
+
+describe('session keys alongside a stored key', () => {
+  it('prefers the session key and falls back when it is forgotten', () => {
+    const store = new SettingsStore(file)
+    store.update({ apiKey: 'sk-stored' })
+    expect(store.getApiKey()).toBe('sk-stored')
+
+    store.update({ apiKey: 'sk-temporary', apiKeyScope: 'session' })
+    expect(store.getPublic().apiKeySource).toBe('session')
+    expect(store.getApiKey()).toBe('sk-temporary')
+
+    expect(store.clearSessionApiKey().apiKeySource).toBe('stored')
+    expect(store.getApiKey()).toBe('sk-stored')
+  })
+
+  it('a stored key replaces the session key rather than hiding behind it', () => {
+    const store = new SettingsStore(file)
+    store.update({ apiKey: 'sk-temporary', apiKeyScope: 'session' })
+    store.update({ apiKey: 'sk-stored' })
+    expect(store.getPublic().apiKeySource).toBe('stored')
+    expect(store.getApiKey()).toBe('sk-stored')
+  })
+
+  it('clearing everything removes both', () => {
+    const store = new SettingsStore(file)
+    store.update({ apiKey: 'sk-stored' })
+    store.update({ apiKey: 'sk-temporary', apiKeyScope: 'session' })
+    expect(store.clearApiKey().apiKeySource).toBe('none')
+    expect(store.getApiKey()).toBe('')
   })
 })

@@ -1,5 +1,10 @@
 import { safeStorage } from 'electron'
-import { readJsonWithBackup, writeJsonAtomic } from './atomic-json'
+import {
+  readJsonWithBackup,
+  refreshJsonRecoveryBackup,
+  removeJsonRecoveryCopies,
+  writeJsonAtomic
+} from './atomic-json'
 import {
   DEFAULT_CHORD,
   DEFAULT_HOLD_DELAY_MS,
@@ -12,21 +17,29 @@ import {
 import {
   RETENTION_OPTIONS,
   TRANSCRIPTION_MODELS,
+  THEMES,
+  type ApiKeySource,
   type PublicSettings,
-  type SettingsUpdate
+  type SettingsUpdate,
+  type Theme
 } from '../shared/types'
+import { RECORDING_MODES, type RecordingMode } from '../shared/capabilities'
+import { assessSecureStorage, type SecureStorageAssessment } from './secure-storage'
 
-export const SETTINGS_VERSION = 3
+/** v5 added `theme`; earlier files load with the default. */
+export const SETTINGS_VERSION = 5
 
 export interface StoredSettings {
   version: number
   shortcut: ShortcutChord
   holdDelayMs: number
+  recordingMode: RecordingMode
   hotkeyEnabled: boolean
   autoPaste: boolean
   removeFillers: boolean
   playSounds: boolean
   launchAtLogin: boolean
+  theme: Theme
   microphoneId: string
   historyRetentionDays: number
   model: string
@@ -39,11 +52,13 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   version: SETTINGS_VERSION,
   shortcut: DEFAULT_CHORD,
   holdDelayMs: DEFAULT_HOLD_DELAY_MS,
+  recordingMode: 'hold',
   hotkeyEnabled: true,
   autoPaste: true,
   removeFillers: true,
   playSounds: true,
   launchAtLogin: false,
+  theme: 'dark',
   microphoneId: '',
   historyRetentionDays: 0,
   model: 'gpt-transcribe',
@@ -57,8 +72,16 @@ const MAX_ENDPOINT_LENGTH = 300
 const retentionSet = new Set<number>(RETENTION_OPTIONS)
 const holdDelaySet = new Set<number>(HOLD_DELAY_OPTIONS)
 const modelSet = new Set<string>(TRANSCRIPTION_MODELS)
+const recordingModeSet = new Set<string>(RECORDING_MODES)
+const themeSet = new Set<string>(THEMES)
 /** A model name for custom endpoints: provider slug, letters/digits/dots/dashes. */
 const CUSTOM_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u
+
+interface SettingsPersistence {
+  writeJsonAtomic: typeof writeJsonAtomic
+  removeJsonRecoveryCopies: typeof removeJsonRecoveryCopies
+  refreshJsonRecoveryBackup: typeof refreshJsonRecoveryBackup
+}
 
 function isLanguageCode(value: unknown): value is string {
   return typeof value === 'string' && (value === 'auto' || /^[a-z]{2}$/u.test(value))
@@ -116,6 +139,10 @@ export function normaliseSettings(value: unknown): StoredSettings {
   return {
     version: SETTINGS_VERSION,
     shortcut,
+    recordingMode:
+      typeof candidate.recordingMode === 'string' && recordingModeSet.has(candidate.recordingMode)
+        ? (candidate.recordingMode as RecordingMode)
+        : DEFAULT_SETTINGS.recordingMode,
     holdDelayMs:
       typeof candidate.holdDelayMs === 'number' && holdDelaySet.has(candidate.holdDelayMs)
         ? candidate.holdDelayMs
@@ -138,6 +165,10 @@ export function normaliseSettings(value: unknown): StoredSettings {
       typeof candidate.launchAtLogin === 'boolean'
         ? candidate.launchAtLogin
         : DEFAULT_SETTINGS.launchAtLogin,
+    theme:
+      typeof candidate.theme === 'string' && themeSet.has(candidate.theme)
+        ? (candidate.theme as Theme)
+        : DEFAULT_SETTINGS.theme,
     microphoneId:
       typeof candidate.microphoneId === 'string' ? candidate.microphoneId.slice(0, 512) : '',
     historyRetentionDays:
@@ -161,8 +192,26 @@ export function normaliseSettings(value: unknown): StoredSettings {
 export class SettingsStore {
   private settings: StoredSettings
   private warning: string | null = null
+  private readonly persistence: SettingsPersistence
+  /**
+   * A key the user asked to keep for this session only. It is never written
+   * anywhere, never leaves the main process, and disappears when the app
+   * quits. This is what makes a system without usable secure storage usable
+   * at all, without ever putting a credential on disk in the clear.
+   */
+  private sessionApiKey: string | null = null
 
-  constructor(private readonly filePath: string) {
+  constructor(
+    private readonly filePath: string,
+    persistence: Partial<SettingsPersistence> = {},
+    private readonly storage: SecureStorageAssessment = assessSecureStorage(safeStorage)
+  ) {
+    this.persistence = {
+      writeJsonAtomic,
+      removeJsonRecoveryCopies,
+      refreshJsonRecoveryBackup,
+      ...persistence
+    }
     const { value, problem } = readJsonWithBackup<unknown>(filePath)
     this.settings = normaliseSettings(value)
     this.warning = problem ?? null
@@ -176,8 +225,18 @@ export class SettingsStore {
   }
 
   getPublic(): PublicSettings {
-    const { encryptedApiKey, version: _version, ...values } = this.settings
-    return { ...values, apiKeyConfigured: encryptedApiKey.length > 0 }
+    const { encryptedApiKey: _key, version: _version, ...values } = this.settings
+    return { ...values, apiKeySource: this.apiKeySource() }
+  }
+
+  apiKeySource(): ApiKeySource {
+    if (this.sessionApiKey) return 'session'
+    return this.settings.encryptedApiKey.length > 0 ? 'stored' : 'none'
+  }
+
+  /** Whether this system can hold a credential safely. Never key material. */
+  keyStorage(): SecureStorageAssessment {
+    return this.storage
   }
 
   getInternal(): Omit<StoredSettings, 'encryptedApiKey' | 'version'> {
@@ -186,9 +245,14 @@ export class SettingsStore {
   }
 
   getApiKey(): string {
+    // A session key is the most recent thing the user asked for, so it wins.
+    if (this.sessionApiKey) return this.sessionApiKey
     if (!this.settings.encryptedApiKey) return ''
     if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('Secure Windows storage is unavailable. Restart Windows and try again.')
+      throw new Error(
+        'Secure storage is unavailable on this system, so the saved API key ' +
+          'cannot be read. Sign out and back in, or add a key for this session.'
+      )
     }
     try {
       return safeStorage.decryptString(Buffer.from(this.settings.encryptedApiKey, 'base64'))
@@ -207,6 +271,13 @@ export class SettingsStore {
     }
     if (typeof update.holdDelayMs === 'number' && holdDelaySet.has(update.holdDelayMs)) {
       this.settings.holdDelayMs = update.holdDelayMs
+    }
+    if (typeof update.recordingMode === 'string' && recordingModeSet.has(update.recordingMode)) {
+      // Stored as the user's preference, whatever this platform can honour.
+      this.settings.recordingMode = update.recordingMode
+    }
+    if (typeof update.theme === 'string' && themeSet.has(update.theme)) {
+      this.settings.theme = update.theme
     }
     if (typeof update.hotkeyEnabled === 'boolean') this.settings.hotkeyEnabled = update.hotkeyEnabled
     if (typeof update.autoPaste === 'boolean') this.settings.autoPaste = update.autoPaste
@@ -250,23 +321,40 @@ export class SettingsStore {
       if (apiKey.length > MAX_API_KEY_LENGTH) {
         throw new Error('That API key is too long to be valid.')
       }
-      if (!safeStorage.isEncryptionAvailable()) {
-        throw new Error('Secure Windows storage is unavailable. The API key was not saved.')
+      if (update.apiKeyScope === 'session') {
+        // Nothing on disk changes. A previously stored key stays stored and
+        // comes back if the session key is cleared.
+        this.sessionApiKey = apiKey
+      } else {
+        // Refusing here is the point: obfuscating a credential and calling it
+        // encrypted would be worse than not saving it at all.
+        if (!this.storage.usable) throw new Error(this.storage.reason)
+        this.settings.encryptedApiKey = safeStorage.encryptString(apiKey).toString('base64')
+        this.sessionApiKey = null
       }
-      this.settings.encryptedApiKey = safeStorage.encryptString(apiKey).toString('base64')
     }
 
     this.write()
     return this.getPublic()
   }
 
+  /** Drops the session key, falling back to a stored one if there is one. */
+  clearSessionApiKey(): PublicSettings {
+    this.sessionApiKey = null
+    return this.getPublic()
+  }
+
   clearApiKey(): PublicSettings {
-    this.settings.encryptedApiKey = ''
-    this.write()
+    this.sessionApiKey = null
+    const next = { ...this.settings, encryptedApiKey: '' }
+    this.persistence.writeJsonAtomic(this.filePath, next)
+    this.persistence.removeJsonRecoveryCopies(this.filePath)
+    this.persistence.refreshJsonRecoveryBackup(this.filePath)
+    this.settings = next
     return this.getPublic()
   }
 
   private write(): void {
-    writeJsonAtomic(this.filePath, this.settings)
+    this.persistence.writeJsonAtomic(this.filePath, this.settings)
   }
 }

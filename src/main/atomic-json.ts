@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeSync
 } from 'node:fs'
-import { copyFile, open, rename } from 'node:fs/promises'
+import { copyFile, open, rename, unlink } from 'node:fs/promises'
 
 /**
  * Crash-safe JSON files.
@@ -29,6 +29,12 @@ export interface ReadResult<T> {
   value: T | null
   /** Set when the file existed but could not be used. */
   problem?: string
+  /**
+   * Where an unreadable primary was moved aside, when one was. The caller owns
+   * that copy: it holds data this process could not parse, so anything the
+   * caller can only verify against parsed content cannot be verified for it.
+   */
+  preserved?: string
 }
 
 const RENAME_ATTEMPTS = 4
@@ -83,10 +89,11 @@ export function readJsonWithBackup<T>(path: string): ReadResult<T> {
     try {
       const value = parse<T>(backupPath)
       if (value !== null) {
-        preserveCorrupt(path)
+        const preserved = preserveCorrupt(path)
         return {
           value,
-          problem: `${path} was unreadable; recovered the previous version from ${backupPath}.`
+          problem: `${path} was unreadable; recovered the previous version from ${backupPath}.`,
+          ...(preserved ? { preserved } : {})
         }
       }
     } catch {
@@ -99,7 +106,8 @@ export function readJsonWithBackup<T>(path: string): ReadResult<T> {
     value: null,
     problem: preserved
       ? `${path} was unreadable and no backup was usable. The damaged file was kept as ${preserved}.`
-      : undefined
+      : undefined,
+    ...(preserved ? { preserved } : {})
   }
 }
 
@@ -164,6 +172,42 @@ export function writeJsonAtomic(path: string, value: unknown): void {
   }
 
   renameWithRetrySync(temporaryPath, path)
+}
+
+/**
+ * Removes only the recovery companions owned by one atomic JSON primary.
+ * This is not forensic erasure: it does not cover filesystem snapshots,
+ * backups outside this store, exports, clipboard data, or provider-held data.
+ */
+export function removeJsonRecoveryCopies(path: string): void {
+  for (const suffix of ['.bak', '.tmp', '.corrupt']) {
+    try {
+      unlinkSync(`${path}${suffix}`)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+}
+
+/** Async counterpart for history writes, which run off the main thread. */
+export async function removeJsonRecoveryCopiesAsync(path: string): Promise<void> {
+  for (const suffix of ['.bak', '.tmp', '.corrupt']) {
+    try {
+      await unlink(`${path}${suffix}`)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+}
+
+/** Recreates a recovery backup from the current, already-persisted primary. */
+export function refreshJsonRecoveryBackup(path: string): void {
+  copyFileSync(path, `${path}.bak`)
+}
+
+/** Async counterpart for history writes, which run off the main thread. */
+export async function refreshJsonRecoveryBackupAsync(path: string): Promise<void> {
+  await copyFile(path, `${path}.bak`)
 }
 
 /**

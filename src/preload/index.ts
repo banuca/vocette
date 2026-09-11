@@ -1,11 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { PlatformStatus, SettingsPane } from '../shared/capabilities'
 import type {
   AppInfo,
   HistoryEntry,
+  HistorySaveStatus,
   Page,
   PublicSettings,
   SettingsUpdate,
   ShortcutCapture,
+  Theme,
   WorkflowStatus
 } from '../shared/types'
 
@@ -14,8 +17,22 @@ const api = {
   saveSettings: (update: SettingsUpdate): Promise<PublicSettings> =>
     ipcRenderer.invoke('settings:save', update),
   clearApiKey: (): Promise<PublicSettings> => ipcRenderer.invoke('settings:clear-api-key'),
+  clearSessionApiKey: (): Promise<PublicSettings> =>
+    ipcRenderer.invoke('settings:clear-session-key'),
+
+  getPlatformStatus: (): Promise<PlatformStatus> => ipcRenderer.invoke('platform:status'),
+  openPlatformSettings: (pane: SettingsPane): Promise<void> =>
+    ipcRenderer.invoke('platform:open-settings', pane),
+
+  // Recording from the window goes to the one dictation controller, exactly
+  // like the global shortcut; the renderer never opens a microphone for this.
+  startRecording: (): Promise<void> => ipcRenderer.invoke('dictation:start'),
+  stopRecording: (): Promise<void> => ipcRenderer.invoke('dictation:stop'),
+  cancelRecording: (): Promise<void> => ipcRenderer.invoke('dictation:cancel'),
+  retryLastDictation: (): Promise<void> => ipcRenderer.invoke('dictation:retry'),
 
   getHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke('history:list'),
+  getHistorySaveStatus: (): Promise<HistorySaveStatus> => ipcRenderer.invoke('history:save-status'),
   deleteHistoryEntry: (id: string): Promise<HistoryEntry[]> =>
     ipcRenderer.invoke('history:delete', id),
   clearHistory: (): Promise<void> => ipcRenderer.invoke('history:clear'),
@@ -36,6 +53,16 @@ const api = {
     ipcRenderer.on('workflow:status', listener)
     return () => ipcRenderer.removeListener('workflow:status', listener)
   },
+  onPlatformStatus: (callback: (status: PlatformStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: PlatformStatus): void => callback(status)
+    ipcRenderer.on('platform:status', listener)
+    return () => ipcRenderer.removeListener('platform:status', listener)
+  },
+  onHistorySaveStatus: (callback: (status: HistorySaveStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: HistorySaveStatus): void => callback(status)
+    ipcRenderer.on('history:save-status', listener)
+    return () => ipcRenderer.removeListener('history:save-status', listener)
+  },
   onHistoryChanged: (callback: () => void): (() => void) => {
     const listener = (): void => callback()
     ipcRenderer.on('history:changed', listener)
@@ -51,6 +78,16 @@ const api = {
     ipcRenderer.on('shortcut:capture', listener)
     return () => ipcRenderer.removeListener('shortcut:capture', listener)
   },
+  /**
+   * The interface palette. Sent on its own channel rather than folded into
+   * `settings:changed`, because the overlay needs this one value and has no
+   * business receiving the rest of the user's settings.
+   */
+  onTheme: (callback: (theme: Theme) => void): (() => void) => {
+    const listener = (_event: unknown, theme: Theme): void => callback(theme)
+    ipcRenderer.on('app:theme', listener)
+    return () => ipcRenderer.removeListener('app:theme', listener)
+  },
   onNavigate: (callback: (page: Page) => void): (() => void) => {
     const listener = (_event: unknown, page: Page): void => callback(page)
     ipcRenderer.on('app:navigate', listener)
@@ -58,6 +95,6 @@ const api = {
   }
 }
 
-export type VoiceHotkeyApi = typeof api
+export type MurmurApi = typeof api
 
-contextBridge.exposeInMainWorld('voiceHotkey', api)
+contextBridge.exposeInMainWorld('murmur', api)

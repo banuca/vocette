@@ -1,5 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppContext } from '../src/renderer/app-context'
+import { available, type PlatformStatus } from '../src/shared/capabilities'
+
+/** A fully capable desktop, so these tests exercise the microphone only. */
+const TEST_PLATFORM: PlatformStatus = {
+  platform: 'windows',
+  session: null,
+  pasteLabel: 'Ctrl + V',
+  primaryModifierLabel: 'Ctrl',
+  capabilities: {
+    globalHold: available(),
+    globalToggle: available(),
+    targetVerification: available(),
+    autoPaste: available(),
+    launchAtLogin: available(),
+    secureKeyStorage: available()
+  }
+}
 import type { PublicSettings } from '../src/shared/types'
 
 function deferred<T>() {
@@ -95,25 +112,30 @@ async function makeFocusedMicHarness() {
   const settings: PublicSettings = {
     shortcut: { keys: [29, 42] },
     holdDelayMs: 250,
+    recordingMode: 'hold',
     hotkeyEnabled: true,
     autoPaste: true,
     removeFillers: true,
     playSounds: false,
     launchAtLogin: false,
+    theme: 'dark',
     microphoneId: '',
     historyRetentionDays: 0,
     model: 'gpt-transcribe',
     language: 'en',
     apiEndpoint: '',
-    apiKeyConfigured: false
+    apiKeySource: 'none'
   }
   const context: AppContext = {
     content: new FakeElement(elements) as unknown as HTMLElement,
     settings,
     history: [],
-    appInfo: { version: '0.3.1', platform: 'win32' },
+    appInfo: { version: '0.3.1', platform: 'win32', platformStatus: TEST_PLATFORM },
+    platform: TEST_PLATFORM,
+    microphone: 'unknown',
     setHeading: vi.fn(),
     applySettings: vi.fn(),
+    applyPlatform: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }
@@ -125,7 +147,7 @@ async function makeFocusedMicHarness() {
   const requestAnimationFrameMock = vi.fn(() => ++frameId)
   const cancelAnimationFrameMock = vi.fn()
   vi.stubGlobal('window', {
-    voiceHotkey: {
+    murmur: {
       onShortcutCapture: vi.fn(() => () => undefined),
       beginShortcutCapture: vi.fn(async () => undefined),
       cancelShortcutCapture: vi.fn(async () => undefined),
@@ -263,25 +285,30 @@ describe('settings microphone test ownership', () => {
     const settings: PublicSettings = {
       shortcut: { keys: [29, 42] },
       holdDelayMs: 250,
+      recordingMode: 'hold',
       hotkeyEnabled: true,
       autoPaste: true,
       removeFillers: true,
       playSounds: false,
       launchAtLogin: false,
+      theme: 'dark',
       microphoneId: '',
       historyRetentionDays: 0,
       model: 'gpt-transcribe',
       language: 'en',
       apiEndpoint: '',
-      apiKeyConfigured: false
+      apiKeySource: 'none'
     }
     const context: AppContext = {
       content: content as unknown as HTMLElement,
       settings,
       history: [],
-      appInfo: { version: '0.3.1', platform: 'win32' },
+      appInfo: { version: '0.3.1', platform: 'win32', platformStatus: TEST_PLATFORM },
+      platform: TEST_PLATFORM,
+      microphone: 'unknown',
       setHeading: vi.fn(),
       applySettings: vi.fn(),
+      applyPlatform: vi.fn(),
       navigate: vi.fn(),
       reloadHistory: vi.fn(async () => undefined)
     }
@@ -289,7 +316,7 @@ describe('settings microphone test ownership', () => {
     let timeoutId = 0
     let frameId = 0
     vi.stubGlobal('window', {
-      voiceHotkey: {
+      murmur: {
         onShortcutCapture: vi.fn(() => () => undefined),
         beginShortcutCapture: vi.fn(async () => undefined),
         cancelShortcutCapture: vi.fn(async () => undefined),

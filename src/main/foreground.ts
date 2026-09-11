@@ -1,4 +1,6 @@
 import type { ForegroundState } from './dictation-controller'
+import { handleOf, type NativeHandle } from './platform/native-address'
+import type { TargetTracker } from './platform/types'
 
 /**
  * Windows foreground-window tracking, used to keep auto-paste honest.
@@ -32,9 +34,10 @@ function defaultKoffiLoader(): typeof import('koffi') | null {
   }
 }
 
-export class ForegroundTracker {
-  private readonly getForegroundWindow: (() => bigint | null) | null
-  private readonly isElevatedWindow: ((hwnd: bigint) => boolean | null) | null
+export class ForegroundTracker implements TargetTracker {
+  private readonly getForegroundWindow: (() => NativeHandle | null) | null
+  private readonly isElevatedWindow: ((window: NativeHandle) => boolean | null) | null
+  /** Only the address is retained: the pointer object itself is not reusable. */
   private target: bigint | null = null
 
   constructor(loadKoffi: KoffiLoader = defaultKoffiLoader) {
@@ -48,57 +51,61 @@ export class ForegroundTracker {
       const kernel32 = koffi.load('kernel32.dll')
       const advapi32 = koffi.load('advapi32.dll')
 
+      // Win32 BOOL is a 32-bit int, not the single-byte C `bool` that koffi
+      // maps `bool` to, and PHANDLE is a pointer *to* a handle — hence
+      // `void **`. Declaring either loosely marshals the wrong width and
+      // misreads the result.
       const GetForegroundWindow = user32.func('void * GetForegroundWindow()')
       const GetWindowThreadProcessId = user32.func(
         'uint32 GetWindowThreadProcessId(void *hWnd, _Out_ uint32 *lpdwProcessId)'
       )
       const OpenProcess = kernel32.func(
-        'void * OpenProcess(uint32 dwDesiredAccess, bool bInheritHandle, uint32 dwProcessId)'
+        'void * OpenProcess(uint32 dwDesiredAccess, int bInheritHandle, uint32 dwProcessId)'
       )
-      const CloseHandle = kernel32.func('bool CloseHandle(void *hObject)')
+      const CloseHandle = kernel32.func('int CloseHandle(void *hObject)')
       const OpenProcessToken = advapi32.func(
-        'bool OpenProcessToken(void *ProcessHandle, uint32 DesiredAccess, _Out_ void *TokenHandle)'
+        'int OpenProcessToken(void *ProcessHandle, uint32 DesiredAccess, _Out_ void **TokenHandle)'
       )
       const GetTokenInformation = advapi32.func(
-        'bool GetTokenInformation(void *TokenHandle, int TokenInformationClass, _Out_ uint32 *TokenInformation, uint32 TokenInformationLength, _Out_ uint32 *ReturnLength)'
+        'int GetTokenInformation(void *TokenHandle, int TokenInformationClass, _Out_ uint32 *TokenInformation, uint32 TokenInformationLength, _Out_ uint32 *ReturnLength)'
       )
 
-      const asHandle = (value: unknown): bigint | null => {
-        if (typeof value === 'bigint') return value === 0n ? null : value
-        if (typeof value === 'number') return value === 0 ? null : BigInt(value)
-        return null
-      }
+      // Opaque koffi pointers, numeric handles and every failure mode are
+      // handled in one place, shared with the macOS and X11 trackers.
+      const toHandle = (value: unknown): NativeHandle | null => handleOf(koffi, value)
 
       this.getForegroundWindow = () => {
         try {
-          return asHandle(GetForegroundWindow()) as bigint | null
+          return toHandle(GetForegroundWindow())
         } catch {
           return null
         }
       }
 
-      this.isElevatedWindow = (hwnd) => {
+      this.isElevatedWindow = (window) => {
         const processId = [0]
         try {
-          const threadId = GetWindowThreadProcessId(hwnd, processId)
+          const threadId = GetWindowThreadProcessId(window.value, processId)
           if (!threadId || processId[0] === 0) return null
 
-          const process = asHandle(OpenProcess(0x1000 /* QUERY_LIMITED_INFORMATION */, 0, processId[0]))
+          const process = toHandle(
+            OpenProcess(0x1000 /* QUERY_LIMITED_INFORMATION */, 0, processId[0])
+          )
           if (!process) return null
           try {
-            const token = [null]
-            if (!OpenProcessToken(process, 0x0008 /* TOKEN_QUERY */, token)) return null
-            const tokenHandle = asHandle(token[0])
-            if (!tokenHandle) return null
+            const tokenOut = [null]
+            if (!OpenProcessToken(process.value, 0x0008 /* TOKEN_QUERY */, tokenOut)) return null
+            const token = toHandle(tokenOut[0])
+            if (!token) return null
             try {
               const elevated = [0]
-              const ok = GetTokenInformation(tokenHandle, 20 /* TokenElevation */, elevated, 4, [0])
+              const ok = GetTokenInformation(token.value, 20 /* TokenElevation */, elevated, 4, [0])
               return ok ? elevated[0] !== 0 : null
             } finally {
-              CloseHandle(tokenHandle)
+              CloseHandle(token.value)
             }
           } finally {
-            CloseHandle(process)
+            CloseHandle(process.value)
           }
         } catch {
           return null
@@ -116,7 +123,7 @@ export class ForegroundTracker {
   capture(): void {
     if (!this.getForegroundWindow) return
     try {
-      this.target = this.getForegroundWindow()
+      this.target = this.getForegroundWindow()?.address ?? null
     } catch {
       this.target = null
     }
@@ -134,7 +141,9 @@ export class ForegroundTracker {
       const elevated = this.isElevatedWindow(current)
       if (elevated === null) return null
       return {
-        sameWindow: current === this.target,
+        // Compared by address: koffi returns a fresh wrapper object on every
+        // call, so object identity would report "focus moved" every time.
+        sameWindow: this.target !== null && current.address === this.target,
         elevated
       }
     } catch {

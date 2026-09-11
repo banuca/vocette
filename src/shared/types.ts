@@ -1,3 +1,4 @@
+import type { PlatformStatus, RecordingMode } from './capabilities'
 import type { ShortcutChord } from './shortcuts'
 
 export type WorkflowPhase =
@@ -6,6 +7,7 @@ export type WorkflowPhase =
   | 'recording'
   | 'processing'
   | 'success'
+  | 'cancelled'
   | 'error'
 
 export interface WorkflowStatus {
@@ -14,6 +16,16 @@ export interface WorkflowStatus {
   detail?: string
   /** Epoch ms the recording began, for the overlay's elapsed timer. */
   startedAt?: number
+}
+
+/**
+ * Whether transcript history is known to be on disk. Deliberately carries no
+ * transcript text, file path or raw error: it crosses the IPC bridge into the
+ * renderer, and the user only needs to know that recent entries are at risk.
+ */
+export interface HistorySaveStatus {
+  /** True while the newest in-memory history is not known to be saved. */
+  saveFailed: boolean
 }
 
 export interface HistoryEntry {
@@ -70,42 +82,78 @@ export const LANGUAGE_OPTIONS = [
   { code: 'vi', label: 'Vietnamese' }
 ] as const
 
+/**
+ * Where the API key currently in use came from.
+ *
+ * `session` means the key was never written to disk — the only honest option
+ * where the operating system has no storage fit to hold a credential. It is
+ * gone when Murmur quits, and the interface says so.
+ */
+export type ApiKeySource = 'none' | 'stored' | 'session'
+
+/**
+ * The interface palette, chosen by the user and kept with the rest of their
+ * settings so it survives a restart. Modern Dark is the default; `light`
+ * follows Visual Studio Code's Light Modern theme. The overlay uses the same
+ * value, so a light window never has a black pill floating over it.
+ */
+export type Theme = 'dark' | 'light'
+
+export const THEMES: readonly Theme[] = ['dark', 'light']
+
 export interface PublicSettings {
   shortcut: ShortcutChord
   holdDelayMs: number
+  /** What the user asked for; the platform may not be able to honour it. */
+  recordingMode: RecordingMode
   hotkeyEnabled: boolean
   autoPaste: boolean
   removeFillers: boolean
   playSounds: boolean
   launchAtLogin: boolean
+  theme: Theme
   microphoneId: string
   historyRetentionDays: number
   model: string
   language: string
   /** Empty = api.openai.com. Otherwise an OpenAI-compatible transcription endpoint. */
   apiEndpoint: string
-  apiKeyConfigured: boolean
+  apiKeySource: ApiKeySource
 }
 
 export interface SettingsUpdate {
   shortcut?: ShortcutChord
   holdDelayMs?: number
+  recordingMode?: RecordingMode
   hotkeyEnabled?: boolean
   autoPaste?: boolean
   removeFillers?: boolean
   playSounds?: boolean
   launchAtLogin?: boolean
+  theme?: Theme
   microphoneId?: string
   historyRetentionDays?: number
   model?: string
   language?: string
   apiEndpoint?: string
   apiKey?: string
+  /**
+   * Whether a supplied key may be written to disk. `session` keeps it in main
+   * process memory only; it is the offer made where secure storage is unfit.
+   */
+  apiKeyScope?: 'persist' | 'session'
+}
+
+/** True when a key is available for transcription, wherever it is held. */
+export function hasApiKey(settings: Pick<PublicSettings, 'apiKeySource'>): boolean {
+  return settings.apiKeySource !== 'none'
 }
 
 export interface AppInfo {
   version: string
   platform: string
+  /** What this operating system and session can actually do. */
+  platformStatus: PlatformStatus
 }
 
 export type Page = 'history' | 'settings' | 'about'

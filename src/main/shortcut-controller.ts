@@ -1,20 +1,13 @@
-import { UiohookKey, uIOhook } from 'uiohook-napi'
+import { uIOhook } from 'uiohook-napi'
 import { chordIsSatisfied, type ShortcutChord } from '../shared/shortcuts'
 import { MAX_CHORD_KEYS } from '../shared/shortcuts'
 import { sortChordKeys } from '../shared/keycodes'
+import type { ShortcutBackend, ShortcutBackendOptions } from './platform/types'
 
-export interface ShortcutControllerOptions {
-  chord: ShortcutChord
-  holdDelayMs: number
-  onPress: () => void
-  onRelease: () => void
-  onError: (message: string) => void
-  /** Streams the chord being recorded by the "Change shortcut" button. */
-  onCapture: (keys: number[], done: boolean) => void
-}
+export type ShortcutControllerOptions = ShortcutBackendOptions
 
-/** How long synthetic paste keystrokes are ignored after `paste()`. */
-const PASTE_ECHO_MS = 180
+/** How long synthetic keystrokes are ignored after the app injects any. */
+export const SYNTHETIC_ECHO_MS = 180
 
 /**
  * Watches the global keyboard for the hold-to-talk chord.
@@ -31,7 +24,10 @@ const PASTE_ECHO_MS = 180
  *    cancels it. Without this, a modifier-only chord fires on every
  *    Ctrl+Shift+key shortcut in the OS.
  */
-export class ShortcutController {
+export class ShortcutController implements ShortcutBackend {
+  /** libuiohook reports key-up, so hold-to-talk is genuinely supported. */
+  readonly supportsHold = true
+  readonly supportsCapture = true
   private pressed = new Set<number>()
   private chord: ShortcutChord
   private holdDelayMs: number
@@ -41,7 +37,9 @@ export class ShortcutController {
   private enabled = true
   private capturing = false
   private captureKeys: number[] = []
-  private pasteEchoUntil = 0
+  private echoUntil = 0
+  private startError: string | null = null
+  private tapToFire = false
 
   constructor(private readonly options: ShortcutControllerOptions) {
     this.chord = options.chord
@@ -63,11 +61,21 @@ export class ShortcutController {
     try {
       uIOhook.start()
       this.running = true
+      this.startError = null
     } catch {
       uIOhook.off('keydown', this.handleKeyDown)
       uIOhook.off('keyup', this.handleKeyUp)
+      // Recorded as well as reported: the capability snapshot has to be able
+      // to tell the user the shortcut is not in force, long after the toast.
+      this.startError =
+        'The global keyboard hook could not start, so the shortcut is not active. ' +
+        'Use the Record button, or restart the app to try again.'
       this.options.onError('The global shortcut could not start. Restart the app and try again.')
     }
+  }
+
+  registrationError(): string | null {
+    return this.startError
   }
 
   stop(): void {
@@ -96,6 +104,21 @@ export class ShortcutController {
   setEnabled(enabled: boolean): void {
     this.reset(true)
     this.enabled = enabled
+  }
+
+  /**
+   * Whether a chord let go before the hold delay still counts as a press.
+   *
+   * Toggle recording needs this. The gesture that stops a dictation is a tap,
+   * and nobody holds a shortcut for a quarter of a second to stop something —
+   * so without it the second press is swallowed and recording never ends.
+   *
+   * The delay's real protection is untouched: a key pressed outside the chord
+   * still cancels the arm, so Ctrl+Shift+T never fires a Ctrl+Shift chord.
+   * Hold-to-talk leaves this off, where a tap should record nothing at all.
+   */
+  setTapToFire(enabled: boolean): void {
+    this.tapToFire = enabled
   }
 
   isEnabled(): boolean {
@@ -132,14 +155,13 @@ export class ShortcutController {
   }
 
   /**
-   * Presses Ctrl+V in the focused app. The hook sees these synthetic events
-   * too, so key state is suspended briefly to stop them re-triggering a
-   * user-defined chord that happens to include Ctrl.
+   * Ignores keyboard input for a moment. The hook sees the app's own injected
+   * keystrokes, so they must not re-trigger a user chord that happens to share
+   * a modifier with the paste chord. Call this immediately before injecting.
    */
-  paste(): void {
-    this.pasteEchoUntil = Date.now() + PASTE_ECHO_MS
+  suppressSyntheticInput(milliseconds: number = SYNTHETIC_ECHO_MS): void {
+    this.echoUntil = Date.now() + milliseconds
     this.pressed.clear()
-    uIOhook.keyTap(UiohookKey.V, [UiohookKey.Ctrl])
   }
 
   private reset(releaseIfActive: boolean): void {
@@ -157,7 +179,7 @@ export class ShortcutController {
   }
 
   private handleKeyDown = (event: { keycode: number }): void => {
-    if (Date.now() < this.pasteEchoUntil) return
+    if (Date.now() < this.echoUntil) return
 
     if (this.capturing) {
       if (
@@ -208,7 +230,7 @@ export class ShortcutController {
   }
 
   private handleKeyUp = (event: { keycode: number }): void => {
-    if (Date.now() < this.pasteEchoUntil) return
+    if (Date.now() < this.echoUntil) return
 
     if (this.capturing) {
       if (this.captureKeys.length) {
@@ -225,7 +247,18 @@ export class ShortcutController {
 
     this.pressed.delete(event.keycode)
 
-    if (this.chord.keys.includes(event.keycode)) this.cancelArm()
+    if (this.chord.keys.includes(event.keycode)) {
+      const armed = this.armTimer !== null
+      this.cancelArm()
+      // A tap: the chord matched and was released before the hold delay, with
+      // no foreign key in between. It fires here instead of being lost. There
+      // is no matching release — nothing is held any more — which is why this
+      // only ever runs for toggle recording, where releases are ignored.
+      if (armed && this.tapToFire && !this.active) {
+        this.options.onPress()
+        return
+      }
+    }
 
     if (!this.active) return
     if (this.chord.keys.includes(event.keycode)) {

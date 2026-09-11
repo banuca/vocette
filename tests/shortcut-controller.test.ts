@@ -127,15 +127,25 @@ describe('hold delay', () => {
   })
 })
 
-describe('paste echo', () => {
-  it('ignores the synthetic keystrokes it generates itself', () => {
+describe('synthetic input suppression', () => {
+  it('ignores the keystrokes the app injects on its own behalf', () => {
+    // Injection itself belongs to the platform layer now; what has to happen
+    // here is that the hook stops listening for a moment first, or our own
+    // Ctrl+V would arm a user chord that also uses Ctrl.
     const { controller, onPress } = makeController({ keys: [KEY.Ctrl, KEY.Space], holdDelayMs: 0 })
-    controller.paste()
-    expect(hook.keyTap).toHaveBeenCalledTimes(1)
-    // uiohook reports our own Ctrl+V back to us; it must not arm a Ctrl chord.
+    controller.suppressSyntheticInput()
     keyDown(KEY.Ctrl)
     keyDown(KEY.Space)
     expect(onPress).not.toHaveBeenCalled()
+  })
+
+  it('starts listening again once the window has passed', () => {
+    const { controller, onPress } = makeController({ keys: [KEY.Ctrl, KEY.Space], holdDelayMs: 0 })
+    controller.suppressSyntheticInput(10)
+    vi.advanceTimersByTime(11)
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Space)
+    expect(onPress).toHaveBeenCalledTimes(1)
   })
 })
 
