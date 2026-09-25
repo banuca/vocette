@@ -68,6 +68,11 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 | 12 | AI polish with styles, time budget, raw fallback | Pro | todo | |
 | 13 | History edit, undo delete, show original | Free | todo | |
 | 14 | Opt-in update check | Free | todo | |
+| R1 | Silence guard: no text invented from a silent take, no engine call | Free | todo | |
+| R2 | Live microphone level in the overlay ("is it hearing me?") | Free | todo | |
+| R3 | Esc cancels a hands-free (toggle) recording | Free | todo | |
+| R4 | Bluetooth headset hint beside the microphone picker | Free | todo | |
+| R5 | Re-arm the keyboard hook after sleep/resume and unlock | Free | todo | |
 | 15 | Packaging (sherpa-onnx unpack, native check, release build outside synced folder) | — | todo | |
 | 16 | Docs: README, SECURITY, CHANGELOG, CONTRIBUTING (DCO), platform matrix | — | todo | |
 | 17 | Website: landing, pricing, privacy, terms, refund | — | todo | |
@@ -79,13 +84,24 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 Order rule: foundations and pure modules first; the engine as soon as the spike reports;
 licence only once there is Pro value; packaging and docs last.
 
-## 4. Research in flight (scratchpad)
+## 4. Research
 
-- `engine-spike/REPORT.md` — Parakeet v3 in sherpa-onnx-node under Electron: API,
-  timings, memory, hotwords, DLL layout.
-- `naming-shortlist.md` — names with collision evidence.
-- `licensing-research.md` — Polar licence-key API spec, fees, EU withdrawal waiver.
-- `frustrations-research.md` — ranked user frustrations with sources.
+Preserved in `docs/research/` (scratchpad copies are temporary):
+
+- `licensing.md` — Polar licence-key API (verified live), fees, Swiss payouts, EU
+  withdrawal gap (Polar's checkout collects no waiver → required checkbox field + a plain
+  refund policy), API-version risk.
+- `frustrations.md` — 20 ranked user frustrations (152 sources; Reddit/G2 not readable).
+  Mapped to the queue: 1 paste failures → 4; 2 stuck processing → watchdogs + 07a timeouts;
+  3 lost long takes → retry take + chunking; 4 names/jargon/silence → 8 + R1; 5 slow → 07a +
+  9; 6 first word cut → 9; 7 subscriptions → 11; 8 cloud privacy → 07; 9 crashes → packaging
+  + signing; 10 hotkeys after sleep → R5; 11 wrong language → Parakeet auto-detect; 12 AI
+  changes meaning → 2 is deterministic, 12 keeps the original; 13 setup friction → 07b; 14
+  RAM → idle unload; 15 clipboard → 4; 16 terminals → paste only, newlines only on request;
+  17 noise → noise suppression; 18 Bluetooth → R4; 19 offline → 07; 20 focus moved → existing
+  target check.
+- Engine spike (`engine-spike/REPORT.md`, to be copied as `engine-spike.md`) and naming
+  shortlist (`naming-shortlist.md`, to be copied as `naming.md`) still arriving.
 
 ## 5. Verification protocol (Claude, per feature)
 
