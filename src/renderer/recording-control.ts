@@ -1,5 +1,5 @@
 import { clipboardOnlyReason, globalShortcutUsable, type PlatformStatus } from '../shared/capabilities'
-import type { ApiKeySource, WorkflowStatus } from '../shared/types'
+import type { WorkflowStatus } from '../shared/types'
 
 /**
  * The Record / Stop / Cancel control.
@@ -43,7 +43,10 @@ export interface RecordingControlState {
 export interface RecordingControlInput {
   status: WorkflowStatus
   platform: PlatformStatus
-  apiKeySource: ApiKeySource
+  /** Whether the chosen engine can transcribe now: its model, or a key, is in place. */
+  ready: boolean
+  /** What is missing, already a sentence. Shown as the hint while not ready. */
+  notReadyReason: string | null
 }
 
 /* Inline, so there is no icon font, no sprite and no request. */
@@ -56,18 +59,19 @@ const STOP_ICON =
   '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">' +
   '<rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor"/></svg>'
 
-const NEEDS_KEY = 'Add your API key in Settings before recording.'
+/** Only if the main process ever reports not-ready without saying why. */
+const NOT_READY = 'Transcription is not set up yet.'
 const NO_SHORTCUT = 'No system-wide shortcut on this desktop — use Record.'
 const CLIPBOARD_ONLY = 'Transcripts are copied here, not pasted. Settings explains why.'
 
 export function recordingControlState(input: RecordingControlInput): RecordingControlState {
   const { phase } = input.status
-  const ready = input.apiKeySource !== 'none'
+  const { ready } = input
   const recording = phase === 'starting' || phase === 'recording'
   const busy = recording || phase === 'processing'
 
   const hint = (): string | null => {
-    if (!ready) return NEEDS_KEY
+    if (!ready) return input.notReadyReason ?? NOT_READY
     if (busy) {
       // Recording from the window has no other application to paste into, so
       // say so up front rather than at the end.
@@ -109,7 +113,7 @@ export function recordingControlState(input: RecordingControlInput): RecordingCo
     }
   }
 
-  // "Ready" while the app is telling you it has no key reads as a
+  // "Ready" while the app is telling you it cannot transcribe yet reads as a
   // contradiction — mildly in a top-bar label, glaringly as the heading over
   // the record button on History.
   const idleLabel = ready ? 'Ready' : 'Not set up yet'

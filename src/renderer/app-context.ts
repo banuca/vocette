@@ -1,4 +1,5 @@
 import type { PlatformStatus } from '../shared/capabilities'
+import type { EngineStatus } from '../shared/engine'
 import type { MicrophoneAccess } from './setup-guide'
 import type { AppInfo, HistoryEntry, Page, PublicSettings } from '../shared/types'
 
@@ -10,6 +11,11 @@ export interface AppContext {
   appInfo: AppInfo
   /** What this desktop actually allows. Re-read while the app runs. */
   platform: PlatformStatus
+  /**
+   * Whether a dictation can be transcribed now, and where the speech model
+   * stands. Pushed by the main process whenever either changes.
+   */
+  engine: EngineStatus
   /** Microphone permission as the renderer last observed it. */
   microphone: MicrophoneAccess
   setHeading(title: string, subtitle: string): void
@@ -17,6 +23,8 @@ export interface AppContext {
   applySettings(next: PublicSettings): void
   /** Replaces the cached capabilities and refreshes anything that shows them. */
   applyPlatform(next: PlatformStatus): void
+  /** Replaces the cached engine status and refreshes anything that depends on readiness. */
+  applyEngine(next: EngineStatus): void
   navigate(page: Page): void
   reloadHistory(): Promise<void>
 }

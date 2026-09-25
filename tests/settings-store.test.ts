@@ -456,6 +456,86 @@ describe('session keys alongside a stored key', () => {
   })
 })
 
+describe('transcription engine', () => {
+  /** A v5 file written before the engine choice existed. */
+  const withoutEngine = (overrides: Record<string, unknown> = {}): Record<string, unknown> => {
+    const v5 = { ...DEFAULT_SETTINGS, ...overrides } as Record<string, unknown>
+    delete v5.engine
+    return v5
+  }
+
+  it('starts a fresh install on this PC', () => {
+    expect(DEFAULT_SETTINGS.engine).toBe('local')
+    expect(new SettingsStore(file).getPublic().engine).toBe('local')
+    expect(normaliseSettings(null).engine).toBe('local')
+  })
+
+  it('keeps an existing user with a saved key on the cloud that works for them', () => {
+    const loaded = normaliseSettings(withoutEngine({ encryptedApiKey: 'ZW5jOnNrLXRlc3Q=' }))
+    expect(loaded.engine).toBe('cloud')
+    // Nothing else about the file changes.
+    expect(loaded.encryptedApiKey).toBe('ZW5jOnNrLXRlc3Q=')
+
+    writeFileSync(file, JSON.stringify(withoutEngine({ encryptedApiKey: 'ZW5jOnNrLXRlc3Q=' })))
+    const store = new SettingsStore(file)
+    expect(store.getPublic().engine).toBe('cloud')
+    expect(store.getApiKey()).toBe('sk-test')
+  })
+
+  it('moves an existing user without a saved key to this PC', () => {
+    expect(normaliseSettings(withoutEngine()).engine).toBe('local')
+    expect(normaliseSettings(withoutEngine({ encryptedApiKey: '' })).engine).toBe('local')
+    // A key held for the session only was never on disk to be seen here.
+    writeFileSync(file, JSON.stringify(withoutEngine({ removeFillers: false })))
+    expect(new SettingsStore(file).getPublic().engine).toBe('local')
+  })
+
+  it('keeps a stored choice it recognises, even against the key rule', () => {
+    expect(normaliseSettings({ ...DEFAULT_SETTINGS, engine: 'cloud' }).engine).toBe('cloud')
+    expect(
+      normaliseSettings({ ...DEFAULT_SETTINGS, engine: 'local', encryptedApiKey: 'ZW5jOnNrLXRlc3Q=' })
+        .engine
+    ).toBe('local')
+  })
+
+  it('treats a stored value it does not recognise as absent', () => {
+    expect(normaliseSettings(withoutEngine({ engine: 'gpu' })).engine).toBe('local')
+    expect(
+      normaliseSettings({ ...DEFAULT_SETTINGS, engine: 42, encryptedApiKey: 'ZW5jOnNrLXRlc3Q=' }).engine
+    ).toBe('cloud')
+  })
+
+  it('saves a choice, which survives a restart', () => {
+    const store = new SettingsStore(file)
+    expect(store.update({ engine: 'cloud' }).engine).toBe('cloud')
+    expect(JSON.parse(readFileSync(file, 'utf8')).engine).toBe('cloud')
+    expect(new SettingsStore(file).getPublic().engine).toBe('cloud')
+    expect(store.update({ engine: 'local' }).engine).toBe('local')
+    expect(new SettingsStore(file).getInternal().engine).toBe('local')
+  })
+
+  it('ignores an engine it does not know on save', () => {
+    const store = new SettingsStore(file)
+    store.update({ engine: 'cloud' })
+    store.update({ engine: 'gpu' as unknown as 'local' })
+    expect(store.getPublic().engine).toBe('cloud')
+  })
+
+  it('leaves the choice alone when an update does not mention it', () => {
+    const store = new SettingsStore(file)
+    store.update({ engine: 'cloud' })
+    expect(store.update({ playSounds: false }).engine).toBe('cloud')
+  })
+
+  it('writes the migrated choice with the next save, so it no longer depends on the key', () => {
+    writeFileSync(file, JSON.stringify(withoutEngine({ encryptedApiKey: 'ZW5jOnNrLXRlc3Q=' })))
+    const store = new SettingsStore(file)
+    store.clearApiKey()
+    // Clearing the key must not quietly move the user to a model they lack.
+    expect(new SettingsStore(file).getPublic().engine).toBe('cloud')
+  })
+})
+
 describe('vocabulary', () => {
   it('defaults to empty when the settings file predates the field', () => {
     const v5 = {

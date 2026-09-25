@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/settings-store'
+import type { EngineStatus } from '../src/shared/engine'
 import type { HistorySaveStatus } from '../src/shared/types'
 
 /**
@@ -10,6 +11,28 @@ import type { HistorySaveStatus } from '../src/shared/types'
  * a storage failure reached the fatal handler and the app quit: no windows, no
  * tray, no way to dictate, over history that could not be tidied.
  */
+
+type StoredModelState = 'missing' | 'partial' | 'installed'
+type TranscribeLocally = (
+  samples: Float32Array,
+  sampleRate: number,
+  signal?: AbortSignal
+) => Promise<string>
+
+/** The model store and engine as the app sees them, driven by the test. */
+interface EngineHarness {
+  setModelState: (state: StoredModelState) => void
+  transcribe: Mock<TranscribeLocally>
+  unload: Mock<() => void>
+  dispose: Mock<() => void>
+  downloads: () => number
+  /** The signal the running download was given. */
+  downloadSignal: () => AbortSignal | null
+  progress: (receivedBytes: number) => void
+  finishDownload: () => void
+  failDownload: (error: Error) => void
+  removals: () => number
+}
 
 interface StartupHarness {
   timeline: string[]
@@ -22,18 +45,55 @@ interface StartupHarness {
   loginItems: Array<{ openAtLogin: boolean; args?: string[] }>
   hookStarted: () => boolean
   invoke: (channel: string, fromMainWindow: boolean, ...args: unknown[]) => unknown
+  /** Delivers a message from the hidden recorder window. */
+  emitFromRecorder: (channel: string, payload: unknown) => void
+  sentToRecorder: () => Array<{ channel: string; payload: unknown }>
   pressShortcut: () => void
   setCapabilities: (patch: Record<string, unknown>) => void
   sentToMain: () => Array<{ channel: string; payload: unknown }>
   trayLabels: () => string[]
   setSaveStatus: (status: HistorySaveStatus) => void
+  historyAdds: () => Array<{ text: string; durationMs: number; model: string }>
+  engine: EngineHarness
+  /** Lets pending promise chains run to the end. */
+  settle: () => Promise<void>
+  /** Fires the app's `before-quit` handler, as quitting from the tray does. */
+  quit: () => void
+  /** Makes the next settings save report a stored key. */
+  keySavedOnNextSave: () => void
+}
+
+async function settle(): Promise<void> {
+  for (let tick = 0; tick < 25; tick += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
 }
 
 async function startApp(options: {
   pruneRejection?: Error
   settingsConstructorError?: Error
+  engine?: 'local' | 'cloud'
+  apiKeySource?: 'none' | 'stored' | 'session'
+  modelState?: StoredModelState
 } = {}): Promise<StartupHarness> {
   vi.resetModules()
+
+  const engineChoice = options.engine ?? 'local'
+  let apiKeySource = options.apiKeySource ?? 'stored'
+  let saveStoresKey = false
+  let modelState: StoredModelState = options.modelState ?? 'installed'
+  let downloads = 0
+  let removals = 0
+  let downloadSignal: AbortSignal | null = null
+  let downloadProgress: ((progress: { phase: string; receivedBytes: number; totalBytes: number }) => void) | null =
+    null
+  let settleDownload: { resolve: () => void; reject: (error: Error) => void } | null = null
+  const transcribeLocally = vi.fn<TranscribeLocally>(async () => 'Hello from this PC.')
+  const unloadEngine = vi.fn<() => void>()
+  const disposeEngine = vi.fn<() => void>()
+  const historyAdds: Array<{ text: string; durationMs: number; model: string }> = []
+  const ipcListeners = new Map<string, (event: unknown, payload: unknown) => void>()
+  const appListeners = new Map<string, (event: unknown) => void>()
 
   const windowOptions: Array<Record<string, unknown>> = []
   const messageBoxes: Array<{ title?: string; message?: string; detail?: string }> = []
@@ -113,7 +173,9 @@ async function startApp(options: {
       requestSingleInstanceLock: () => true,
       whenReady: () => Promise.resolve(),
       setLoginItemSettings: (value: { openAtLogin: boolean; args?: string[] }) => loginItems.push(value),
-      on: vi.fn(),
+      on: vi.fn((name: string, listener: (event: unknown) => void) => {
+        appListeners.set(name, listener)
+      }),
       quit: () => {
         quits += 1
       },
@@ -143,7 +205,9 @@ async function startApp(options: {
       handle: vi.fn((channel: string, handler: (event: unknown, ...args: unknown[]) => unknown) => {
         ipcHandlers.set(channel, handler)
       }),
-      on: vi.fn()
+      on: vi.fn((channel: string, listener: (event: unknown, payload: unknown) => void) => {
+        ipcListeners.set(channel, listener)
+      })
     },
     clipboard: { writeText: vi.fn() },
     shell: { beep: vi.fn(), openExternal: vi.fn(() => Promise.resolve()) },
@@ -171,11 +235,23 @@ async function startApp(options: {
       constructor() {
         if (options.settingsConstructorError) throw options.settingsConstructorError
       }
-      getInternal = (): typeof DEFAULT_SETTINGS => ({ ...DEFAULT_SETTINGS, historyRetentionDays: 30 })
-      getPublic = () => ({ apiKeySource: 'stored', launchAtLogin: false, recordingMode: 'hold' })
+      getInternal = (): typeof DEFAULT_SETTINGS => ({
+        ...DEFAULT_SETTINGS,
+        historyRetentionDays: 30,
+        engine: engineChoice
+      })
+      getPublic = () => ({
+        apiKeySource,
+        engine: engineChoice,
+        launchAtLogin: false,
+        recordingMode: 'hold'
+      })
       getApiKey = () => ''
       keyStorage = () => ({ usable: true, reason: '', backend: 'os' })
-      update = vi.fn(() => ({}))
+      update = vi.fn(() => {
+        if (saveStoresKey) apiKeySource = 'stored'
+        return {}
+      })
       clearApiKey = vi.fn()
       clearSessionApiKey = vi.fn()
       takeWarning = () => null
@@ -191,7 +267,10 @@ async function startApp(options: {
           : Promise.resolve(false)
       }
       list = () => []
-      add = vi.fn()
+      add = vi.fn((input: { text: string; durationMs: number; model: string }) => {
+        historyAdds.push(input)
+        return { ...input, id: 'entry-1', createdAt: new Date(0).toISOString() }
+      })
       delete = vi.fn(() => Promise.resolve([]))
       clear = vi.fn(() => Promise.resolve())
       flush = vi.fn(() => Promise.resolve())
@@ -206,6 +285,47 @@ async function startApp(options: {
 
   // Keeps the native keyboard hook and the Win32 bindings out of the test.
   vi.doMock('../src/main/shortcut-controller', () => ({ SYNTHETIC_ECHO_MS: 180 }))
+
+  // The model store and the speech engine are exercised on their own; here
+  // they stand in for a disk and a worker process the test controls.
+  vi.doMock('../src/main/engine/model-store', () => {
+    class ModelStoreError extends Error {}
+    return {
+      ModelStoreError,
+      modelsRoot: () => 'C:/models',
+      ModelStore: class {
+        path = (id: string) => `C:/models/${id}`
+        state = () => modelState
+        download = (
+          _id: string,
+          onProgress: (progress: { phase: string; receivedBytes: number; totalBytes: number }) => void,
+          signal: AbortSignal
+        ): Promise<void> => {
+          downloads += 1
+          downloadSignal = signal
+          downloadProgress = onProgress
+          return new Promise<void>((resolve, reject) => {
+            settleDownload = { resolve, reject }
+            signal.addEventListener('abort', () =>
+              reject(new DOMException('The operation was aborted.', 'AbortError'))
+            )
+          })
+        }
+        remove = async (): Promise<void> => {
+          removals += 1
+          modelState = 'missing'
+        }
+      }
+    }
+  })
+  vi.doMock('../src/main/engine/local-engine', () => ({
+    LocalEngine: class {
+      transcribe = transcribeLocally
+      unload = unloadEngine
+      dispose = disposeEngine
+      prewarm = vi.fn()
+    }
+  }))
 
   // The platform boundary is exercised on its own in `platform-adapters`; here
   // it stands in for whichever desktop the app happens to be running on.
@@ -253,13 +373,46 @@ async function startApp(options: {
 
   await import('../src/main/index')
   // `whenReady().then(bootstrap)` and bootstrap's own awaits each need a turn.
-  for (let tick = 0; tick < 25; tick += 1) {
-    await new Promise<void>((resolve) => setImmediate(resolve))
-  }
+  await settle()
 
   const mainWindow = windows[0]
+  const recorderWindow = windows[1]
 
   return {
+    emitFromRecorder: (channel: string, payload: unknown): void => {
+      const listener = ipcListeners.get(channel)
+      if (!listener) throw new Error(`No listener registered for ${channel}.`)
+      listener({ sender: recorderWindow?.webContents }, payload)
+    },
+    sentToRecorder: () =>
+      (recorderWindow?.webContents.send.mock.calls ?? []).map(([channel, payload]) => ({
+        channel,
+        payload
+      })),
+    historyAdds: () => historyAdds,
+    settle,
+    quit: () => appListeners.get('before-quit')?.({ preventDefault: vi.fn() }),
+    keySavedOnNextSave: () => {
+      saveStoresKey = true
+    },
+    engine: {
+      setModelState: (state) => {
+        modelState = state
+      },
+      transcribe: transcribeLocally,
+      unload: unloadEngine,
+      dispose: disposeEngine,
+      downloads: () => downloads,
+      downloadSignal: () => downloadSignal,
+      progress: (receivedBytes) =>
+        downloadProgress?.({ phase: 'downloading', receivedBytes, totalBytes: 670_478_772 }),
+      finishDownload: () => {
+        modelState = 'installed'
+        settleDownload?.resolve()
+      },
+      failDownload: (error) => settleDownload?.reject(error),
+      removals: () => removals
+    },
     windowOptions,
     timeline,
     trayCount: () => trays,
@@ -473,5 +626,245 @@ describe('the tray keeps up with the workflow', () => {
 
     app.invoke('dictation:cancel', true)
     expect(app.trayLabels()).toContain('Start recording')
+  })
+})
+
+/** A 16 kHz mono PCM16 WAV, shaped like the recorder's own. */
+function wavBytes(frames: number, sampleRate = 16000): Uint8Array {
+  const buffer = new ArrayBuffer(44 + frames * 2)
+  const view = new DataView(buffer)
+  const ascii = (offset: number, text: string): void => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index))
+    }
+  }
+  ascii(0, 'RIFF')
+  view.setUint32(4, 36 + frames * 2, true)
+  ascii(8, 'WAVE')
+  ascii(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  ascii(36, 'data')
+  view.setUint32(40, frames * 2, true)
+  for (let frame = 0; frame < frames; frame += 1) view.setInt16(44 + frame * 2, 1000, true)
+  return new Uint8Array(buffer)
+}
+
+/** Records one take from the window's Record button and hands over `audio`. */
+async function dictateFromWindow(
+  app: StartupHarness,
+  audio: Uint8Array,
+  mimeType = 'audio/wav'
+): Promise<void> {
+  app.invoke('dictation:start', true)
+  const start = app.sentToRecorder().find((message) => message.channel === 'recorder:start')
+  const { requestId } = start?.payload as { requestId: string }
+  app.emitFromRecorder('recorder:started', { requestId })
+  app.invoke('dictation:stop', true)
+  app.emitFromRecorder('recorder:audio', { requestId, audio, mimeType, durationMs: 100 })
+  await app.settle()
+}
+
+const engineBroadcasts = (app: StartupHarness): EngineStatus[] =>
+  app
+    .sentToMain()
+    .filter((message) => message.channel === 'engine:status')
+    .map((message) => message.payload as EngineStatus)
+
+const lastEngineBroadcast = (app: StartupHarness): EngineStatus | undefined =>
+  engineBroadcasts(app).at(-1)
+
+const workflowErrors = (app: StartupHarness): string[] =>
+  app
+    .sentToMain()
+    .filter((message) => message.channel === 'workflow:status')
+    .map((message) => message.payload as { phase: string; detail?: string })
+    .filter((status) => status.phase === 'error')
+    .map((status) => status.detail ?? '')
+
+describe('the on-device engine', () => {
+  it('sends a take to the engine on this PC, and History names its model', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    await dictateFromWindow(app, wavBytes(1600))
+
+    expect(app.engine.transcribe).toHaveBeenCalledTimes(1)
+    const [samples, sampleRate] = app.engine.transcribe.mock.calls[0] ?? []
+    expect(sampleRate).toBe(16000)
+    expect(samples?.length).toBe(1600)
+    expect(app.historyAdds()).toEqual([
+      { text: 'Hello from this PC.', durationMs: 100, model: 'parakeet-tdt-0.6b-v3-int8' }
+    ])
+    expect(workflowErrors(app)).toEqual([])
+  })
+
+  it('says plainly when a recording is not one it can read', async () => {
+    // The renderer falls back to the original container when it cannot
+    // prepare a WAV; the on-device engine has no use for that.
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    await dictateFromWindow(app, new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]), 'audio/webm')
+
+    expect(app.engine.transcribe).not.toHaveBeenCalled()
+    expect(workflowErrors(app)).toEqual([
+      'This recording could not be read for on-device transcription. Try again.'
+    ])
+    expect(app.historyAdds()).toEqual([])
+  })
+
+  it('keeps a cloud take on the cloud path', async () => {
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'stored' })
+    await dictateFromWindow(app, wavBytes(1600))
+
+    expect(app.engine.transcribe).not.toHaveBeenCalled()
+    // The stubbed store hands the cloud service no key, so it stops there —
+    // before any request is made.
+    expect(workflowErrors(app)).toEqual(['Add an API key in Settings before recording.'])
+  })
+
+  it('will not start a take on this PC until the model is there, and says so', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'missing' })
+    app.pressShortcut()
+
+    expect(app.sentToRecorder().filter((message) => message.channel === 'recorder:start')).toEqual([])
+    expect(workflowErrors(app)).toEqual(['Download the speech model in Settings first.'])
+  })
+
+  it('serves its status, and takes its commands, only from the main window', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'missing' })
+    expect(app.invoke('engine:get-status', true)).toEqual({
+      engine: 'local',
+      model: {
+        id: 'parakeet-tdt-0.6b-v3-int8',
+        state: 'missing',
+        receivedBytes: 0,
+        totalBytes: 670_478_772,
+        error: null
+      },
+      ready: false,
+      notReadyReason: 'Download the speech model in Settings first.'
+    })
+    for (const channel of [
+      'engine:get-status',
+      'engine:download',
+      'engine:cancel-download',
+      'engine:remove-model'
+    ]) {
+      await expect(Promise.resolve().then(() => app.invoke(channel, false))).rejects.toThrow(
+        'Forbidden.'
+      )
+    }
+    expect(app.engine.downloads()).toBe(0)
+    expect(app.engine.removals()).toBe(0)
+  })
+
+  it('asks a cloud user for a key, not for the model', async () => {
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none', modelState: 'missing' })
+    expect(app.invoke('engine:get-status', true)).toMatchObject({
+      engine: 'cloud',
+      ready: false,
+      notReadyReason: 'Add your API key in Settings before recording.'
+    })
+  })
+
+  it('downloads the model once, broadcasting progress and then readiness', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'missing' })
+    const started = app.invoke('engine:download', true) as EngineStatus
+    expect(started.model.state).toBe('downloading')
+    // A second request while one runs does not start another.
+    app.invoke('engine:download', true)
+    expect(app.engine.downloads()).toBe(1)
+
+    app.engine.progress(412_000_000)
+    expect(lastEngineBroadcast(app)).toMatchObject({
+      model: { state: 'downloading', receivedBytes: 412_000_000 },
+      ready: false
+    })
+
+    app.engine.finishDownload()
+    await app.settle()
+    expect(lastEngineBroadcast(app)).toMatchObject({
+      model: { state: 'installed', receivedBytes: 670_478_772, error: null },
+      ready: true,
+      notReadyReason: null
+    })
+  })
+
+  it('does not download a model that is already installed', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    const status = app.invoke('engine:download', true) as EngineStatus
+    expect(app.engine.downloads()).toBe(0)
+    expect(status).toMatchObject({ model: { state: 'installed' }, ready: true })
+  })
+
+  it('reports a failed download in its own words, and a cancelled one as no failure', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'missing' })
+    const { ModelStoreError } = await import('../src/main/engine/model-store')
+
+    app.invoke('engine:download', true)
+    app.engine.failDownload(
+      new ModelStoreError('Not enough free disk space — about 700 MB is needed.')
+    )
+    await app.settle()
+    expect(lastEngineBroadcast(app)).toMatchObject({
+      model: { state: 'failed', error: 'Not enough free disk space — about 700 MB is needed.' },
+      ready: false
+    })
+
+    // Trying again clears the failure; cancelling leaves the parts on disk,
+    // which is where the state then comes from.
+    app.invoke('engine:download', true)
+    expect(lastEngineBroadcast(app)?.model).toMatchObject({ state: 'downloading', error: null })
+    app.engine.setModelState('partial')
+    const cancelled = (await app.invoke('engine:cancel-download', true)) as EngineStatus
+    expect(app.engine.downloadSignal()?.aborted).toBe(true)
+    expect(cancelled.model).toMatchObject({ state: 'partial', error: null })
+    expect(lastEngineBroadcast(app)?.model).toMatchObject({ state: 'partial', error: null })
+  })
+
+  it('removes the model after stopping the engine, but never mid-dictation', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    app.pressShortcut()
+    await expect(app.invoke('engine:remove-model', true)).rejects.toThrow(
+      'Wait for the current dictation to finish before removing the speech model.'
+    )
+    expect(app.engine.removals()).toBe(0)
+
+    app.invoke('dictation:cancel', true)
+    const status = (await app.invoke('engine:remove-model', true)) as EngineStatus
+    expect(app.engine.unload).toHaveBeenCalledTimes(1)
+    expect(app.engine.removals()).toBe(1)
+    expect(status).toMatchObject({ model: { state: 'missing' }, ready: false })
+    expect(lastEngineBroadcast(app)).toMatchObject({ model: { state: 'missing' } })
+  })
+
+  it('tells the window when a saved key makes the cloud ready', async () => {
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none' })
+    app.keySavedOnNextSave()
+    await app.invoke('settings:save', true, { apiKey: 'sk-test' })
+    expect(lastEngineBroadcast(app)).toMatchObject({ engine: 'cloud', ready: true })
+  })
+
+  it('opens History on a first run, and Settings only for a cloud user with no key', async () => {
+    const cases: Array<[Parameters<typeof startApp>[0], string]> = [
+      [{ engine: 'local', modelState: 'missing' }, 'history'],
+      [{ engine: 'local', modelState: 'installed' }, 'history'],
+      [{ engine: 'cloud', apiKeySource: 'none' }, 'settings'],
+      [{ engine: 'cloud', apiKeySource: 'stored' }, 'history']
+    ]
+    for (const [options, page] of cases) {
+      const app = await startApp(options)
+      app.invoke('app:ready', true)
+      expect(app.sentToMain()).toContainEqual({ channel: 'app:navigate', payload: page })
+    }
+  })
+
+  it('stops the engine when Murmur quits', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    app.quit()
+    expect(app.engine.dispose).toHaveBeenCalled()
   })
 })

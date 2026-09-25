@@ -27,7 +27,16 @@
   },
   "dependencies": {
     "koffi": "^2.16.3",
+    "sherpa-onnx-node": "1.13.8",
     "uiohook-napi": "1.5.5"
+  },
+  "overrides": {
+    "sherpa-onnx-darwin-arm64": "1.13.8",
+    "sherpa-onnx-darwin-x64": "1.13.8",
+    "sherpa-onnx-linux-arm64": "1.13.8",
+    "sherpa-onnx-linux-x64": "1.13.8",
+    "sherpa-onnx-win-ia32": "1.13.8",
+    "sherpa-onnx-win-x64": "1.13.8"
   },
   "allowScripts": {
     "uiohook-napi@1.5.5": true,

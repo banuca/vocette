@@ -28,10 +28,17 @@ function devCspAllowHmr(): Plugin {
 
 export default defineConfig({
   main: {
+    // Dependencies stay `require()`s in the output, so the speech addon is
+    // loaded from node_modules (unpacked from the asar) rather than bundled.
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.ts') }
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          // The on-device speech engine runs as its own utility process,
+          // forked from out/main/engine-worker.js.
+          'engine-worker': resolve(__dirname, 'src/main/engine/worker.ts')
+        }
       }
     }
   },

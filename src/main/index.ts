@@ -11,9 +11,11 @@ import {
   globalShortcut,
   ipcMain,
   nativeImage,
+  net,
   screen,
   session,
   shell,
+  utilityProcess,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   type MenuItemConstructorOptions
@@ -25,6 +27,9 @@ import {
   type TranscriptionPayload,
   type WorkflowSettings
 } from './dictation-controller'
+import { LocalEngine, type WorkerHandle } from './engine/local-engine'
+import { ModelStore, ModelStoreError, modelsRoot, type DownloadProgress } from './engine/model-store'
+import { LOCAL_MODEL } from './engine/models'
 import { recordHistoryWithRetention } from './history-retention'
 import { migrateLegacyProfile } from './legacy-profile'
 import { HistoryStore } from './history-store'
@@ -33,6 +38,8 @@ import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { SettingsStore } from './settings-store'
 import { TranscriptionService } from './transcription-service'
+import { decodeWav } from './wav'
+import { engineReady, type EngineStatus, type ModelStatus } from '../shared/engine'
 import { parseVocabulary } from '../shared/vocabulary'
 import {
   autoPasteSupported,
@@ -82,8 +89,24 @@ let shortcutController!: ShortcutBackend
 let dictation!: DictationController
 let foreground!: TargetTracker
 let capabilities!: CapabilityMap
+let modelStore!: ModelStore
+let localEngine!: LocalEngine
 
 const transcriber = new TranscriptionService()
+
+interface ModelDownload {
+  controller: AbortController
+  progress: DownloadProgress
+  /** Settles, never rejects, once the download has stopped for any reason. */
+  done: Promise<void>
+}
+
+/** The model download this session is running, if any. */
+let modelDownload: ModelDownload | null = null
+/** Why the last download failed, until another starts or the model is removed. */
+let modelDownloadError: string | null = null
+/** The last engine status sent to the window, so an unchanged one is not sent again. */
+let lastEngineStatus = ''
 
 let isQuitting = false
 let mainWindowReady = false
@@ -202,6 +225,7 @@ function showMain(page: Page = 'history'): void {
 
 function workflowSettings(): WorkflowSettings {
   const settings = settingsStore.getInternal()
+  const status = engineStatus()
   return {
     // Resolved here, once: the controller is told the mode actually in force,
     // never the preference the platform cannot honour.
@@ -212,11 +236,114 @@ function workflowSettings(): WorkflowSettings {
     spokenCorrections: settings.spokenCorrections,
     spokenFormatting: settings.spokenFormatting,
     playSounds: settings.playSounds,
-    model: settings.model,
+    engine: settings.engine,
+    // History names what did the work: the on-device model, or the provider
+    // model the user chose.
+    model: settings.engine === 'local' ? LOCAL_MODEL.id : settings.model,
     language: settings.language,
     vocabulary: parseVocabulary(settings.vocabulary),
     microphoneId: settings.microphoneId,
-    apiKeyConfigured: hasApiKey(settingsStore.getPublic())
+    transcriptionReady: status.ready,
+    notReadyReason: status.notReadyReason
+  }
+}
+
+/**
+ * The on-device model as this session knows it: a download in progress or
+ * just failed, and otherwise whatever is on disk. Reading the disk costs a few
+ * file sizes and one small marker file — never a hash.
+ */
+function modelStatus(): ModelStatus {
+  const { id, totalBytes } = LOCAL_MODEL
+  if (modelDownload) {
+    const { phase, receivedBytes } = modelDownload.progress
+    return { id, state: phase, receivedBytes, totalBytes, error: null }
+  }
+  if (modelDownloadError) {
+    return { id, state: 'failed', receivedBytes: 0, totalBytes, error: modelDownloadError }
+  }
+  const state = modelStore.state(id)
+  return { id, state, receivedBytes: state === 'installed' ? totalBytes : 0, totalBytes, error: null }
+}
+
+function engineStatus(): EngineStatus {
+  const settings = settingsStore.getPublic()
+  const model = modelStatus()
+  return { engine: settings.engine, model, ...engineReady(settings, model.state) }
+}
+
+/**
+ * Tells the window whenever readiness or the download changes. Callers need
+ * not know whether anything did: an unchanged status is not sent again.
+ * Download progress arrives already throttled by the model store.
+ */
+function broadcastEngineStatus(): void {
+  const status = engineStatus()
+  const serialised = JSON.stringify(status)
+  if (serialised === lastEngineStatus) return
+  lastEngineStatus = serialised
+  mainWindow?.webContents.send('engine:status', status)
+}
+
+/**
+ * Starts the model download unless one is running or the model is already
+ * installed. Progress and the outcome are broadcast.
+ */
+function startModelDownload(): void {
+  if (modelDownload) return
+  modelDownloadError = null
+  if (modelStore.state(LOCAL_MODEL.id) === 'installed') {
+    broadcastEngineStatus()
+    return
+  }
+  const controller = new AbortController()
+  const download: ModelDownload = {
+    controller,
+    progress: { phase: 'downloading', receivedBytes: 0, totalBytes: LOCAL_MODEL.totalBytes },
+    done: Promise.resolve()
+  }
+  modelDownload = download
+  download.done = modelStore
+    .download(
+      LOCAL_MODEL.id,
+      (progress) => {
+        download.progress = progress
+        broadcastEngineStatus()
+      },
+      controller.signal
+    )
+    .catch((error: unknown) => {
+      // A cancelled download is not a failure: its parts stay for a resume,
+      // and the state read from disk says so.
+      if (controller.signal.aborted) return
+      modelDownloadError =
+        error instanceof ModelStoreError ? error.message : 'The download failed. Try again.'
+    })
+    .finally(() => {
+      if (modelDownload === download) modelDownload = null
+      broadcastEngineStatus()
+    })
+  broadcastEngineStatus()
+}
+
+/** Stops a running download and waits until its files are closed. */
+async function stopModelDownload(): Promise<void> {
+  const download = modelDownload
+  if (!download) return
+  download.controller.abort()
+  await download.done
+}
+
+/** The speech-engine utility process. Lives beside index.js in the build. */
+function spawnEngineWorker(): WorkerHandle {
+  const child = utilityProcess.fork(join(__dirname, 'engine-worker.js'), [], {
+    serviceName: 'Murmur speech engine'
+  })
+  return {
+    postMessage: (message) => child.postMessage(message),
+    kill: () => void child.kill(),
+    onMessage: (listener) => void child.on('message', listener),
+    onExit: (listener) => void child.on('exit', listener)
   }
 }
 
@@ -305,7 +432,19 @@ async function pruneHistoryAtStartup(): Promise<unknown> {
   }
 }
 
-function transcribe(payload: TranscriptionPayload, signal: AbortSignal): Promise<string> {
+async function transcribe(payload: TranscriptionPayload, signal: AbortSignal): Promise<string> {
+  if (payload.engine === 'local') {
+    // Read here, not by the addon: its WAV readers do not work inside
+    // Electron. A recording that is not the recorder's own WAV — its audio
+    // preparation fell back to the original container — cannot be used.
+    const wav = decodeWav(payload.audio)
+    if (!wav) {
+      throw new Error('This recording could not be read for on-device transcription. Try again.')
+    }
+    // The decoded samples are a fresh copy, handed to the engine outright;
+    // the controller keeps the recording itself for Retry.
+    return localEngine.transcribe(wav.samples, wav.sampleRate, signal)
+  }
   return transcriber.transcribe({
     audio: payload.audio,
     mimeType: payload.mimeType,
@@ -626,6 +765,8 @@ function registerIpc(): void {
     // A saved key, or a changed shortcut, can change what the system allows.
     refreshCapabilities()
     rebuildTrayMenu()
+    // A new engine or key changes whether a dictation can be transcribed.
+    broadcastEngineStatus()
     return result
   })
 
@@ -633,12 +774,49 @@ function registerIpc(): void {
     if (!fromMain(event)) throw new Error('Forbidden.')
     const result = settingsStore.clearApiKey()
     refreshCapabilities()
+    broadcastEngineStatus()
     return result
   })
 
   ipcMain.handle('settings:clear-session-key', (event) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
-    return settingsStore.clearSessionApiKey()
+    const result = settingsStore.clearSessionApiKey()
+    broadcastEngineStatus()
+    return result
+  })
+
+  ipcMain.handle('engine:get-status', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return engineStatus()
+  })
+  // Starts and returns at once; progress and the outcome follow as
+  // `engine:status` broadcasts.
+  ipcMain.handle('engine:download', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    startModelDownload()
+    return engineStatus()
+  })
+  ipcMain.handle('engine:cancel-download', async (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    // What has arrived stays on disk, so the next download resumes from it.
+    await stopModelDownload()
+    return engineStatus()
+  })
+  ipcMain.handle('engine:remove-model', async (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    if (dictation.isBusy()) {
+      throw new Error('Wait for the current dictation to finish before removing the speech model.')
+    }
+    await stopModelDownload()
+    // The worker holds the model in memory and may hold its files open.
+    localEngine.unload()
+    modelDownloadError = null
+    try {
+      await modelStore.remove(LOCAL_MODEL.id)
+    } finally {
+      broadcastEngineStatus()
+    }
+    return engineStatus()
   })
 
   ipcMain.handle('platform:status', (event) => {
@@ -810,6 +988,18 @@ async function bootstrap(): Promise<void> {
   })
   settingsStore = new SettingsStore(join(userData, 'settings.json'))
   historyStore = new HistoryStore(join(userData, 'history.json'))
+  modelStore = new ModelStore({
+    root: modelsRoot({ env: process.env, platform: process.platform, userData }),
+    // Chromium's network stack: the system proxy and certificate store, which
+    // a managed network's proxy and TLS inspection both need.
+    fetch: (url, init) => net.fetch(url, init)
+  })
+  // Nothing starts here: the worker is spawned by the first dictation that
+  // needs it, and killed again once it has been idle for a while.
+  localEngine = new LocalEngine({
+    spawn: spawnEngineWorker,
+    modelDir: modelStore.path(LOCAL_MODEL.id)
+  })
   // Subscribed before the first write of the session, so a failure during the
   // startup retention pass is already reflected when the tray and window
   // appear. The renderer re-reads the status on load, so an update sent before
@@ -870,7 +1060,10 @@ async function bootstrap(): Promise<void> {
 
   const startsInBackground = process.argv.includes('--background')
   if (!startsInBackground) {
-    showMain(hasApiKey(settingsStore.getPublic()) ? 'history' : 'settings')
+    // History carries the setup guidance, so that is where a first run lands.
+    // Only a cloud user with no key has nothing to do but open Settings.
+    const settings = settingsStore.getPublic()
+    showMain(settings.engine === 'cloud' && !hasApiKey(settings) ? 'settings' : 'history')
   }
 
   // A recovered or damaged data file is worth telling the user about — the old
@@ -945,6 +1138,9 @@ if (!app.requestSingleInstanceLock()) {
 app.on('before-quit', (event) => {
   isQuitting = true
   dictation?.shutdown()
+  // A download stopped here resumes from its part files next time.
+  modelDownload?.controller.abort()
+  localEngine?.dispose()
   shortcutController?.stop()
   globalShortcut.unregisterAll()
   captureTimeout = clearTimer(captureTimeout)

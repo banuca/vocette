@@ -90,7 +90,8 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
   const renderSetup = (): void => {
     if (!setupHost) return
     const steps = setupSteps({
-      apiKeySource: context.settings.apiKeySource,
+      ready: context.engine.ready,
+      notReadyReason: context.engine.notReadyReason,
       capabilities: context.platform.capabilities,
       microphone: context.microphone
     })

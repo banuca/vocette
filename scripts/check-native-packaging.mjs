@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
- * Checks that the two native modules survived packaging, for the architecture
+ * Checks that the native modules survived packaging, for the architecture
  * that was actually built.
  *
- * This exists because both failure modes are silent. koffi and uiohook-napi
+ * This exists because every failure mode is silent. koffi and uiohook-napi
  * load a `.node` file from disk at require time; if `asarUnpack` stops matching
  * them they end up inside the archive, and the app still starts — it just
  * quietly loses the global shortcut and every paste-target check, which is
- * exactly the class of defect that shipped once already.
+ * exactly the class of defect that shipped once already. The speech engine is
+ * the same: packed into the archive, it only fails when the first on-device
+ * dictation tries to load it.
  *
  * Run after `electron-builder`. It inspects the unpacked application directory
  * rather than the installer, so it works the same on all three platforms.
@@ -73,7 +75,18 @@ const REQUIRED = [
       UIOHOOK_DIRECTORY,
       'uiohook-napi.node'
     )
-  }
+  },
+  // The speech engine: the addon and the ONNX Runtime it loads beside it.
+  // Windows x64 only for now — the only platform the engine has been run on.
+  // The macOS and Linux packages (sherpa-onnx-darwin-*, sherpa-onnx-linux-*)
+  // ship differently named libraries that have not been checked, so they are
+  // not guessed at here.
+  ...(platform === 'win32' && arch === 'x64'
+    ? ['sherpa-onnx.node', 'onnxruntime.dll'].map((file) => ({
+        label: `sherpa-onnx-win-x64 ${file}`,
+        relative: join('app.asar.unpacked', 'node_modules', 'sherpa-onnx-win-x64', file)
+      }))
+    : [])
 ]
 
 const roots = unpackedRoots()

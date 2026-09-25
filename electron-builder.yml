@@ -17,11 +17,17 @@ extraResources:
       - icon.png
       - tray.png
 
-# Both native modules must stay outside the asar: koffi and uiohook-napi load
-# real files from disk at runtime and cannot be read out of an archive.
+# The native modules must stay outside the asar: koffi, uiohook-napi and the
+# speech engine load real files from disk at runtime and cannot be read out of
+# an archive. For the speech engine that is the platform package holding
+# sherpa-onnx.node and its DLLs (sherpa-onnx-win-x64 and its siblings); with
+# nothing unpacked it fails with "Could not find sherpa-onnx-node", the loader
+# hiding the real error. Its JavaScript wrapper, sherpa-onnx-node, matches
+# too — harmless, and the wrapper finds its sibling by relative path either way.
 asarUnpack:
   - '**/node_modules/uiohook-napi/**'
   - '**/node_modules/koffi/**'
+  - '**/node_modules/sherpa-onnx-*/**'
 
 # uiohook-napi and koffi ship N-API prebuilds, which are ABI-stable across
 # Electron versions and selected at require time. Rebuilding from source would

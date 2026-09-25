@@ -24,11 +24,21 @@ function capabilities(overrides: Partial<CapabilityMap> = {}): CapabilityMap {
   }
 }
 
+const NEEDS_KEY = 'Add your API key in Settings before recording.'
+const NEEDS_MODEL = 'Download the speech model in Settings first.'
+
 const input = (overrides: Partial<SetupInput> = {}): SetupInput => ({
-  apiKeySource: 'stored',
+  ready: true,
+  notReadyReason: null,
   capabilities: capabilities(),
   microphone: 'granted',
   ...overrides
+})
+
+/** Transcription not set up, for the reason given. */
+const notReady = (reason: string | null = NEEDS_KEY): Partial<SetupInput> => ({
+  ready: false,
+  notReadyReason: reason
 })
 
 const ids = (value: SetupInput): string[] => setupSteps(value).map((step) => step.id)
@@ -38,15 +48,27 @@ describe('setupSteps', () => {
     expect(setupSteps(input())).toEqual([])
   })
 
-  it('asks for a key first, and treats it as blocking', () => {
-    const steps = setupSteps(input({ apiKeySource: 'none' }))
-    expect(steps[0]?.id).toBe('api-key')
+  it('asks for what transcription is missing first, and treats it as blocking', () => {
+    const steps = setupSteps(input(notReady(NEEDS_KEY)))
+    expect(steps[0]?.id).toBe('transcription')
+    expect(steps[0]?.detail).toBe(NEEDS_KEY)
     expect(steps[0]?.action).toEqual({ kind: 'navigate-settings', label: 'Open Settings' })
     expect(setupIsBlocking(steps)).toBe(true)
   })
 
-  it('accepts a session key as done', () => {
-    expect(ids(input({ apiKeySource: 'session' }))).not.toContain('api-key')
+  it('names the speech model when that is what is missing', () => {
+    // The on-device engine needs no key, so the step must not ask for one.
+    const steps = setupSteps(input(notReady(NEEDS_MODEL)))
+    expect(steps[0]?.detail).toBe(NEEDS_MODEL)
+    expect(steps[0]?.detail).not.toMatch(/API key/iu)
+  })
+
+  it('still explains itself if not-ready arrives without a reason', () => {
+    expect(setupSteps(input(notReady(null)))[0]?.detail).toBe('Transcription is not set up yet.')
+  })
+
+  it('clears once transcription is ready, however it became so', () => {
+    expect(ids(input({ ready: true, notReadyReason: null }))).not.toContain('transcription')
   })
 
   it('raises a blocked microphone, with the pane that unblocks it', () => {
@@ -105,19 +127,21 @@ describe('setupSteps', () => {
     expect(steps).toEqual([])
   })
 
-  it('warns that a key cannot be saved, but only before one is in use', () => {
+  it('warns that a key cannot be saved, but only while transcription is not set up', () => {
     const unusable = capabilities({ secureKeyStorage: unavailable('No keyring here.') })
-    expect(ids(input({ apiKeySource: 'none', capabilities: unusable }))).toContain('secure-storage')
-    expect(ids(input({ apiKeySource: 'session', capabilities: unusable }))).not.toContain(
+    expect(ids(input({ ...notReady(NEEDS_KEY), capabilities: unusable }))).toContain(
       'secure-storage'
     )
+    // A session key in use makes the cloud engine ready: the user has seen
+    // and answered this already.
+    expect(ids(input({ ready: true, capabilities: unusable }))).not.toContain('secure-storage')
   })
 
   it('lists several outstanding items in the order they have to be dealt with', () => {
     expect(
       ids(
         input({
-          apiKeySource: 'none',
+          ...notReady(NEEDS_KEY),
           microphone: 'denied',
           capabilities: capabilities({
             globalToggle: needsPermission('Grant Input Monitoring.', 'input-monitoring'),
@@ -126,7 +150,13 @@ describe('setupSteps', () => {
           })
         })
       )
-    ).toEqual(['api-key', 'microphone', 'input-monitoring', 'accessibility', 'secure-storage'])
+    ).toEqual([
+      'transcription',
+      'microphone',
+      'input-monitoring',
+      'accessibility',
+      'secure-storage'
+    ])
   })
 
   it('reports nothing blocking when only permissions are outstanding', () => {

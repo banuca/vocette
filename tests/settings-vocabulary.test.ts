@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
+import type { EngineStatus } from '../src/shared/engine'
 import type { PublicSettings } from '../src/shared/types'
 
 /**
@@ -13,6 +14,20 @@ import type { PublicSettings } from '../src/shared/types'
  * settings change arriving from elsewhere, and that the note tells the truth
  * about which biasing channel the current model and endpoint will use.
  */
+
+/** Cloud, with a key in use: these pages are exercised as they were before the on-device engine. */
+const TEST_ENGINE: EngineStatus = {
+  engine: 'cloud',
+  model: {
+    id: 'parakeet-tdt-0.6b-v3-int8',
+    state: 'missing',
+    receivedBytes: 0,
+    totalBytes: 670_478_772,
+    error: null
+  },
+  ready: true,
+  notReadyReason: null
+}
 
 const TEST_PLATFORM: PlatformStatus = {
   platform: 'windows',
@@ -122,6 +137,7 @@ const SELECTORS = [
 
 function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
   return {
+    engine: 'cloud',
     shortcut: { keys: [29, 42] },
     holdDelayMs: 250,
     recordingMode: 'hold',
@@ -156,10 +172,12 @@ async function makeHarness(overrides: Partial<PublicSettings> = {}) {
     history: [],
     appInfo: { version: '0.4.0', platform: 'win32', platformStatus: TEST_PLATFORM },
     platform: TEST_PLATFORM,
+    engine: TEST_ENGINE,
     microphone: 'unknown',
     setHeading: vi.fn(),
     applySettings: vi.fn(),
     applyPlatform: vi.fn(),
+    applyEngine: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }

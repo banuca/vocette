@@ -6,6 +6,7 @@ import type {
   RecorderAudioPayload,
   RecorderErrorPayload,
   RecorderStartedPayload,
+  TranscriptionEngine,
   WorkflowStatus
 } from '../shared/types'
 
@@ -46,12 +47,18 @@ export interface WorkflowSettings {
   spokenCorrections: boolean
   spokenFormatting: boolean
   playSounds: boolean
+  /** Which engine transcribes this take. */
+  engine: TranscriptionEngine
+  /** The model that will transcribe, as History records it. */
   model: string
   language: string
   /** Parsed once by the caller; the controller only forwards it. */
   vocabulary: string[]
   microphoneId: string
-  apiKeyConfigured: boolean
+  /** Whether the chosen engine has what it needs: its model, or a key. */
+  transcriptionReady: boolean
+  /** What to tell the user when it has not, already a sentence. */
+  notReadyReason: string | null
 }
 
 /** Foreground-window verdict taken at paste time (null = tracking unavailable). */
@@ -69,6 +76,11 @@ export interface ForegroundState {
 }
 
 export interface TranscriptionPayload {
+  /**
+   * Taken from the same settings read as everything else in this take, so a
+   * take is transcribed by the engine History will name.
+   */
+  engine: TranscriptionEngine
   audio: Uint8Array
   mimeType: string
   durationMs: number
@@ -187,8 +199,10 @@ export class DictationController {
     this.statusResetTimer = clearTimer(this.statusResetTimer)
 
     const settings = this.deps.getSettings()
-    if (!settings.apiKeyConfigured) {
-      this.fail('Add your own API key in Settings before recording.', true)
+    if (!settings.transcriptionReady) {
+      // The reason names what is missing — the speech model, or a key — so
+      // the user is not sent looking for the wrong thing.
+      this.fail(settings.notReadyReason ?? 'Transcription is not set up yet.', true)
       return
     }
 
@@ -425,10 +439,12 @@ export class DictationController {
 
     try {
       const settings = this.deps.getSettings()
-      // Only the audio and its shape travel to the provider; how this take is
-      // to be delivered afterwards is nobody else's business.
+      // Only the audio, its shape and the engine that should hear it leave
+      // here; how this take is to be delivered afterwards is nobody else's
+      // business.
       const rawText = await this.deps.transcribe(
         {
+          engine: settings.engine,
           audio: attempt.take.audio,
           mimeType: attempt.take.mimeType,
           durationMs: attempt.take.durationMs,

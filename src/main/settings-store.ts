@@ -16,12 +16,14 @@ import {
 } from '../shared/shortcuts'
 import {
   RETENTION_OPTIONS,
+  TRANSCRIPTION_ENGINES,
   TRANSCRIPTION_MODELS,
   THEMES,
   type ApiKeySource,
   type PublicSettings,
   type SettingsUpdate,
-  type Theme
+  type Theme,
+  type TranscriptionEngine
 } from '../shared/types'
 import { RECORDING_MODES, type RecordingMode } from '../shared/capabilities'
 import { clampVocabulary } from '../shared/vocabulary'
@@ -32,6 +34,7 @@ export const SETTINGS_VERSION = 5
 
 export interface StoredSettings {
   version: number
+  engine: TranscriptionEngine
   shortcut: ShortcutChord
   holdDelayMs: number
   recordingMode: RecordingMode
@@ -54,6 +57,9 @@ export interface StoredSettings {
 
 export const DEFAULT_SETTINGS: StoredSettings = {
   version: SETTINGS_VERSION,
+  // A fresh install transcribes on this PC: nothing to sign up for, and no
+  // recording leaves the machine unless the user chooses a cloud provider.
+  engine: 'local',
   shortcut: DEFAULT_CHORD,
   holdDelayMs: DEFAULT_HOLD_DELAY_MS,
   recordingMode: 'hold',
@@ -81,6 +87,7 @@ const holdDelaySet = new Set<number>(HOLD_DELAY_OPTIONS)
 const modelSet = new Set<string>(TRANSCRIPTION_MODELS)
 const recordingModeSet = new Set<string>(RECORDING_MODES)
 const themeSet = new Set<string>(THEMES)
+const engineSet = new Set<string>(TRANSCRIPTION_ENGINES)
 /** A model name for custom endpoints: provider slug, letters/digits/dots/dashes. */
 const CUSTOM_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u
 
@@ -145,6 +152,7 @@ export function normaliseSettings(value: unknown): StoredSettings {
 
   return {
     version: SETTINGS_VERSION,
+    engine: storedEngine(candidate),
     shortcut,
     recordingMode:
       typeof candidate.recordingMode === 'string' && recordingModeSet.has(candidate.recordingMode)
@@ -211,6 +219,22 @@ export function normaliseSettings(value: unknown): StoredSettings {
     encryptedApiKey:
       typeof candidate.encryptedApiKey === 'string' ? candidate.encryptedApiKey : ''
   }
+}
+
+/**
+ * The engine a settings file asks for. Added within v5, so no version bump: a
+ * file that predates it has no `engine`. A file that already holds a saved key
+ * belongs to someone whose cloud dictation works today, and moving them to a
+ * model they have not downloaded would break it — so they keep the cloud.
+ * Everyone else starts on this PC.
+ */
+function storedEngine(candidate: Record<string, unknown>): TranscriptionEngine {
+  if (typeof candidate.engine === 'string' && engineSet.has(candidate.engine)) {
+    return candidate.engine as TranscriptionEngine
+  }
+  const hasSavedKey =
+    typeof candidate.encryptedApiKey === 'string' && candidate.encryptedApiKey.length > 0
+  return hasSavedKey ? 'cloud' : DEFAULT_SETTINGS.engine
 }
 
 export class SettingsStore {
@@ -286,6 +310,11 @@ export class SettingsStore {
   }
 
   update(update: SettingsUpdate): PublicSettings {
+    if (typeof update.engine === 'string' && engineSet.has(update.engine)) {
+      // Kept whatever the model or key situation: readiness is reported on
+      // its own, so an engine may be chosen before it has been set up.
+      this.settings.engine = update.engine
+    }
     if (update.shortcut !== undefined) {
       const chord = normaliseChord(update.shortcut)
       if (!chord) throw new Error('That shortcut could not be read.')

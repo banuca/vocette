@@ -1,5 +1,4 @@
 import { type CapabilityMap, type SettingsPane } from '../shared/capabilities'
-import type { ApiKeySource } from '../shared/types'
 
 /**
  * First-run guidance.
@@ -10,7 +9,7 @@ import type { ApiKeySource } from '../shared/types'
  * already granted. An empty list means there is nothing left to set up.
  */
 export type SetupStepId =
-  | 'api-key'
+  | 'transcription'
   | 'microphone'
   | 'input-monitoring'
   | 'accessibility'
@@ -34,7 +33,10 @@ export interface SetupStep {
 }
 
 export interface SetupInput {
-  apiKeySource: ApiKeySource
+  /** Whether the chosen engine can transcribe: its model, or a key, is in place. */
+  ready: boolean
+  /** What is missing, already a sentence — the speech model, or a key. */
+  notReadyReason: string | null
   capabilities: CapabilityMap
   microphone: MicrophoneAccess
 }
@@ -42,13 +44,13 @@ export interface SetupInput {
 export function setupSteps(input: SetupInput): SetupStep[] {
   const steps: SetupStep[] = []
 
-  if (input.apiKeySource === 'none') {
+  if (!input.ready) {
+    // The reason names what is missing, so one step serves both engines
+    // without guessing which of them the user chose.
     steps.push({
-      id: 'api-key',
-      title: 'Add your transcription API key',
-      detail:
-        'Murmur has no shared backend. Recordings go to the provider you ' +
-        'choose, using your own key.',
+      id: 'transcription',
+      title: 'Set up transcription',
+      detail: input.notReadyReason ?? 'Transcription is not set up yet.',
       action: { kind: 'navigate-settings', label: 'Open Settings' },
       blocking: true
     })
@@ -92,12 +94,9 @@ export function setupSteps(input: SetupInput): SetupStep[] {
     })
   }
 
-  // Only worth raising while there is no key yet: with a session key already
+  // Only worth raising while transcription is not set up: with a key already
   // in use the user has seen and answered this.
-  if (
-    input.capabilities.secureKeyStorage.state !== 'available' &&
-    input.apiKeySource === 'none'
-  ) {
+  if (input.capabilities.secureKeyStorage.state !== 'available' && !input.ready) {
     steps.push({
       id: 'secure-storage',
       title: 'Your key cannot be saved on this system',

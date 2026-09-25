@@ -101,7 +101,18 @@ export type Theme = 'dark' | 'light'
 
 export const THEMES: readonly Theme[] = ['dark', 'light']
 
+/**
+ * Where speech becomes text. `local` runs the downloaded speech model on this
+ * PC and sends nothing anywhere; `cloud` sends the recording to the
+ * OpenAI-compatible provider the user configured, with their own key.
+ */
+export type TranscriptionEngine = 'local' | 'cloud'
+
+export const TRANSCRIPTION_ENGINES: readonly TranscriptionEngine[] = ['local', 'cloud']
+
 export interface PublicSettings {
+  /** Which engine transcribes. The model or key it needs may still be missing. */
+  engine: TranscriptionEngine
   shortcut: ShortcutChord
   holdDelayMs: number
   /** What the user asked for; the platform may not be able to honour it. */
@@ -132,6 +143,7 @@ export interface PublicSettings {
 }
 
 export interface SettingsUpdate {
+  engine?: TranscriptionEngine
   shortcut?: ShortcutChord
   holdDelayMs?: number
   recordingMode?: RecordingMode

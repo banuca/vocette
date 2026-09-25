@@ -17,11 +17,13 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
     spokenCorrections: true,
     spokenFormatting: true,
     playSounds: false,
+    engine: 'cloud',
     model: 'gpt-transcribe',
     language: 'en',
     vocabulary: [],
     microphoneId: 'mic-1',
-    apiKeyConfigured: true,
+    transcriptionReady: true,
+    notReadyReason: null,
     ...overrides.settings
   }
 
@@ -114,6 +116,7 @@ describe('hold → recording → release', () => {
 
     expect(deps.transcribe).toHaveBeenCalledWith(
       {
+        engine: 'cloud',
         audio: expect.any(Uint8Array),
         mimeType: 'audio/wav',
         durationMs: 2100,
@@ -805,8 +808,13 @@ describe('errors and retry', () => {
     expect([...audio]).toEqual([0])
   })
 
-  it('sends the user to Settings when no API key is configured', () => {
-    const { controller, deps } = makeHarness({ settings: { apiKeyConfigured: false } })
+  it('sends the user to Settings when transcription is not set up', () => {
+    const { controller, deps } = makeHarness({
+      settings: {
+        transcriptionReady: false,
+        notReadyReason: 'Add your API key in Settings before recording.'
+      }
+    })
     controller.onShortcutPressed()
     expect(deps.sendToRecorder).not.toHaveBeenCalled()
     expect(deps.showMain).toHaveBeenCalledWith('settings')
@@ -1077,12 +1085,50 @@ describe('recording modes and window controls', () => {
     await promise
   })
 
-  it('asks for a key without naming a provider it may not be using', () => {
-    const { controller, deps } = makeHarness({ settings: { apiKeyConfigured: false } })
-    controller.startDictation('ui')
-    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
-      expect.objectContaining({ detail: 'Add your own API key in Settings before recording.' })
+  it('names what is missing, in the words readiness gave it', () => {
+    // The on-device engine needs its model, not a key: asking for a key
+    // there would send the user looking for the wrong thing.
+    for (const reason of [
+      'Download the speech model in Settings first.',
+      'Add your API key in Settings before recording.'
+    ]) {
+      const { controller, deps } = makeHarness({
+        settings: { transcriptionReady: false, notReadyReason: reason }
+      })
+      controller.startDictation('ui')
+      expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+        expect.objectContaining({ phase: 'error', detail: reason })
+      )
+      expect(deps.showMain).toHaveBeenCalledWith('settings')
+      expect(deps.sendToRecorder).not.toHaveBeenCalled()
+    }
+  })
+
+  it('hands the engine the take was set up for to the transcriber', async () => {
+    const { controller, deps, beginRecording } = makeHarness({
+      settings: { engine: 'local', model: 'parakeet-tdt-0.6b-v3-int8' }
+    })
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const promise = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2]),
+      mimeType: 'audio/wav',
+      durationMs: 1200
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+
+    expect(deps.transcribe).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: 'local' }),
+      expect.any(AbortSignal)
     )
-    expect(deps.showMain).toHaveBeenCalledWith('settings')
+    // History names the model that did the work.
+    expect(deps.recordHistory).toHaveBeenCalledWith(
+      'Hello world.',
+      1200,
+      'parakeet-tdt-0.6b-v3-int8'
+    )
   })
 })

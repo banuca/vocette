@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PlatformStatus, SettingsPane } from '../shared/capabilities'
+import type { EngineStatus } from '../shared/engine'
 import type {
   AppInfo,
   HistoryEntry,
@@ -23,6 +24,13 @@ const api = {
   getPlatformStatus: (): Promise<PlatformStatus> => ipcRenderer.invoke('platform:status'),
   openPlatformSettings: (pane: SettingsPane): Promise<void> =>
     ipcRenderer.invoke('platform:open-settings', pane),
+
+  // The on-device engine. Each command answers with the status as it stands;
+  // download progress and every later change arrive through `onEngineStatus`.
+  getEngineStatus: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:get-status'),
+  downloadModel: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:download'),
+  cancelModelDownload: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:cancel-download'),
+  removeModel: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:remove-model'),
 
   // Recording from the window goes to the one dictation controller, exactly
   // like the global shortcut; the renderer never opens a microphone for this.
@@ -57,6 +65,11 @@ const api = {
     const listener = (_event: unknown, status: PlatformStatus): void => callback(status)
     ipcRenderer.on('platform:status', listener)
     return () => ipcRenderer.removeListener('platform:status', listener)
+  },
+  onEngineStatus: (callback: (status: EngineStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: EngineStatus): void => callback(status)
+    ipcRenderer.on('engine:status', listener)
+    return () => ipcRenderer.removeListener('engine:status', listener)
   },
   onHistorySaveStatus: (callback: (status: HistorySaveStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: HistorySaveStatus): void => callback(status)

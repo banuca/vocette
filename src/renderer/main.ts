@@ -10,6 +10,7 @@ import { renderAbout } from './pages/about'
 import { renderHistory } from './pages/history'
 import { renderSettings } from './pages/settings'
 import { effectiveRecordingMode, globalShortcutUsable } from '../shared/capabilities'
+import type { EngineStatus } from '../shared/engine'
 import { chordLabel } from '../shared/keycodes'
 import type { AppInfo, HistoryEntry, Page, PublicSettings, WorkflowStatus } from '../shared/types'
 
@@ -53,11 +54,13 @@ async function mount(): Promise<void> {
   let settings: PublicSettings
   let history: HistoryEntry[]
   let appInfo: AppInfo
+  let engine: EngineStatus
   try {
-    ;[settings, history, appInfo] = await Promise.all([
+    ;[settings, history, appInfo, engine] = await Promise.all([
       window.murmur.getSettings(),
       window.murmur.getHistory(),
-      window.murmur.getAppInfo()
+      window.murmur.getAppInfo(),
+      window.murmur.getEngineStatus()
     ])
   } catch (error) {
     appRoot.innerHTML = `<div class="fatal-error"><h1>Murmur could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
@@ -126,7 +129,8 @@ async function mount(): Promise<void> {
     recordControl.apply({
       status: workflowStatus,
       platform: context.platform,
-      apiKeySource: context.settings.apiKeySource
+      ready: context.engine.ready,
+      notReadyReason: context.engine.notReadyReason
     })
   }
 
@@ -161,6 +165,7 @@ async function mount(): Promise<void> {
     history,
     appInfo,
     platform: appInfo.platformStatus,
+    engine,
     microphone: 'unknown',
     setHeading: (nextTitle, nextSubtitle) => {
       title.textContent = nextTitle
@@ -179,6 +184,16 @@ async function mount(): Promise<void> {
       // promise, so both are refreshed rather than left showing stale claims.
       historyView?.refresh()
       settingsView?.apply(context.settings)
+    },
+    applyEngine: (next) => {
+      const readinessChanged =
+        next.ready !== context.engine.ready ||
+        next.notReadyReason !== context.engine.notReadyReason
+      context.engine = next
+      updateRecordControl()
+      // Download progress arrives several times a second; the setup guidance
+      // only changes with readiness, so History is redrawn only then.
+      if (readinessChanged) historyView?.refresh()
     },
     navigate: (page) => {
       activePage = page
@@ -257,6 +272,10 @@ async function mount(): Promise<void> {
     context.applyPlatform(next)
   })
 
+  window.murmur.onEngineStatus((next) => {
+    context.applyEngine(next)
+  })
+
   window.murmur.onHistoryChanged(() => {
     void context.reloadHistory()
   })
@@ -270,7 +289,7 @@ async function mount(): Promise<void> {
   // guessing with a timeout.
   void window.murmur.announceReady()
 
-  // Neither of these may hold up the window: both only refine what is shown.
+  // None of these may hold up the window: they only refine what is shown.
   void microphoneAccess().then((access) => {
     context.microphone = access
     historyView?.refresh()
@@ -278,6 +297,12 @@ async function mount(): Promise<void> {
   void window.murmur
     .getPlatformStatus()
     .then((next) => context.applyPlatform(next))
+    .catch(() => undefined)
+  // A change broadcast while this window was loading, before it subscribed,
+  // would otherwise be missed until the next one.
+  void window.murmur
+    .getEngineStatus()
+    .then((next) => context.applyEngine(next))
     .catch(() => undefined)
 }
 
