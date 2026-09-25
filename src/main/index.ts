@@ -917,6 +917,12 @@ Nothing was deleted: the old profile is still in ` +
 // run in two different profile folders.
 app.setName('Murmur')
 
+// A separate profile folder for automated runs and side-by-side testing, so a
+// test can never read or overwrite the user's own settings and transcripts.
+// Set before the single-instance lock, which is scoped to this folder.
+const profileOverride = process.env.MURMUR_PROFILE_DIR
+if (profileOverride) app.setPath('userData', profileOverride)
+
 // The desktop portal that grants a Wayland global shortcut identifies the
 // application by its desktop file, so the name has to match what is installed.
 if (process.platform === 'linux') app.setDesktopName('murmur.desktop')
