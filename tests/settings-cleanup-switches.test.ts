@@ -86,6 +86,7 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     model: 'gpt-transcribe',
     language: 'auto',
     vocabulary: '',
+    replacements: '',
     apiEndpoint: '',
     apiKeySource: 'stored',
     ...overrides

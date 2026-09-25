@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import type { EngineStatus } from '../src/shared/engine'
+import { MAX_REPLACEMENT_RULES } from '../src/shared/replacements'
 import type { PublicSettings } from '../src/shared/types'
 
 /**
@@ -132,7 +133,9 @@ const SELECTORS = [
   '#settings-feedback',
   '#vocabulary',
   '#vocabulary-note',
-  '#vocabulary-badge'
+  '#vocabulary-badge',
+  '#replacements',
+  '#replacements-note'
 ]
 
 function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
@@ -154,6 +157,7 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     model: 'gpt-transcribe',
     language: 'en',
     vocabulary: '',
+    replacements: '',
     apiEndpoint: '',
     apiKeySource: 'none',
     ...overrides
@@ -332,5 +336,75 @@ describe('the vocabulary card', () => {
   it('does not warn when every term fits', async () => {
     const { at } = await makeHarness({ vocabulary: 'Kirinde\nITU-T', model: 'whisper-1' })
     expect(at('#vocabulary-note').textContent).not.toContain('not being sent')
+  })
+})
+
+/**
+ * The second box on the same card. The count comes from the parser the
+ * dictation uses, so what the note says is what will apply.
+ */
+describe('the replacements box', () => {
+  it('shows the saved rules, how to write one, and how many there are', async () => {
+    const saved = 'itu => ITU\nmy email => name@example.com'
+    const { at } = await makeHarness({ replacements: saved })
+    expect(at('#replacements').value).toBe(saved)
+    const note = at('#replacements-note').textContent
+    expect(note).toContain('One rule per line: what you say => what you want.')
+    expect(note).toContain('Use \\n for a line break')
+    expect(note).toContain('{date} or {time}')
+    expect(note).toContain('2 rules.')
+  })
+
+  it('says there are no rules yet for an empty box', async () => {
+    const { at } = await makeHarness()
+    expect(at('#replacements-note').textContent).toContain('No rules yet.')
+  })
+
+  it('counts rules and ignored lines as they are typed', async () => {
+    const { at } = await makeHarness()
+    const box = at('#replacements')
+    box.value = 'itu => ITU\n# a comment\nno arrow here\nsign off =>'
+    box.emit('input')
+    // A comment is not a mistake, so only the two broken lines are counted.
+    expect(at('#replacements-note').textContent).toContain('1 rule — 2 lines ignored:')
+  })
+
+  it('says so when the list reaches the most Murmur will use', async () => {
+    const many = Array.from(
+      { length: MAX_REPLACEMENT_RULES + 5 },
+      (_, i) => `word${i} => W${i}`
+    ).join('\n')
+    const { at } = await makeHarness({ replacements: many })
+    expect(at('#replacements-note').textContent).toContain(
+      `${MAX_REPLACEMENT_RULES} rules, the most Murmur will use.`
+    )
+  })
+
+  it('does not lose unsaved rules when settings change out of band', async () => {
+    const { view, at } = await makeHarness({ replacements: 'itu => ITU' })
+    const box = at('#replacements')
+    box.value = 'itu => ITU\nmy email => half-typed@'
+    box.emit('input')
+
+    view.apply(baseSettings({ replacements: 'itu => ITU', playSounds: true }))
+
+    expect(box.value).toBe('itu => ITU\nmy email => half-typed@')
+  })
+
+  it('saves what is typed, and shows the stored rules again once saved', async () => {
+    const { view, at, saveSettings } = await makeHarness()
+    const box = at('#replacements')
+    box.value = 'itu => ITU'
+    box.emit('input')
+
+    at('#save-settings').emit('click')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ replacements: 'itu => ITU' })
+    )
+
+    view.apply(baseSettings({ replacements: 'itu => ITU\nsign off => Alex' }))
+    expect(box.value).toBe('itu => ITU\nsign off => Alex')
   })
 })

@@ -137,6 +137,13 @@ export interface PublicSettings {
    * at the point of use by `parseVocabulary`.
    */
   vocabulary: string
+  /**
+   * Replacement rules and snippets, one `spoken => written` per line, applied
+   * to every transcript after cleanup. Stored verbatim so the text area
+   * round-trips; parsed at the point of use by `parseReplacements`. Unlike
+   * the vocabulary, they never leave this computer.
+   */
+  replacements: string
   /** Empty = api.openai.com. Otherwise an OpenAI-compatible transcription endpoint. */
   apiEndpoint: string
   apiKeySource: ApiKeySource
@@ -160,6 +167,7 @@ export interface SettingsUpdate {
   model?: string
   language?: string
   vocabulary?: string
+  replacements?: string
   apiEndpoint?: string
   apiKey?: string
   /**

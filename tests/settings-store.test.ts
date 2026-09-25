@@ -18,6 +18,7 @@ vi.mock('electron', () => ({
 }))
 
 const { MAX_VOCABULARY_CHARS } = await import('../src/shared/vocabulary')
+const { MAX_REPLACEMENTS_CHARS } = await import('../src/shared/replacements')
 const { KEY } = await import('../src/shared/keycodes')
 const { DEFAULT_SETTINGS, SETTINGS_VERSION, SettingsStore, normaliseSettings } = await import(
   '../src/main/settings-store'
@@ -641,5 +642,90 @@ describe('vocabulary', () => {
 
   it('is defaulted empty', () => {
     expect(DEFAULT_SETTINGS.vocabulary).toBe('')
+  })
+})
+
+describe('replacements', () => {
+  it('default to empty, for a fresh install and for a file that predates the field', () => {
+    expect(DEFAULT_SETTINGS.replacements).toBe('')
+    expect(new SettingsStore(file).getPublic().replacements).toBe('')
+
+    const v5 = { ...DEFAULT_SETTINGS, vocabulary: 'Kirinde', theme: 'light' } as Record<
+      string,
+      unknown
+    >
+    delete v5.replacements
+    const result = normaliseSettings(v5)
+    expect(result.replacements).toBe('')
+    // Adding the field must not disturb anything else in the file.
+    expect(result.vocabulary).toBe('Kirinde')
+    expect(result.theme).toBe('light')
+    expect(result.version).toBe(SETTINGS_VERSION)
+  })
+
+  it('ignore a value that is not a string on the load path', () => {
+    expect(normaliseSettings({ replacements: ['itu => ITU'] }).replacements).toBe('')
+    expect(normaliseSettings({ replacements: 42 }).replacements).toBe('')
+    expect(normaliseSettings({ replacements: null }).replacements).toBe('')
+  })
+
+  it('are clamped on a line boundary on the load path, not discarded', () => {
+    const rule = 'my email => name@example.com'
+    const result = normaliseSettings({ replacements: `${rule}\n`.repeat(1000) })
+    expect(result.replacements.length).toBeLessThanOrEqual(MAX_REPLACEMENTS_CHARS)
+    expect(result.replacements.length).toBeGreaterThan(0)
+    // Half a rule would still parse, and paste half an address.
+    for (const line of result.replacements.split('\n')) expect(line).toBe(rule)
+  })
+
+  it('keep nothing rather than half a rule when one line overruns the ceiling', () => {
+    const raw = `sign off => ${'x'.repeat(MAX_REPLACEMENTS_CHARS)}`
+    expect(normaliseSettings({ replacements: raw }).replacements).toBe('')
+  })
+
+  it('are saved exactly as typed and read back after a restart', () => {
+    const store = new SettingsStore(file)
+    // Verbatim: `\n` stays the two characters typed until a dictation parses it.
+    const list =
+      "itu => ITU\r\nsign off => Best regards,\\nAlex\n# a comment\ntoday's date => {date}"
+    expect(store.update({ replacements: list }).replacements).toBe(list)
+    expect(JSON.parse(readFileSync(file, 'utf8')).replacements).toBe(list)
+
+    const reopened = new SettingsStore(file)
+    expect(reopened.getPublic().replacements).toBe(list)
+    expect(reopened.getInternal().replacements).toBe(list)
+  })
+
+  it('are clamped on a line boundary on save, without throwing', () => {
+    const store = new SettingsStore(file)
+    const rule = 'console log => console.log()'
+    const saved = store.update({ replacements: `${rule}\n`.repeat(1000) })
+    expect(saved.replacements.length).toBeLessThanOrEqual(MAX_REPLACEMENTS_CHARS)
+    expect(saved.replacements.length).toBeGreaterThan(0)
+    for (const line of saved.replacements.split('\n')) expect(line).toBe(rule)
+    // What was clamped is what persisted.
+    expect(new SettingsStore(file).getPublic().replacements).toBe(saved.replacements)
+  })
+
+  it('are left alone by an update that does not mention them', () => {
+    const store = new SettingsStore(file)
+    store.update({ replacements: 'itu => ITU' })
+    const after = store.update({ vocabulary: 'Kirinde' })
+    expect(after.replacements).toBe('itu => ITU')
+    expect(after.vocabulary).toBe('Kirinde')
+  })
+
+  it('ignore a value that is not a string on save', () => {
+    const store = new SettingsStore(file)
+    store.update({ replacements: 'itu => ITU' })
+    store.update({ replacements: 42 as unknown as string })
+    expect(store.getPublic().replacements).toBe('itu => ITU')
+  })
+
+  it('can be emptied again, and stay empty after a restart', () => {
+    const store = new SettingsStore(file)
+    store.update({ replacements: 'itu => ITU' })
+    expect(store.update({ replacements: '' }).replacements).toBe('')
+    expect(new SettingsStore(file).getPublic().replacements).toBe('')
   })
 })

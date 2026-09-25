@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { cleanupTranscript } from '../shared/cleanup'
+import { applyReplacements, type ReplacementRule } from '../shared/replacements'
 import type { RecordingMode } from '../shared/capabilities'
 import type {
   Page,
@@ -54,6 +55,8 @@ export interface WorkflowSettings {
   language: string
   /** Parsed once by the caller; the controller only forwards it. */
   vocabulary: string[]
+  /** Parsed once by the caller, like the vocabulary; the controller only applies them. */
+  replacements: ReplacementRule[]
   microphoneId: string
   /** Whether the chosen engine has what it needs: its model, or a key. */
   transcriptionReady: boolean
@@ -460,12 +463,16 @@ export class DictationController {
       // ones also run for Automatic when the text reads as English. The old
       // gate cleaned explicit English only, so Automatic got nothing while
       // the switch showed as on.
-      const text = cleanupTranscript(rawText, {
+      const cleaned = cleanupTranscript(rawText, {
         language: settings.language,
         removeFillers: settings.removeFillers,
         spokenCorrections: settings.spokenCorrections,
         spokenFormatting: settings.spokenFormatting
       })
+      // The user's own rules run last, on the finished text: a phrase matches
+      // what cleanup left, and what they wrote is not capitalised or tidied
+      // afterwards. What is pasted and what history keeps are the same text.
+      const text = applyReplacements(cleaned, settings.replacements)
       if (!text) throw new Error('Only filler words or silence were detected.')
       if (!this.ownsAttempt(attempt)) return
 

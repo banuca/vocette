@@ -51,6 +51,21 @@ All notable changes to this project are documented here. This project adheres to
   Murmur retries once with the terms in the prompt instead, so an unverified
   parameter can cost one request some accuracy but cannot break dictation.
 
+- **Replacements and snippets.** A second box on the Your words card rewrites
+  what you said into what you meant, one `spoken => written` rule per line:
+  `itu => ITU`, `console log => console.log()`, `my email => name@example.com`.
+  `\n` in the written side is a line break, so a spoken trigger can expand into a
+  whole signature or address, and `{date}` and `{time}` become today's date and
+  the time. Rules run on this computer, after cleanup, and are never sent to your
+  provider. They match whole words only (“itu” never fires inside “situation”),
+  ignore capitals, and tolerate a comma the recogniser put between words, but never
+  match across a line break you asked for; the longest phrase wins, and replaced
+  text is never rewritten again. What you wrote goes in exactly as typed — no
+  capital is added, so code keeps its case — and a snippet that spans lines takes
+  the full stop or comma after its trigger with it, so a signature does not end on
+  a stray full stop. The note under the box counts the rules and says how many
+  lines could not be read as one.
+
 ### Fixed
 
 - Cleanup no longer inserts a space after punctuation, which turned `example.com`

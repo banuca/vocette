@@ -1125,10 +1125,11 @@ a:focus-visible {
   color: var(--text-muted);
 }
 
-/* The vocabulary list. Self-contained rather than folded into the shared
-   .field input rule, because it wants a monospace column, a resize grip and a
-   focus ring the shared rule deliberately suppresses. */
-.vocabulary-input {
+/* The vocabulary and replacement lists. Self-contained rather than folded into
+   the shared .field input rule, because they want a monospace column, a resize
+   grip and a focus ring the shared rule deliberately suppresses. */
+.vocabulary-input,
+.replacements-input {
   width: 100%;
   min-height: 108px;
   padding: 8px 10px;
@@ -1142,14 +1143,21 @@ a:focus-visible {
   resize: vertical;
 }
 
-.vocabulary-input:focus-visible {
+.vocabulary-input:focus-visible,
+.replacements-input:focus-visible {
   border-color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.vocabulary-input::placeholder {
+.vocabulary-input::placeholder,
+.replacements-input::placeholder {
   color: var(--text-muted);
+}
+
+/* The second list on the "Your words" card, set off from the note above it. */
+.replacements-field {
+  margin-top: 16px;
 }
 
 /* The vocabulary note sits outside its <label> on purpose: inside, its text is

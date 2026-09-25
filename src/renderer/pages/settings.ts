@@ -29,9 +29,21 @@ import {
   parseVocabulary,
   supportsKeywordList
 } from '../../shared/vocabulary'
+import {
+  MAX_REPLACEMENT_RULES,
+  MAX_SPOKEN_CHARS,
+  MAX_WRITTEN_CHARS,
+  parseReplacements
+} from '../../shared/replacements'
 
 /** Requesting the mic once per session is what makes device labels readable. */
 let microphonePermissionRequested = false
+
+/** How to write a rule. The count that follows it in the note is live. */
+const REPLACEMENTS_HELP =
+  'One rule per line: what you say => what you want. Use \\n for a line break, ' +
+  "{date} or {time} for today's date or the time. Rules apply after cleanup, " +
+  'match whole words, and ignore capitals.'
 
 const CUSTOM_MODEL_OPTION = '__custom__'
 const MIC_TEST_DURATION_MS = 8000
@@ -142,6 +154,10 @@ export function renderSettings(context: AppContext): SettingsView {
           <textarea id="vocabulary" class="vocabulary-input" rows="6" spellcheck="false" autocomplete="off" aria-describedby="vocabulary-note" placeholder="Kirinde&#10;ITU-T&#10;Dataverse&#10;koffi"></textarea>
         </label>
         <small class="field-note" id="vocabulary-note" aria-live="polite"></small>
+        <label class="field field-wide replacements-field"><span>Replacements and snippets</span>
+          <textarea id="replacements" class="replacements-input" rows="6" spellcheck="false" autocomplete="off" aria-describedby="replacements-note" placeholder="itu =&gt; ITU&#10;console log =&gt; console.log()&#10;my email =&gt; name@example.com&#10;sign off =&gt; Best regards,\\nAlex&#10;today's date =&gt; {date}"></textarea>
+        </label>
+        <small class="field-note" id="replacements-note" aria-live="polite"></small>
       </section>
 
       <section class="settings-card">
@@ -258,6 +274,8 @@ export function renderSettings(context: AppContext): SettingsView {
   const vocabulary = query<HTMLTextAreaElement>('#vocabulary')
   const vocabularyNote = query<HTMLElement>('#vocabulary-note')
   const vocabularyBadge = query<HTMLElement>('#vocabulary-badge')
+  const replacements = query<HTMLTextAreaElement>('#replacements')
+  const replacementsNote = query<HTMLElement>('#replacements-note')
 
   /**
    * True once the user has typed in the box and not yet saved.
@@ -266,7 +284,7 @@ export function renderSettings(context: AppContext): SettingsView {
    * switch saves — and each of those repaints this page. Without this flag,
    * `syncControlValues` would overwrite a half-written vocabulary with the
    * saved one. The shortcut editor already makes the same promise through
-   * `pendingKeys`; this is the same promise for the only free-text field long
+   * `pendingKeys`; this is the same promise for a free-text field long
    * enough to hurt when it is lost.
    */
   let vocabularyDirty = false
@@ -315,6 +333,37 @@ export function renderSettings(context: AppContext): SettingsView {
     vocabularyNote.textContent = `${limits} ${model || 'This model'} has no keyword field, so they are added to the transcription prompt, which has room for about ${MAX_PROMPT_TERM_CHARS} characters of terms.${fit}`
   }
 
+  /**
+   * The same promise as `vocabularyDirty`, for the rules box: a list of rules
+   * and snippets is the other free-text field long enough to hurt when an
+   * out-of-band repaint takes it back.
+   */
+  let replacementsDirty = false
+
+  /**
+   * How to write a rule, then how many the box holds right now — counted by
+   * the parser the dictation uses, so the number is the one that will apply.
+   * A line that cannot be a rule is reported rather than left to fail in
+   * silence; the reason covers every way a line can fail, because the count
+   * does not say which one it was.
+   */
+  const paintReplacementsNote = (): void => {
+    if (!replacementsNote) return
+    const { rules, ignored } = parseReplacements(replacements?.value ?? '')
+    const count =
+      rules.length === 0 ? 'No rules yet' : rules.length === 1 ? '1 rule' : `${rules.length} rules`
+    const full = rules.length >= MAX_REPLACEMENT_RULES ? ', the most Murmur will use' : ''
+    const skipped =
+      ignored === 0
+        ? ''
+        : ` — ${ignored} ${ignored === 1 ? 'line' : 'lines'} ignored: a rule needs => with something on both sides, at most ${MAX_SPOKEN_CHARS} characters before it and ${MAX_WRITTEN_CHARS.toLocaleString('en-GB')} after`
+    // textContent, not innerHTML: the rules are user input, and `=>` must
+    // read as typed. Written only when it changes, because the note is a live
+    // region and would otherwise be read out in full on every keystroke.
+    const text = `${REPLACEMENTS_HELP} ${count}${full}${skipped}.`
+    if (replacementsNote.textContent !== text) replacementsNote.textContent = text
+  }
+
   const syncControlValues = (next: PublicSettings): void => {
     settings = next
     if (holdDelay) holdDelay.value = String(next.holdDelayMs)
@@ -356,6 +405,8 @@ export function renderSettings(context: AppContext): SettingsView {
     // outranks the stored shortcut.
     if (vocabulary && !vocabularyDirty) vocabulary.value = next.vocabulary
     paintVocabularyNote()
+    if (replacements && !replacementsDirty) replacements.value = next.replacements
+    paintReplacementsNote()
   }
 
   // --- Capability-driven state --------------------------------------------
@@ -584,6 +635,13 @@ export function renderSettings(context: AppContext): SettingsView {
   // the model, so the note is part of this control's state too.
   endpointInput?.addEventListener('input', paintVocabularyNote)
 
+  // --- Replacements -------------------------------------------------------
+
+  replacements?.addEventListener('input', () => {
+    replacementsDirty = true
+    paintReplacementsNote()
+  })
+
   // --- Microphones --------------------------------------------------------
 
   const populateMicrophones = async (requestPermission: boolean): Promise<void> => {
@@ -781,6 +839,7 @@ export function renderSettings(context: AppContext): SettingsView {
       model,
       language: languageSelect?.value ?? 'en',
       vocabulary: vocabulary?.value ?? '',
+      replacements: replacements?.value ?? '',
       apiEndpoint: endpointInput?.value.trim() ?? '',
       ...(apiKey
         ? { apiKey, apiKeyScope: sessionScope?.checked ? ('session' as const) : ('persist' as const) }
@@ -791,9 +850,10 @@ export function renderSettings(context: AppContext): SettingsView {
       const next = await window.murmur.saveSettings(update)
       context.applySettings(next)
       pendingKeys = null
-      // Saved: the box may now be repainted from the stored value again, and
-      // the clamp is shown by repainting it from what actually persisted.
+      // Saved: the boxes may now be repainted from the stored values again,
+      // and a clamp is shown by repainting them from what actually persisted.
       vocabularyDirty = false
+      replacementsDirty = false
       // Update in place: a full re-render would drop the view reference the
       // shell holds and orphan the capture listener.
       syncControlValues(next)

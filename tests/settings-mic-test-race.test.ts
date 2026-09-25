@@ -145,6 +145,7 @@ async function makeFocusedMicHarness() {
     model: 'gpt-transcribe',
     language: 'en',
     vocabulary: '',
+    replacements: '',
     apiEndpoint: '',
     apiKeySource: 'none'
   }
@@ -327,6 +328,7 @@ describe('settings microphone test ownership', () => {
       model: 'gpt-transcribe',
       language: 'en',
       vocabulary: '',
+      replacements: '',
       apiEndpoint: '',
       apiKeySource: 'none'
     }

@@ -26,6 +26,7 @@ import {
   type TranscriptionEngine
 } from '../shared/types'
 import { RECORDING_MODES, type RecordingMode } from '../shared/capabilities'
+import { clampReplacements } from '../shared/replacements'
 import { clampVocabulary } from '../shared/vocabulary'
 import { assessSecureStorage, type SecureStorageAssessment } from './secure-storage'
 
@@ -51,6 +52,7 @@ export interface StoredSettings {
   model: string
   language: string
   vocabulary: string
+  replacements: string
   apiEndpoint: string
   encryptedApiKey: string
 }
@@ -76,6 +78,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   model: 'gpt-transcribe',
   language: 'en',
   vocabulary: '',
+  replacements: '',
   apiEndpoint: '',
   encryptedApiKey: ''
 }
@@ -215,6 +218,13 @@ export function normaliseSettings(value: unknown): StoredSettings {
       typeof candidate.vocabulary === 'string'
         ? clampVocabulary(candidate.vocabulary)
         : DEFAULT_SETTINGS.vocabulary,
+    // Added within v5, like the vocabulary: absent means no rules. Clamped for
+    // the same reason, on a line boundary, so a cut can never leave half a
+    // snippet behind to be pasted as if it were whole.
+    replacements:
+      typeof candidate.replacements === 'string'
+        ? clampReplacements(candidate.replacements)
+        : DEFAULT_SETTINGS.replacements,
     apiEndpoint,
     encryptedApiKey:
       typeof candidate.encryptedApiKey === 'string' ? candidate.encryptedApiKey : ''
@@ -376,6 +386,9 @@ export class SettingsStore {
     if (isLanguageCode(update.language)) this.settings.language = update.language
     if (typeof update.vocabulary === 'string') {
       this.settings.vocabulary = clampVocabulary(update.vocabulary)
+    }
+    if (typeof update.replacements === 'string') {
+      this.settings.replacements = clampReplacements(update.replacements)
     }
 
     if (typeof update.apiKey === 'string' && update.apiKey.trim()) {

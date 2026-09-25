@@ -21,6 +21,7 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
     model: 'gpt-transcribe',
     language: 'en',
     vocabulary: [],
+    replacements: [],
     microphoneId: 'mic-1',
     transcriptionReady: true,
     notReadyReason: null,
@@ -452,6 +453,59 @@ describe('language-aware cleanup', () => {
         phase: 'error',
         detail: 'Only filler words or silence were detected.'
       })
+    )
+  })
+})
+
+describe('replacements and snippets', () => {
+  it('applies a rule to the delivered and recorded text, after cleanup', async () => {
+    const { controller, deps, beginRecording } = makeHarness({
+      settings: { replacements: [{ spoken: 'itu', written: 'ITU' }] }
+    })
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    deps.transcribe.mockResolvedValue('um itu rocks')
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+
+    const promise = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+
+    // Cleanup took the "um" out; the rule then wrote the capitals it wanted.
+    expect(deps.writeClipboard).toHaveBeenCalledWith('ITU rocks')
+    expect(deps.recordHistory).toHaveBeenCalledWith('ITU rocks', 100, 'gpt-transcribe')
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', detail: 'ITU rocks' })
+    )
+  })
+
+  it('runs after cleanup, so what a rule writes is never recapitalised', async () => {
+    // The other way round, cleanup would have dropped the "um" afterwards and
+    // capitalised the snippet into "Console.log()".
+    const { controller, deps, beginRecording } = makeHarness({
+      settings: { replacements: [{ spoken: 'console log', written: 'console.log()' }] }
+    })
+    deps.transcribe.mockResolvedValue('um console log is broken')
+    const requestId = beginRecording()
+
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+
+    expect(deps.writeClipboard).toHaveBeenCalledWith('console.log() is broken')
+    expect(deps.recordHistory).toHaveBeenCalledWith(
+      'console.log() is broken',
+      100,
+      'gpt-transcribe'
     )
   })
 })

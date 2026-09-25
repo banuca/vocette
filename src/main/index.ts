@@ -40,6 +40,7 @@ import { SettingsStore } from './settings-store'
 import { TranscriptionService } from './transcription-service'
 import { decodeWav } from './wav'
 import { engineReady, type EngineStatus, type ModelStatus } from '../shared/engine'
+import { parseReplacements } from '../shared/replacements'
 import { parseVocabulary } from '../shared/vocabulary'
 import {
   autoPasteSupported,
@@ -242,6 +243,7 @@ function workflowSettings(): WorkflowSettings {
     model: settings.engine === 'local' ? LOCAL_MODEL.id : settings.model,
     language: settings.language,
     vocabulary: parseVocabulary(settings.vocabulary),
+    replacements: parseReplacements(settings.replacements).rules,
     microphoneId: settings.microphoneId,
     transcriptionReady: status.ready,
     notReadyReason: status.notReadyReason
