@@ -109,6 +109,10 @@ export interface PublicSettings {
   hotkeyEnabled: boolean
   autoPaste: boolean
   removeFillers: boolean
+  /** "Scratch that" and "Tuesday, no sorry, Wednesday". English rules only. */
+  spokenCorrections: boolean
+  /** "New line" and "new paragraph". English rules only. */
+  spokenFormatting: boolean
   playSounds: boolean
   launchAtLogin: boolean
   theme: Theme
@@ -134,6 +138,8 @@ export interface SettingsUpdate {
   hotkeyEnabled?: boolean
   autoPaste?: boolean
   removeFillers?: boolean
+  spokenCorrections?: boolean
+  spokenFormatting?: boolean
   playSounds?: boolean
   launchAtLogin?: boolean
   theme?: Theme

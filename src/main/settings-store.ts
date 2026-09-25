@@ -38,6 +38,8 @@ export interface StoredSettings {
   hotkeyEnabled: boolean
   autoPaste: boolean
   removeFillers: boolean
+  spokenCorrections: boolean
+  spokenFormatting: boolean
   playSounds: boolean
   launchAtLogin: boolean
   theme: Theme
@@ -58,6 +60,8 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   hotkeyEnabled: true,
   autoPaste: true,
   removeFillers: true,
+  spokenCorrections: true,
+  spokenFormatting: true,
   playSounds: true,
   launchAtLogin: false,
   theme: 'dark',
@@ -160,6 +164,16 @@ export function normaliseSettings(value: unknown): StoredSettings {
       typeof candidate.removeFillers === 'boolean'
         ? candidate.removeFillers
         : DEFAULT_SETTINGS.removeFillers,
+    // Added within v5, so no version bump: a file that predates them has
+    // neither key, and absent means on — the same as a fresh install.
+    spokenCorrections:
+      typeof candidate.spokenCorrections === 'boolean'
+        ? candidate.spokenCorrections
+        : DEFAULT_SETTINGS.spokenCorrections,
+    spokenFormatting:
+      typeof candidate.spokenFormatting === 'boolean'
+        ? candidate.spokenFormatting
+        : DEFAULT_SETTINGS.spokenFormatting,
     playSounds:
       typeof candidate.playSounds === 'boolean'
         ? candidate.playSounds
@@ -292,6 +306,12 @@ export class SettingsStore {
     if (typeof update.hotkeyEnabled === 'boolean') this.settings.hotkeyEnabled = update.hotkeyEnabled
     if (typeof update.autoPaste === 'boolean') this.settings.autoPaste = update.autoPaste
     if (typeof update.removeFillers === 'boolean') this.settings.removeFillers = update.removeFillers
+    if (typeof update.spokenCorrections === 'boolean') {
+      this.settings.spokenCorrections = update.spokenCorrections
+    }
+    if (typeof update.spokenFormatting === 'boolean') {
+      this.settings.spokenFormatting = update.spokenFormatting
+    }
     if (typeof update.launchAtLogin === 'boolean') this.settings.launchAtLogin = update.launchAtLogin
     if (typeof update.microphoneId === 'string') {
       this.settings.microphoneId = update.microphoneId.slice(0, 512)

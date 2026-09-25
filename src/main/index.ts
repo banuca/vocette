@@ -209,6 +209,8 @@ function workflowSettings(): WorkflowSettings {
     autoPaste: settings.autoPaste,
     pasteAvailable: autoPasteSupported(capabilities),
     removeFillers: settings.removeFillers,
+    spokenCorrections: settings.spokenCorrections,
+    spokenFormatting: settings.spokenFormatting,
     playSounds: settings.playSounds,
     model: settings.model,
     language: settings.language,

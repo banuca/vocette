@@ -203,7 +203,9 @@ export function renderSettings(context: AppContext): SettingsView {
         <div class="toggle-list">
           <label class="toggle-row" id="row-hotkey"><div><strong>Global shortcut enabled</strong><span>Turn the system-wide shortcut off without quitting the app.</span><small class="capability-note" id="hotkey-note" hidden></small></div><input id="hotkey-enabled" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-auto-paste"><div><strong>Paste automatically</strong><span>Copy the transcript and send ${escapeHtml(context.platform.pasteLabel)} to the app you were using.</span><small class="capability-note" id="auto-paste-note" hidden></small></div><input id="auto-paste" type="checkbox" /><i></i></label>
-          <label class="toggle-row"><div><strong>Light cleanup</strong><span>For explicitly English dictation, remove “um”, “uh”, “erm”, and repair spacing without rewriting you.</span></div><input id="remove-fillers" type="checkbox" /><i></i></label>
+          <label class="toggle-row"><div><strong>Remove filler words</strong><span>Drops “um”, “uh”, stutters like “I I”, and a filler “like” or “you know” set off by commas. Your own words are never rewritten.</span></div><input id="remove-fillers" type="checkbox" /><i></i></label>
+          <label class="toggle-row"><div><strong>Follow spoken corrections</strong><span>Say “scratch that” to drop the last sentence, or fix a word as you go: “Tuesday, no sorry, Wednesday” becomes “Wednesday”. English.</span></div><input id="spoken-corrections" type="checkbox" /><i></i></label>
+          <label class="toggle-row"><div><strong>Spoken line breaks</strong><span>Say “new line” or “new paragraph”. English.</span></div><input id="spoken-formatting" type="checkbox" /><i></i></label>
           <label class="toggle-row"><div><strong>Play sounds</strong><span>A short beep when recording starts, two when the transcript is ready.</span></div><input id="play-sounds" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-launch"><div><strong>${escapeHtml(launchLabel)}</strong><span>Keep the shortcut ready after you sign in.</span><small class="capability-note" id="launch-note" hidden></small></div><input id="launch-at-login" type="checkbox" /><i></i></label>
         </div>
@@ -235,6 +237,8 @@ export function renderSettings(context: AppContext): SettingsView {
   const hotkeyEnabled = query<HTMLInputElement>('#hotkey-enabled')
   const autoPaste = query<HTMLInputElement>('#auto-paste')
   const removeFillers = query<HTMLInputElement>('#remove-fillers')
+  const spokenCorrections = query<HTMLInputElement>('#spoken-corrections')
+  const spokenFormatting = query<HTMLInputElement>('#spoken-formatting')
   const playSounds = query<HTMLInputElement>('#play-sounds')
   const launchAtLogin = query<HTMLInputElement>('#launch-at-login')
   const retention = query<HTMLSelectElement>('#history-retention')
@@ -317,6 +321,8 @@ export function renderSettings(context: AppContext): SettingsView {
     if (hotkeyEnabled) hotkeyEnabled.checked = next.hotkeyEnabled
     if (autoPaste) autoPaste.checked = next.autoPaste
     if (removeFillers) removeFillers.checked = next.removeFillers
+    if (spokenCorrections) spokenCorrections.checked = next.spokenCorrections
+    if (spokenFormatting) spokenFormatting.checked = next.spokenFormatting
     if (playSounds) playSounds.checked = next.playSounds
     if (launchAtLogin) launchAtLogin.checked = next.launchAtLogin
     if (retention) retention.value = String(next.historyRetentionDays)
@@ -767,6 +773,8 @@ export function renderSettings(context: AppContext): SettingsView {
       microphoneId: microphoneSelect?.value ?? '',
       autoPaste: autoPaste?.checked ?? true,
       removeFillers: removeFillers?.checked ?? true,
+      spokenCorrections: spokenCorrections?.checked ?? true,
+      spokenFormatting: spokenFormatting?.checked ?? true,
       playSounds: playSounds?.checked ?? true,
       launchAtLogin: launchAtLogin?.checked ?? false,
       historyRetentionDays: Number(retention?.value ?? 0),

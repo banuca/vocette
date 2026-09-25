@@ -14,6 +14,8 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
     autoPaste: true,
     pasteAvailable: true,
     removeFillers: true,
+    spokenCorrections: true,
+    spokenFormatting: true,
     playSounds: false,
     model: 'gpt-transcribe',
     language: 'en',
@@ -288,7 +290,7 @@ describe('paste honesty', () => {
 })
 
 describe('language-aware cleanup', () => {
-  it('applies light cleanup to explicitly English dictation', async () => {
+  it('applies cleanup to explicitly English dictation', async () => {
     const { controller, deps, beginRecording } = makeHarness()
     deps.transcribe.mockResolvedValue('  um hello,world!  ')
     const requestId = beginRecording()
@@ -300,10 +302,33 @@ describe('language-aware cleanup', () => {
       durationMs: 100
     })
 
-    expect(deps.recordHistory).toHaveBeenCalledWith('Hello, world!', 100, 'gpt-transcribe')
+    // No space is inserted after the comma any more: that rule is what
+    // turned "example.com" into "example. com".
+    expect(deps.recordHistory).toHaveBeenCalledWith('Hello,world!', 100, 'gpt-transcribe')
   })
 
-  it('preserves non-English text that contains a legitimate um apart from outer whitespace', async () => {
+  it('removes fillers under Automatic, which the old English-only gate skipped', async () => {
+    const { controller, deps, beginRecording } = makeHarness({ settings: { language: 'auto' } })
+    deps.transcribe.mockResolvedValue('  um, so I I think we should, uh, ship it  ')
+    const requestId = beginRecording()
+
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+
+    // What is pasted and what history keeps are the same cleaned text.
+    expect(deps.writeClipboard).toHaveBeenCalledWith('So I think we should ship it')
+    expect(deps.recordHistory).toHaveBeenCalledWith(
+      'So I think we should ship it',
+      100,
+      'gpt-transcribe'
+    )
+  })
+
+  it('keeps a German "um", which is a word, while still repairing the text', async () => {
     const { controller, deps, beginRecording } = makeHarness({ settings: { language: 'de' } })
     deps.transcribe.mockResolvedValue('  um ist ein Wort  ')
     const requestId = beginRecording()
@@ -315,14 +340,15 @@ describe('language-aware cleanup', () => {
       durationMs: 100
     })
 
-    expect(deps.recordHistory).toHaveBeenCalledWith('um ist ein Wort', 100, 'gpt-transcribe')
+    // Only the capital is new: the repairs now run in every language.
+    expect(deps.recordHistory).toHaveBeenCalledWith('Um ist ein Wort', 100, 'gpt-transcribe')
   })
 
-  it('preserves automatic-language Retry text apart from outer whitespace', async () => {
+  it('cleans automatic-language Retry text the same way as the first attempt', async () => {
     const { controller, deps, beginRecording } = makeHarness({ settings: { language: 'auto' } })
     deps.transcribe
       .mockRejectedValueOnce(new Error('temporary failure'))
-      .mockResolvedValueOnce('  um automatic transcript  ')
+      .mockResolvedValueOnce('  um, so I think it works  ')
     const requestId = beginRecording()
 
     await controller.onRecorderAudio({
@@ -334,15 +360,15 @@ describe('language-aware cleanup', () => {
     await controller.retryLast()
 
     expect(deps.recordHistory).toHaveBeenLastCalledWith(
-      'um automatic transcript',
+      'So I think it works',
       100,
       'gpt-transcribe'
     )
   })
 
-  it('preserves English text apart from outer whitespace when cleanup is disabled', async () => {
+  it('preserves English text apart from outer whitespace when every cleanup switch is off', async () => {
     const { controller, deps, beginRecording } = makeHarness({
-      settings: { removeFillers: false }
+      settings: { removeFillers: false, spokenCorrections: false, spokenFormatting: false }
     })
     deps.transcribe.mockResolvedValue('  um hello,world!  ')
     const requestId = beginRecording()
@@ -355,6 +381,75 @@ describe('language-aware cleanup', () => {
     })
 
     expect(deps.recordHistory).toHaveBeenCalledWith('um hello,world!', 100, 'gpt-transcribe')
+  })
+
+  it('passes the spoken-correction and line-break switches through to the cleanup', async () => {
+    const { controller, deps, beginRecording } = makeHarness({
+      settings: { spokenCorrections: false }
+    })
+    deps.transcribe.mockResolvedValue('Send it to John, I mean Sarah. New line. Thanks.')
+    const requestId = beginRecording()
+
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+
+    // Corrections off: "I mean" stays. Line breaks on: the command becomes one.
+    expect(deps.recordHistory).toHaveBeenCalledWith(
+      'Send it to John, I mean Sarah.\nThanks.',
+      100,
+      'gpt-transcribe'
+    )
+  })
+
+  it('pastes a take that was only a spoken line break', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    deps.transcribe.mockResolvedValue('New line.')
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+
+    const promise = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+
+    // A line break is something the user asked for, not silence.
+    expect(deps.writeClipboard).toHaveBeenCalledWith('\n')
+    expect(deps.recordHistory).toHaveBeenCalledWith('\n', 100, 'gpt-transcribe')
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Copied and pasted' })
+    )
+  })
+
+  it('reports a take that held only fillers as empty', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.transcribe.mockResolvedValue('  Um, uh... hmm.  ')
+    const requestId = beginRecording()
+
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+
+    expect(deps.recordHistory).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        phase: 'error',
+        detail: 'Only filler words or silence were detected.'
+      })
+    )
   })
 })
 

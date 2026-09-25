@@ -41,6 +41,8 @@ function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
     autoPaste: true,
     pasteAvailable: true,
     removeFillers: true,
+    spokenCorrections: true,
+    spokenFormatting: true,
     playSounds: false,
     model: 'gpt-transcribe',
     language: 'en',

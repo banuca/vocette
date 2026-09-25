@@ -7,6 +7,21 @@ All notable changes to this project are documented here. This project adheres to
 
 ### Added
 
+- **Cleanup that actually runs.** The switch used to do nothing unless the language
+  was set to exactly English, so Automatic — a common choice — got no cleanup while
+  the switch showed as on. Hesitation sounds are now removed in every language, and
+  the English rules also run for Automatic whenever the text reads as English.
+- **Stutters and comma-delimited fillers**: “I I think” → “I think”; “it was, like,
+  really good” → “it was really good”.
+- **Follow spoken corrections** (new switch, on by default): “Scratch that” drops the
+  sentence before it, and “move it to Tuesday, no sorry, Wednesday” becomes “move it
+  to Wednesday” — including when the recogniser put a full stop before the correction.
+  A repair happens only when the replacement clearly lines up with a word just said
+  (a day with a day, a number with a number, a name with a name); anything else is
+  left exactly as spoken.
+- **Spoken line breaks** (new switch, on by default): “new line” and “new paragraph”,
+  when said as a phrase of their own.
+
 - **Your words — a custom vocabulary.** A new Settings card takes a list of
   names, acronyms and product terms, one per line, and biases the recogniser
   towards them on every dictation. `gpt-transcribe` and `gpt-live-transcribe`
@@ -35,6 +50,14 @@ All notable changes to this project are documented here. This project adheres to
   reject an unknown field — and if a request carrying it is rejected anyway,
   Murmur retries once with the terms in the prompt instead, so an unverified
   parameter can cost one request some accuracy but cannot break dictation.
+
+### Fixed
+
+- Cleanup no longer inserts a space after punctuation, which turned `example.com`
+  into `example. com`, `3.5` into `3. 5` and `10:30` into `10: 30`; and it keeps an
+  ellipsis instead of collapsing it to a full stop.
+- German “um 10 Uhr” and Portuguese “um carro” keep their “um”, and a measurement in
+  `mm` is not a hesitation.
 
 ## [0.4.0] — 2026-09-11
 

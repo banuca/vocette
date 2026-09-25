@@ -128,6 +128,8 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     hotkeyEnabled: true,
     autoPaste: true,
     removeFillers: true,
+    spokenCorrections: true,
+    spokenFormatting: true,
     playSounds: false,
     launchAtLogin: false,
     theme: 'dark',

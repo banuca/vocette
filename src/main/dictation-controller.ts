@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { lightCleanup } from '../shared/cleanup'
+import { cleanupTranscript } from '../shared/cleanup'
 import type { RecordingMode } from '../shared/capabilities'
 import type {
   Page,
@@ -43,6 +43,8 @@ export interface WorkflowSettings {
   /** Whether this platform can verify a target and type into it at all. */
   pasteAvailable: boolean
   removeFillers: boolean
+  spokenCorrections: boolean
+  spokenFormatting: boolean
   playSounds: boolean
   model: string
   language: string
@@ -438,13 +440,16 @@ export class DictationController {
       )
       if (!this.ownsAttempt(attempt)) return
 
-      // The filler dictionary and punctuation rules are English-specific.
-      // For auto or another explicit language, preserve the provider text
-      // except for harmless outer-whitespace trimming.
-      const text =
-        settings.removeFillers && settings.language === 'en'
-          ? lightCleanup(rawText)
-          : rawText.trim()
+      // Every language gets the rules that cannot change a word; the English
+      // ones also run for Automatic when the text reads as English. The old
+      // gate cleaned explicit English only, so Automatic got nothing while
+      // the switch showed as on.
+      const text = cleanupTranscript(rawText, {
+        language: settings.language,
+        removeFillers: settings.removeFillers,
+        spokenCorrections: settings.spokenCorrections,
+        spokenFormatting: settings.spokenFormatting
+      })
       if (!text) throw new Error('Only filler words or silence were detected.')
       if (!this.ownsAttempt(attempt)) return
 

@@ -319,6 +319,84 @@ describe('v4 → v5 migration', () => {
   })
 })
 
+describe('cleanup switches', () => {
+  /** A v5 file written before the two switches existed. */
+  const withoutSwitches = (): Record<string, unknown> => {
+    const v5 = { ...DEFAULT_SETTINGS, removeFillers: false } as Record<string, unknown>
+    delete v5.spokenCorrections
+    delete v5.spokenFormatting
+    return v5
+  }
+
+  it('are on for a fresh install', () => {
+    expect(DEFAULT_SETTINGS.spokenCorrections).toBe(true)
+    expect(DEFAULT_SETTINGS.spokenFormatting).toBe(true)
+    const store = new SettingsStore(file)
+    expect(store.getPublic().spokenCorrections).toBe(true)
+    expect(store.getPublic().spokenFormatting).toBe(true)
+  })
+
+  it('default to on when an existing file predates them', () => {
+    const loaded = normaliseSettings(withoutSwitches())
+    expect(loaded.spokenCorrections).toBe(true)
+    expect(loaded.spokenFormatting).toBe(true)
+    // The switch that was already there keeps its saved value.
+    expect(loaded.removeFillers).toBe(false)
+    expect(loaded.version).toBe(SETTINGS_VERSION)
+
+    writeFileSync(file, JSON.stringify(withoutSwitches(), null, 2))
+    const store = new SettingsStore(file)
+    expect(store.getPublic().spokenCorrections).toBe(true)
+    expect(store.getPublic().spokenFormatting).toBe(true)
+    expect(store.getPublic().removeFillers).toBe(false)
+  })
+
+  it('ignore a value that is not a boolean on the load path', () => {
+    const loaded = normaliseSettings({ spokenCorrections: 'no', spokenFormatting: 0 })
+    expect(loaded.spokenCorrections).toBe(true)
+    expect(loaded.spokenFormatting).toBe(true)
+  })
+
+  it('persist false and survive a reload', () => {
+    const store = new SettingsStore(file)
+    const saved = store.update({ spokenCorrections: false, spokenFormatting: false })
+    expect(saved.spokenCorrections).toBe(false)
+    expect(saved.spokenFormatting).toBe(false)
+
+    const written = JSON.parse(readFileSync(file, 'utf8'))
+    expect(written.spokenCorrections).toBe(false)
+    expect(written.spokenFormatting).toBe(false)
+
+    const reopened = new SettingsStore(file)
+    expect(reopened.getPublic().spokenCorrections).toBe(false)
+    expect(reopened.getPublic().spokenFormatting).toBe(false)
+    expect(reopened.getInternal().spokenCorrections).toBe(false)
+    expect(reopened.getInternal().spokenFormatting).toBe(false)
+  })
+
+  it('are saved independently, and left alone by an update that does not mention them', () => {
+    const store = new SettingsStore(file)
+    store.update({ spokenCorrections: false })
+    expect(store.getPublic().spokenCorrections).toBe(false)
+    expect(store.getPublic().spokenFormatting).toBe(true)
+
+    const after = store.update({ playSounds: false })
+    expect(after.spokenCorrections).toBe(false)
+    expect(after.spokenFormatting).toBe(true)
+
+    store.update({ spokenCorrections: true, spokenFormatting: false })
+    const reopened = new SettingsStore(file).getPublic()
+    expect(reopened.spokenCorrections).toBe(true)
+    expect(reopened.spokenFormatting).toBe(false)
+  })
+
+  it('ignore a value that is not a boolean on save', () => {
+    const store = new SettingsStore(file)
+    store.update({ spokenCorrections: 'no' as unknown as boolean })
+    expect(store.getPublic().spokenCorrections).toBe(true)
+  })
+})
+
 describe('API keys where secure storage is unfit', () => {
   const unusable = { usable: false, reason: 'No keyring here.', backend: 'basic_text' }
 
