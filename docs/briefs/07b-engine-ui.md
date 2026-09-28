@@ -83,3 +83,21 @@ folder (copied with a `verified.json`) the step never appears.
 
 `npm run typecheck && npx vitest run && npm run lint && npx electron-vite build` pass.
 Screenshots are Claude's job. Do not commit.
+
+## What 07a already did (read the code, do not redo it)
+
+- `AppContext` already has `engine: EngineStatus` and `applyEngine(next)`; `main.ts` already
+  subscribes to `onEngineStatus`. Extend, do not duplicate.
+- The setup guide's old `api-key` step is now a generic blocking `transcription` step whose
+  text is `notReadyReason`. Replace it with the richer model step described above for the
+  local engine (Download button, progress, cancel, try again), and keep a plain reason step
+  for the cloud engine without a key.
+- IPC and preload already exist: `getEngineStatus`, `downloadModel`, `cancelModelDownload`,
+  `removeModel`, `onEngineStatus`. `ModelStatus.state` is `'missing' | 'partial' |
+  'downloading' | 'verifying' | 'installed' | 'failed'` (see `src/shared/engine.ts`);
+  `receivedBytes`/`totalBytes` drive the progress bar. `removeModel` throws while a dictation
+  is busy — show that sentence.
+- The replacements box (feature 3) now sits under the vocabulary box in "Your words";
+  leave it alone.
+- Run vitest from the upper-case path `C:\Users\KIRINDE\Desktop\voice-hotkey`; it breaks
+  when the working directory is spelled `c:\`.
