@@ -58,20 +58,20 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 | 3 | Snippets / replacements (`spoken => written`) | Free (cap later) | committed | 96bb8bc |
 | 4 | Clipboard custody (restore) + honest delivery + "paste last" | Free | committed | f067a4e |
 | 5 | Silent retry (cloud) + Retry in window | Free | committed | a319fea |
-| 6 | Key-free custom endpoints + `transcriptionReady` gate | Free | todo | |
+| 6 | Key-free custom endpoints + `transcriptionReady` gate | Free | building (lane C) |  |
 | 7a | On-device engine runtime (utility process, model store, router) | Free | committed | 1767354 |
 | 7b | Engine UI: Settings engine card, first-run download, progress | Free | committed | e355adc |
-| 8 | Vocabulary on the local engine + fuzzy vocabulary correction (all engines) | Free | building (lane C) |  |
-| 9 | Start listening at the keypress + engine prewarm | Free | building (lane A) |  |
+| 8 | Vocabulary on the local engine + fuzzy vocabulary correction (all engines) | Free | committed | faebde1 |
+| 9 | Start listening at the keypress + engine prewarm | Free | committed | 5f73e73, 486be33 |
 | 10 | Latency shown per dictation | Free | todo | |
-| 11 | Licence, 30-day trial, Account page, Pro gates | Gate | todo | |
+| 11 | Licence, 30-day trial, Account page, Pro gates | Gate | building (lane A) |  |
 | 12 | AI polish with styles, time budget, raw fallback | Pro | todo | |
-| 13 | History edit, undo delete, show original | Free | todo | |
+| 13 | History edit, undo delete, show original | Free | building (lane B) |  |
 | 14 | Opt-in update check | Free | todo | |
-| R1 | Silence guard: no text invented from a silent take, no engine call | Free | building (lane B) |  |
-| R2 | Live microphone level in the overlay ("is it hearing me?") | Free | todo | |
+| R1 | Silence guard: no text invented from a silent take, no engine call | Free | committed | e1480e5 |
+| R2 | Live microphone level in the overlay ("is it hearing me?") | Free | committed | 5230a6e |
 | R3 | Esc cancels a hands-free (toggle) recording | Free | todo | |
-| R4 | Bluetooth headset hint beside the microphone picker | Free | todo | |
+| R4 | Bluetooth headset hint beside the microphone picker | Free | committed | 11c3d57 |
 | R5 | Re-arm the keyboard hook after sleep/resume and unlock | Free | todo | |
 | 15 | Packaging (sherpa-onnx unpack, native check, release build outside synced folder) | — | todo | |
 | 16 | Docs: README, SECURITY, CHANGELOG, CONTRIBUTING (DCO), platform matrix | — | todo | |
@@ -122,6 +122,11 @@ still-pending feature-1 vocabulary steps 2–6 from `operating-plan.md` §6.
 | # | Automated | Runtime (Claude) | Not verified |
 |---|---|---|---|
 | 0 | tsc, 437 tests | Built app launched with MURMUR_PROFILE_DIR; settings written to the scratch profile; dev server CSP shows style-src 'unsafe-inline' | — |
+| 8 | 807 (lane C) → 1015 merged; SCOWL size 50 list (72,835 words); scan of 238,657 words of real English with 49 terms: 1 unintended change left ("Nitin" → "Notion") | Merged build, fake mic: engine heard "…ITUT draft to Kyranda…", delivered "Please send the ITU-T draft to Kirinde before Friday." | possessives; names absent from SCOWL that sound like a term |
+| 9 | 963 tests; arm announced only after the chord is held alone for 100 ms; mic-open race cases by the builder | Merged build: prewarm at the keypress slowed the cold mic start 1.1 → 2.0 s (first take lost words) → fixed: prewarm once confirmed and live → cold mic 0.98 s, first release→text 0.49 s (was 4.7 s cold before prewarm), warm 0.39–0.40 s; transcripts word-perfect | real keyboard arm/disarm with a physical key press; Bluetooth headset behaviour |
+| R1 | 844 (lane B) | covered by unit + IPC tests | real accidental press with a real mic |
+| R2 | 971 (lane C) | Built app, fake mic: level messages ~14/s varying 0–0.83; bars moved (15–19 distinct heights over 5 s); once saw the bars frozen (not reproduced in 5 further takes) → added a stale-reading decay so a stall shows rest, not a frozen shape | reduced-motion dot on screen |
+| R4 | 931 (lane B); matcher accepts/rejects listed labels | — | a real Bluetooth headset label on this PC |
 | 7b | tsc, lint, 812 tests | Real first run in the built app: fresh profile + empty models folder → setup card "Download the speech model" → Download clicked → 670 MB fetched through Electron net in 20 s on the corporate network → hashes verified, verified.json written → installed → fake-mic dictation succeeded with the downloaded model. Screenshots: missing, downloading (124 of 670 MB), installed, Settings "Ready". Copy fixes after review: reason "Download the speech model first."; sidebar "Not set up yet". | cancel/resume against the real server; failed state on screen |
 | 4 | 671 tests (lane B) → 857 after merge; paste now waits up to 1.5 s for Ctrl/Shift/Alt/Win release (GetAsyncKeyState) | pending: idle-gated real-keystroke test in its own test window (hold Ctrl+Shift, paste, sentinel clipboard restored, Alt+Shift+V) against frozen worktree e2e-clipboard | image/rich clipboard round trip |
 | 5 | 832 (lane B) → 889 after merge; fetch counts asserted per case; retry now always clipboard-only (window/tray Retry would have pasted into Murmur itself) | — | a real 429/5xx from a provider |
