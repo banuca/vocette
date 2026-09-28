@@ -52,14 +52,14 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 
 | # | Feature | Tier | Status | Commit |
 |---|---|---|---|---|
-| 0 | Dev CSP fix (D1) + isolated test profile env var | — | todo | |
-| 1 | Product name centralised + rename script | — | todo | |
-| 2 | Cleanup that actually runs, and smarter (fillers, repeats, spoken corrections, new line) | Free | todo | |
-| 3 | Snippets / replacements (`spoken => written`) | Free (cap later) | todo | |
-| 4 | Clipboard custody (restore) + honest delivery + "paste last" | Free | todo | |
+| 0 | Dev CSP fix (D1) + isolated test profile env var | — | committed | b65f2c8 |
+| 1 | Product name centralised + rename script | — | folded into 11 (product.ts) and 16 (rename script) | |
+| 2 | Cleanup that actually runs, and smarter (fillers, repeats, spoken corrections, new line) | Free | committed | 979cb47 |
+| 3 | Snippets / replacements (`spoken => written`) | Free (cap later) | committed | 96bb8bc |
+| 4 | Clipboard custody (restore) + honest delivery + "paste last" | Free | building (lane B) | |
 | 5 | Silent retry (cloud) + Retry in window | Free | todo | |
 | 6 | Key-free custom endpoints + `transcriptionReady` gate | Free | todo | |
-| 7a | On-device engine runtime (utility process, model store, router) | Free | todo | |
+| 7a | On-device engine runtime (utility process, model store, router) | Free | committed | 1767354 |
 | 7b | Engine UI: Settings engine card, first-run download, progress | Free | todo | |
 | 8 | Vocabulary on the local engine + fuzzy vocabulary correction (all engines) | Free | todo | |
 | 9 | Start listening at the keypress + engine prewarm | Free | todo | |
@@ -121,6 +121,10 @@ still-pending feature-1 vocabulary steps 2–6 from `operating-plan.md` §6.
 
 | # | Automated | Runtime (Claude) | Not verified |
 |---|---|---|---|
+| 0 | tsc, 437 tests | Built app launched with MURMUR_PROFILE_DIR; settings written to the scratch profile; dev server CSP shows style-src 'unsafe-inline' | — |
+| 2 | tsc, lint, 572 tests; probe of 25 realistic sentences incl. real engine output | E2E: fake-mic c-disfluent.wav through the built app → "So I think we should. Move the meeting to Wednesday." (fillers and spoken correction applied; the recogniser's own full stop kept) | Settings rows by hand |
+| 3 | tsc, lint, 626 tests (lane B); 755 after merge | — (no runtime surface beyond settings) | Settings box on screen; {date} locale in packaged app |
+| 7a | tsc, lint, 701 tests; build has out/main/engine-worker.js | E2E through built app, fake mic: cold stop→text 4.5–4.7 s (spawn + load), warm 0.36 s for a 4–5 s take (3 rounds); model id recorded in History; clipboard delivery; worker smoke by the builder incl. damaged-model recovery, 65 s split, packaged --dir build with native check passing | full 640 MB download; cancel/resume vs real server; idle unload in real time; NSIS installer |
 
 ## 8. Owner actions before the first sale (collected for the end)
 
@@ -130,3 +134,12 @@ still-pending feature-1 vocabulary steps 2–6 from `operating-plan.md` §6.
 - Windows code-signing identity (Azure Trusted Signing if eligible, else OV certificate).
 - Enable GitHub Pages for the site; add a support email.
 - Legal pages reviewed by a person (templates are provided, not legal advice).
+
+## 9. Lanes (parallel build)
+
+- Lane A — main tree `C:\Users\KIRINDE\Desktop\voice-hotkey`, branch `launch`: 07a → 07b → 8 → 6 → 9 → R2 → R3 → R5 → 10 → 11 → 12.
+- Lane B — worktree `C:\Users\KIRINDE\murmur-worktrees\lane-b`, branch `lane-b`
+  (node_modules is a junction to the main tree's): 3 → 4 → 5 → R1 → R4 → 13 → 14.
+- Integration: at each lane-A commit boundary, cherry-pick finished lane-B commits onto
+  `launch` (conflicts are additive in the settings five-place recipe), re-run all checks,
+  then rebase `lane-b` onto `launch` before its next feature starts.
