@@ -255,6 +255,7 @@ async function startApp(options: {
       requestSingleInstanceLock: () => true,
       whenReady: () => Promise.resolve(),
       setLoginItemSettings: (value: { openAtLogin: boolean; args?: string[] }) => loginItems.push(value),
+      setPath: vi.fn(),
       on: vi.fn((name: string, listener: (event: unknown) => void) => {
         appListeners.set(name, listener)
       }),
@@ -1937,5 +1938,18 @@ describe('AI polish', () => {
       ms: null,
       error: 'Could not reach localhost:11434. Is it running?'
     })
+  })
+})
+
+describe('an isolated profile', () => {
+  it('never touches the startup entry of the Murmur this computer starts', async () => {
+    vi.stubEnv('MURMUR_PROFILE_DIR', 'C:/scratch/profile-under-test')
+    const app = await startApp()
+    expect(app.loginItems).toEqual([])
+  })
+
+  it('does set it for the ordinary profile', async () => {
+    const app = await startApp()
+    expect(app.loginItems).toEqual([{ openAtLogin: false }])
   })
 })

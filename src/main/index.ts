@@ -824,6 +824,10 @@ function broadcastTheme(): void {
 }
 
 function applyLaunchAtLogin(enabled: boolean): void {
+  // An isolated profile — a test run, or a second copy run side by side —
+  // keeps its own preference but never adds or removes the startup entry of
+  // the Murmur this computer actually starts.
+  if (profileOverride) return
   platform.setLaunchAtLogin(enabled)
 }
 
