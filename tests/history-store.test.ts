@@ -17,9 +17,6 @@ import {
 
 let file: string
 
-/** Writes are async (open → write → fsync → backup → rename); give them a tick. */
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 60))
-
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (error: Error) => void
@@ -49,7 +46,9 @@ describe('HistoryStore', () => {
     expect(second.id).toMatch(/^[0-9a-f-]{36}$/u)
     expect(Number.isNaN(Date.parse(second.createdAt))).toBe(false)
 
-    await flush()
+    // The store's own flush, not a fixed wait: under a loaded disk an atomic
+    // write can take longer than any fixed pause, and the test read stale data.
+    await store.flush()
     expect(JSON.parse(readFileSync(file, 'utf8'))).toHaveLength(2)
   })
 
