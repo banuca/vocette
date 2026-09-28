@@ -1,4 +1,6 @@
 import { type CapabilityMap, type SettingsPane } from '../shared/capabilities'
+import type { EngineStatus } from '../shared/engine'
+import { formatMegabytes } from '../shared/format'
 
 /**
  * First-run guidance.
@@ -9,6 +11,7 @@ import { type CapabilityMap, type SettingsPane } from '../shared/capabilities'
  * already granted. An empty list means there is nothing left to set up.
  */
 export type SetupStepId =
+  | 'model'
   | 'transcription'
   | 'microphone'
   | 'input-monitoring'
@@ -27,30 +30,46 @@ export interface SetupStep {
   id: SetupStepId
   title: string
   detail: string
+  /**
+   * The button beside the step, or null. The model step has none of its own:
+   * it carries the download itself, drawn by `model-download`.
+   */
   action: SetupAction | null
   /** True when dictation cannot work at all until this is resolved. */
   blocking: boolean
 }
 
 export interface SetupInput {
-  /** Whether the chosen engine can transcribe: its model, or a key, is in place. */
-  ready: boolean
-  /** What is missing, already a sentence — the speech model, or a key. */
-  notReadyReason: string | null
+  /** The chosen engine, whether it can transcribe, and where the speech model stands. */
+  engine: EngineStatus
   capabilities: CapabilityMap
   microphone: MicrophoneAccess
 }
 
 export function setupSteps(input: SetupInput): SetupStep[] {
   const steps: SetupStep[] = []
+  const { engine } = input
 
-  if (!input.ready) {
-    // The reason names what is missing, so one step serves both engines
-    // without guessing which of them the user chose.
+  if (engine.engine === 'local' && engine.model.state !== 'installed') {
+    // The on-device engine needs nothing but its model, so the step is the
+    // download itself — with its progress, Cancel and Try again — rather
+    // than a pointer to somewhere else to go and do it.
+    steps.push({
+      id: 'model',
+      title: 'Download the speech model',
+      detail:
+        'Murmur transcribes on this PC, so your voice never leaves it. The model is ' +
+        `${formatMegabytes(engine.model.totalBytes)} and downloads once.`,
+      action: null,
+      blocking: true
+    })
+  } else if (!engine.ready) {
+    // A cloud user without a key. The reason names what is missing, so the
+    // step never guesses.
     steps.push({
       id: 'transcription',
       title: 'Set up transcription',
-      detail: input.notReadyReason ?? 'Transcription is not set up yet.',
+      detail: engine.notReadyReason ?? 'Transcription is not set up yet.',
       action: { kind: 'navigate-settings', label: 'Open Settings' },
       blocking: true
     })
@@ -94,9 +113,14 @@ export function setupSteps(input: SetupInput): SetupStep[] {
     })
   }
 
-  // Only worth raising while transcription is not set up: with a key already
-  // in use the user has seen and answered this.
-  if (input.capabilities.secureKeyStorage.state !== 'available' && !input.ready) {
+  // Only a cloud key needs storing, and only while none is in use: with a key
+  // in use the user has seen and answered this. The on-device engine has no
+  // key at all, so this would be noise there.
+  if (
+    engine.engine === 'cloud' &&
+    input.capabilities.secureKeyStorage.state !== 'available' &&
+    !engine.ready
+  ) {
     steps.push({
       id: 'secure-storage',
       title: 'Your key cannot be saved on this system',
@@ -112,4 +136,14 @@ export function setupSteps(input: SetupInput): SetupStep[] {
 /** True when nothing at all can be dictated until the user acts. */
 export function setupIsBlocking(steps: readonly SetupStep[]): boolean {
   return steps.some((step) => step.blocking)
+}
+
+/**
+ * The card's heading. Until transcription works at all the user is getting
+ * started; a permission left over afterwards is only finishing off.
+ */
+export function setupHeading(steps: readonly SetupStep[]): string {
+  return steps.some((step) => step.id === 'model' || step.id === 'transcription')
+    ? 'Get started'
+    : 'Finish setting up Murmur'
 }

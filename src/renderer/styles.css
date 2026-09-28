@@ -781,6 +781,44 @@ a:focus-visible {
   flex: none;
 }
 
+/* The model step carries its own download, so its text takes the room and
+   the buttons move under it only when the window is too narrow for both. */
+.setup-step.model-step {
+  flex-wrap: wrap;
+}
+
+.model-step-text {
+  flex: 1 1 280px;
+}
+
+.model-step-actions {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  align-items: center;
+}
+
+.model-step .model-progress {
+  max-width: 420px;
+  margin-top: 10px;
+}
+
+.setup-step p.model-row-detail {
+  margin-top: 6px;
+}
+
+.setup-step p.model-row-detail.is-error {
+  color: var(--status-bad);
+}
+
+.setup-step p.capability-note {
+  color: var(--status-warn);
+}
+
+.setup-step p.model-step-alternative {
+  margin-top: 8px;
+}
+
 /* --- History ----------------------------------------------------------- */
 
 .metrics {
@@ -1281,6 +1319,134 @@ a:focus-visible {
   line-height: 1.5;
 }
 
+/* --- Transcription engine ---------------------------------------------- */
+
+/* The engine choice reuses the recording-mode cards; what follows it is only
+   ever the section for the option chosen. */
+.engine-choice {
+  margin-bottom: 14px;
+}
+
+/* The cloud fields stay cells of the card's grid, so Model and Language sit
+   side by side exactly as they did before there was a choice. */
+.engine-cloud-fields {
+  display: contents;
+}
+
+.engine-cloud-fields[hidden],
+.key-actions[hidden] {
+  display: none;
+}
+
+.language-note.is-warning {
+  color: var(--status-warn);
+}
+
+.model-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: var(--surface-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* Whatever display a part's own class gives it, hidden means hidden. */
+.model-row [hidden],
+.model-step [hidden] {
+  display: none;
+}
+
+.model-row-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.model-row-title {
+  min-width: 0;
+}
+
+.model-row-title strong {
+  display: block;
+  color: var(--text-heading);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.model-row-title span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.configured-badge.is-busy {
+  color: var(--text-heading);
+  border-color: var(--accent);
+}
+
+.configured-badge.is-failed {
+  color: var(--status-bad);
+  border-color: var(--status-bad);
+}
+
+/* The track is a border colour, not a surface: the light theme's raised
+   surface is white, and would vanish against the white setup card. */
+.model-progress {
+  height: 6px;
+  overflow: hidden;
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.model-progress-bar {
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 200ms linear;
+}
+
+.model-row-detail {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.model-row-detail.is-error {
+  color: var(--status-bad);
+}
+
+.model-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+}
+
+.model-row .capability-note {
+  margin: 0;
+}
+
+/* A quiet text link, for the way out of a step and for stopping a download. */
+.link-button {
+  padding: 0;
+  color: var(--accent);
+  font-size: 12px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+}
+
+.link-button:hover:not(:disabled) {
+  border-bottom-color: var(--accent);
+}
+
 /* --- Shortcut editor --------------------------------------------------- */
 
 .shortcut-editor {
@@ -1683,6 +1849,18 @@ a:focus-visible {
 
 .notice-card .secondary-button {
   margin-top: 12px;
+}
+
+.attributions-card {
+  margin-top: 14px;
+}
+
+.attribution-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 /* --- Loading and failure ----------------------------------------------- */

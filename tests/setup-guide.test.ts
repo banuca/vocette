@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { setupIsBlocking, setupSteps, type SetupInput } from '../src/renderer/setup-guide'
+import {
+  setupHeading,
+  setupIsBlocking,
+  setupSteps,
+  type SetupInput
+} from '../src/renderer/setup-guide'
 import {
   available,
   needsPermission,
   unavailable,
   type CapabilityMap
 } from '../src/shared/capabilities'
+import {
+  KEY_NOT_READY_REASON,
+  MODEL_NOT_READY_REASON,
+  type EngineStatus,
+  type ModelState
+} from '../src/shared/engine'
 
 /**
  * The guidance is only useful if it clears itself. Every case here is about
@@ -24,51 +35,102 @@ function capabilities(overrides: Partial<CapabilityMap> = {}): CapabilityMap {
   }
 }
 
-const NEEDS_KEY = 'Add your API key in Settings before recording.'
-const NEEDS_MODEL = 'Download the speech model in Settings first.'
+const TOTAL = 670_478_772
+
+/** The on-device engine, with its model in the state given. */
+function onThisPc(state: ModelState = 'installed'): EngineStatus {
+  const ready = state === 'installed'
+  return {
+    engine: 'local',
+    model: {
+      id: 'parakeet-tdt-0.6b-v3-int8',
+      state,
+      receivedBytes: ready ? TOTAL : 0,
+      totalBytes: TOTAL,
+      error: null
+    },
+    ready,
+    notReadyReason: ready ? null : MODEL_NOT_READY_REASON
+  }
+}
+
+/** A cloud provider, with or without a key in use. The model is irrelevant to it. */
+function inTheCloud(
+  hasKey: boolean,
+  reason: string | null = hasKey ? null : KEY_NOT_READY_REASON
+): EngineStatus {
+  return {
+    engine: 'cloud',
+    model: onThisPc('missing').model,
+    ready: hasKey,
+    notReadyReason: reason
+  }
+}
 
 const input = (overrides: Partial<SetupInput> = {}): SetupInput => ({
-  ready: true,
-  notReadyReason: null,
+  engine: onThisPc('installed'),
   capabilities: capabilities(),
   microphone: 'granted',
   ...overrides
 })
 
-/** Transcription not set up, for the reason given. */
-const notReady = (reason: string | null = NEEDS_KEY): Partial<SetupInput> => ({
-  ready: false,
-  notReadyReason: reason
-})
-
 const ids = (value: SetupInput): string[] => setupSteps(value).map((step) => step.id)
 
 describe('setupSteps', () => {
-  it('says nothing at all once everything is in place', () => {
+  it('says nothing at all once everything is in place, on either engine', () => {
     expect(setupSteps(input())).toEqual([])
+    expect(setupSteps(input({ engine: inTheCloud(true) }))).toEqual([])
   })
 
-  it('asks for what transcription is missing first, and treats it as blocking', () => {
-    const steps = setupSteps(input(notReady(NEEDS_KEY)))
-    expect(steps[0]?.id).toBe('transcription')
-    expect(steps[0]?.detail).toBe(NEEDS_KEY)
-    expect(steps[0]?.action).toEqual({ kind: 'navigate-settings', label: 'Open Settings' })
+  it('asks for the speech model first when this PC has none, and treats it as blocking', () => {
+    const steps = setupSteps(input({ engine: onThisPc('missing') }))
+    expect(steps[0]).toEqual({
+      id: 'model',
+      title: 'Download the speech model',
+      detail:
+        'Murmur transcribes on this PC, so your voice never leaves it. The model is 670 MB ' +
+        'and downloads once.',
+      // The download happens on the step itself, not somewhere it points to.
+      action: null,
+      blocking: true
+    })
     expect(setupIsBlocking(steps)).toBe(true)
   })
 
-  it('names the speech model when that is what is missing', () => {
-    // The on-device engine needs no key, so the step must not ask for one.
-    const steps = setupSteps(input(notReady(NEEDS_MODEL)))
-    expect(steps[0]?.detail).toBe(NEEDS_MODEL)
+  it('keeps the model step for every state short of installed', () => {
+    for (const state of ['missing', 'partial', 'downloading', 'verifying', 'failed'] as const) {
+      expect(ids(input({ engine: onThisPc(state) }))).toEqual(['model'])
+    }
+    expect(ids(input({ engine: onThisPc('installed') }))).toEqual([])
+  })
+
+  it('never asks the on-device engine for an API key', () => {
+    const steps = setupSteps(
+      input({
+        engine: onThisPc('missing'),
+        capabilities: capabilities({ secureKeyStorage: unavailable('No keyring here.') })
+      })
+    )
+    expect(steps.map((step) => step.id)).toEqual(['model'])
     expect(steps[0]?.detail).not.toMatch(/API key/iu)
   })
 
-  it('still explains itself if not-ready arrives without a reason', () => {
-    expect(setupSteps(input(notReady(null)))[0]?.detail).toBe('Transcription is not set up yet.')
+  it('asks a cloud user without a key for one, through Settings', () => {
+    const steps = setupSteps(input({ engine: inTheCloud(false) }))
+    expect(steps[0]).toMatchObject({
+      id: 'transcription',
+      detail: KEY_NOT_READY_REASON,
+      action: { kind: 'navigate-settings', label: 'Open Settings' },
+      blocking: true
+    })
+    // The cloud has no use for the model, however it stands on disk.
+    expect(steps.map((step) => step.id)).not.toContain('model')
   })
 
-  it('clears once transcription is ready, however it became so', () => {
-    expect(ids(input({ ready: true, notReadyReason: null }))).not.toContain('transcription')
+  it('still explains itself if not-ready arrives without a reason', () => {
+    expect(setupSteps(input({ engine: inTheCloud(false, null) }))[0]?.detail).toBe(
+      'Transcription is not set up yet.'
+    )
   })
 
   it('raises a blocked microphone, with the pane that unblocks it', () => {
@@ -127,21 +189,26 @@ describe('setupSteps', () => {
     expect(steps).toEqual([])
   })
 
-  it('warns that a key cannot be saved, but only while transcription is not set up', () => {
+  it('warns that a key cannot be saved, but only while a cloud user has none', () => {
     const unusable = capabilities({ secureKeyStorage: unavailable('No keyring here.') })
-    expect(ids(input({ ...notReady(NEEDS_KEY), capabilities: unusable }))).toContain(
+    expect(ids(input({ engine: inTheCloud(false), capabilities: unusable }))).toContain(
       'secure-storage'
     )
     // A session key in use makes the cloud engine ready: the user has seen
     // and answered this already.
-    expect(ids(input({ ready: true, capabilities: unusable }))).not.toContain('secure-storage')
+    expect(ids(input({ engine: inTheCloud(true), capabilities: unusable }))).not.toContain(
+      'secure-storage'
+    )
+    expect(ids(input({ engine: onThisPc('missing'), capabilities: unusable }))).not.toContain(
+      'secure-storage'
+    )
   })
 
   it('lists several outstanding items in the order they have to be dealt with', () => {
     expect(
       ids(
         input({
-          ...notReady(NEEDS_KEY),
+          engine: inTheCloud(false),
           microphone: 'denied',
           capabilities: capabilities({
             globalToggle: needsPermission('Grant Input Monitoring.', 'input-monitoring'),
@@ -157,6 +224,9 @@ describe('setupSteps', () => {
       'accessibility',
       'secure-storage'
     ])
+    expect(
+      ids(input({ engine: onThisPc('missing'), microphone: 'denied' }))
+    ).toEqual(['model', 'microphone'])
   })
 
   it('reports nothing blocking when only permissions are outstanding', () => {
@@ -168,5 +238,23 @@ describe('setupSteps', () => {
       })
     )
     expect(setupIsBlocking(steps)).toBe(false)
+  })
+})
+
+describe('setupHeading', () => {
+  it('says Get started until transcription works at all', () => {
+    expect(setupHeading(setupSteps(input({ engine: onThisPc('missing') })))).toBe('Get started')
+    expect(setupHeading(setupSteps(input({ engine: inTheCloud(false) })))).toBe('Get started')
+  })
+
+  it('says it is finishing off when only a permission is left', () => {
+    const steps = setupSteps(
+      input({
+        capabilities: capabilities({
+          autoPaste: needsPermission('Grant Accessibility.', 'accessibility')
+        })
+      })
+    )
+    expect(setupHeading(steps)).toBe('Finish setting up Murmur')
   })
 })

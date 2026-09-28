@@ -38,8 +38,15 @@ export interface EngineStatus {
   notReadyReason: string | null
 }
 
-export const MODEL_NOT_READY_REASON = 'Download the speech model in Settings first.'
+export const MODEL_NOT_READY_REASON = 'Download the speech model first.'
 export const KEY_NOT_READY_REASON = 'Add your API key in Settings before recording.'
+
+/**
+ * Why the model cannot be removed right now. The main process refuses with
+ * these words, and Settings says the same beside the button it disables.
+ */
+export const REMOVE_WHILE_DICTATING =
+  'Wait for the current dictation to finish before removing the speech model.'
 
 export interface Readiness {
   ready: boolean

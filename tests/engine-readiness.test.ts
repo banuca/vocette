@@ -34,7 +34,7 @@ describe('engineReady', () => {
 
   it('does not ask an on-device user for a key, whether or not they have one', () => {
     expect(engineReady({ engine: 'local', apiKeySource: 'stored' }, 'missing').notReadyReason).toBe(
-      'Download the speech model in Settings first.'
+      'Download the speech model first.'
     )
     expect(engineReady({ engine: 'local', apiKeySource: 'none' }, 'installed').ready).toBe(true)
   })

@@ -47,7 +47,7 @@ Download the latest installer for your platform from [Releases](../../releases):
 
 Builds are **not code-signed or notarised**, so Windows SmartScreen and macOS Gatekeeper will warn on first run — see [SECURITY.md](SECURITY.md). Install one only if you trust the source you got it from, or build it yourself from this repo.
 
-Add your API key in **Settings** before your first dictation. For OpenAI, create one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
+On first run, History opens on **Get started**: press **Download** to fetch the speech model (670 MB, once), and dictation then runs on your PC with nothing sent anywhere. The download shows its progress, can be cancelled and resumed, and is checked before first use. Prefer a cloud provider? Choose **Cloud, with your API key** under **Settings → Transcription** and add your key there — for OpenAI, create one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
 
 ## Your API key
 

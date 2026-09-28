@@ -7,6 +7,7 @@
  * what an installed copy of Murmur fetches: a file that no longer matches its
  * hash is refused, not loaded.
  */
+import { PARAKEET_V3_INFO } from '../../shared/speech-model'
 
 export interface ModelFile {
   name: string
@@ -64,19 +65,18 @@ const files: readonly ModelFile[] = [
   }
 ]
 
-/** NVIDIA Parakeet TDT 0.6B v3, int8, as exported to ONNX by sherpa-onnx. */
+/**
+ * NVIDIA Parakeet TDT 0.6B v3, int8, as exported to ONNX by sherpa-onnx. What
+ * the window says about it — name, languages, licence, attribution — is
+ * shared with the renderer, so it is written once, in `shared/speech-model`.
+ */
 export const PARAKEET_V3: ModelManifest = {
-  id: 'parakeet-tdt-0.6b-v3-int8',
-  displayName: 'Parakeet v3',
+  id: PARAKEET_V3_INFO.id,
+  displayName: PARAKEET_V3_INFO.displayName,
   // Recognised automatically; the model does not report which one it heard.
-  languages: [
-    'bg', 'hr', 'cs', 'da', 'nl', 'en', 'et', 'fi', 'fr', 'de', 'el', 'hu', 'it',
-    'lv', 'lt', 'mt', 'pl', 'pt', 'ro', 'sk', 'sl', 'es', 'sv', 'ru', 'uk'
-  ],
-  licence: 'CC-BY-4.0',
-  attribution:
-    'Speech model: NVIDIA Parakeet TDT 0.6B v3, CC-BY-4.0; ONNX export by the ' +
-    'sherpa-onnx project (k2-fsa).',
+  languages: PARAKEET_V3_INFO.languages,
+  licence: PARAKEET_V3_INFO.licence,
+  attribution: PARAKEET_V3_INFO.attribution,
   files,
   totalBytes: files.reduce((sum, file) => sum + file.bytes, 0)
 }

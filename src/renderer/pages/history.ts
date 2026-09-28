@@ -1,8 +1,10 @@
 import type { AppContext } from '../app-context'
 import { icon } from '../icons'
 import { escapeHtml, formatDate, formatDuration, friendlyError, wordCount } from '../dom'
-import { setupSteps, type SetupStep } from '../setup-guide'
+import { createModelRow, type ModelRowView } from '../model-download'
+import { setupHeading, setupSteps, type SetupStep } from '../setup-guide'
 import { effectiveRecordingMode, globalShortcutUsable } from '../../shared/capabilities'
+import type { EngineStatus } from '../../shared/engine'
 import { chordLabel } from '../../shared/keycodes'
 import type { HistoryEntry } from '../../shared/types'
 
@@ -25,12 +27,18 @@ function dayLabel(createdAt: string): string {
   }).format(date)
 }
 
+export interface HistoryView {
+  refresh(): void
+  /** Download progress: only the model step changes, so only it is repainted. */
+  applyEngine(status: EngineStatus): void
+}
+
 /**
  * The history page renders its shell once and then patches only the list and
  * the metric values. Rebuilding the whole page on every `history:changed`
  * destroyed focus and the caret in the search box mid-typing.
  */
-export function renderHistory(context: AppContext): { refresh: () => void } {
+export function renderHistory(context: AppContext): HistoryView {
   context.setHeading('History', 'Everything you have dictated, stored on this PC.')
 
   let searchQuery = ''
@@ -81,6 +89,8 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
   }
 
   const setupHost = context.content.querySelector<HTMLDivElement>('#setup-guide')
+  /** The model step's row while there is one, so progress repaints only it. */
+  let modelStep: ModelRowView | null = null
 
   /**
    * First-run guidance, rendered from whatever is genuinely outstanding. Each
@@ -89,9 +99,9 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
    */
   const renderSetup = (): void => {
     if (!setupHost) return
+    modelStep = null
     const steps = setupSteps({
-      ready: context.engine.ready,
-      notReadyReason: context.engine.notReadyReason,
+      engine: context.engine,
       capabilities: context.platform.capabilities,
       microphone: context.microphone
     })
@@ -102,7 +112,9 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
 
     const card = document.createElement('section')
     card.className = 'setup-card'
-    card.innerHTML = `<h2>Finish setting up Murmur</h2>`
+    const heading = document.createElement('h2')
+    heading.textContent = setupHeading(steps)
+    card.append(heading)
 
     const stepButton = (step: SetupStep): HTMLButtonElement | null => {
       if (!step.action) return null
@@ -121,6 +133,24 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
     for (const step of steps) {
       const row = document.createElement('div')
       row.className = `setup-step${step.blocking ? ' is-blocking' : ''}`
+      if (step.id === 'model') {
+        // The download runs on the step itself, drawn by the same module as
+        // the Settings row so the two can never disagree.
+        row.classList.add('model-step')
+        modelStep = createModelRow(row, {
+          variant: 'setup',
+          title: step.title,
+          detail: step.detail,
+          bridge: window.murmur,
+          onStatus: (status) => context.applyEngine(status),
+          // Chosen, not saved: Settings shows the key fields, and Save
+          // settings is what switches.
+          onChooseCloud: () => context.navigate('settings', { engine: 'cloud' })
+        })
+        modelStep.apply(context.engine)
+        card.append(row)
+        continue
+      }
       row.innerHTML =
         `<div><strong>${escapeHtml(step.title)}</strong>` +
         `<p>${escapeHtml(step.detail)}</p></div>`
@@ -321,6 +351,7 @@ export function renderHistory(context: AppContext): { refresh: () => void } {
       renderSetup()
       renderMetrics()
       renderList()
-    }
+    },
+    applyEngine: (status) => modelStep?.apply(status)
   }
 }

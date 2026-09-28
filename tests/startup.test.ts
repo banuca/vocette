@@ -52,6 +52,8 @@ interface StartupHarness {
   setCapabilities: (patch: Record<string, unknown>) => void
   sentToMain: () => Array<{ channel: string; payload: unknown }>
   trayLabels: () => string[]
+  /** An item of the tray menu as last built, found by its label. */
+  trayItem: (label: string) => { label?: string; enabled?: boolean } | undefined
   setSaveStatus: (status: HistorySaveStatus) => void
   historyAdds: () => Array<{ text: string; durationMs: number; model: string }>
   engine: EngineHarness
@@ -102,7 +104,7 @@ async function startApp(options: {
   const pruneCalls: number[] = []
   const timeline: string[] = []
   const ipcHandlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>()
-  const trayTemplates: Array<Array<{ label?: string }>> = []
+  const trayTemplates: Array<Array<{ label?: string; enabled?: boolean }>> = []
   const windows: FakeBrowserWindow[] = []
   const saveStatusListeners: Array<(status: HistorySaveStatus) => void> = []
   let saveStatus: HistorySaveStatus = { saveFailed: false }
@@ -184,7 +186,7 @@ async function startApp(options: {
     BrowserWindow: FakeBrowserWindow,
     Tray: FakeTray,
     Menu: {
-      buildFromTemplate: vi.fn((template: Array<{ label?: string }>) => {
+      buildFromTemplate: vi.fn((template: Array<{ label?: string; enabled?: boolean }>) => {
         trayTemplates.push(template)
         return {}
       })
@@ -439,6 +441,7 @@ async function startApp(options: {
       })),
     trayLabels: () =>
       (trayTemplates.at(-1) ?? []).map((item) => item.label ?? '').filter((label) => label !== ''),
+    trayItem: (label: string) => (trayTemplates.at(-1) ?? []).find((item) => item.label === label),
     setSaveStatus: (status: HistorySaveStatus) => {
       saveStatus = status
       saveStatusListeners.forEach((listener) => listener(status))
@@ -730,7 +733,7 @@ describe('the on-device engine', () => {
     app.pressShortcut()
 
     expect(app.sentToRecorder().filter((message) => message.channel === 'recorder:start')).toEqual([])
-    expect(workflowErrors(app)).toEqual(['Download the speech model in Settings first.'])
+    expect(workflowErrors(app)).toEqual(['Download the speech model first.'])
   })
 
   it('serves its status, and takes its commands, only from the main window', async () => {
@@ -745,7 +748,7 @@ describe('the on-device engine', () => {
         error: null
       },
       ready: false,
-      notReadyReason: 'Download the speech model in Settings first.'
+      notReadyReason: 'Download the speech model first.'
     })
     for (const channel of [
       'engine:get-status',
@@ -860,6 +863,28 @@ describe('the on-device engine', () => {
       app.invoke('app:ready', true)
       expect(app.sentToMain()).toContainEqual({ channel: 'app:navigate', payload: page })
     }
+  })
+
+  it('offers Start recording in the tray only once a take could be transcribed', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'missing' })
+    expect(app.trayItem('Start recording')?.enabled).toBe(false)
+    // The shortcut hint would promise a dictation that cannot happen, so the
+    // reason stands in its place.
+    expect(app.trayLabels()[0]).toBe('Download the speech model first.')
+
+    app.invoke('engine:download', true)
+    app.engine.progress(412_000_000)
+    expect(app.trayItem('Start recording')?.enabled).toBe(false)
+    app.engine.finishDownload()
+    await app.settle()
+    expect(app.trayItem('Start recording')?.enabled).toBe(true)
+    expect(app.trayLabels()[0]).toBe('Hold Left Ctrl + Left Shift to talk')
+  })
+
+  it('names the missing key in the tray for a cloud user without one', async () => {
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none' })
+    expect(app.trayItem('Start recording')?.enabled).toBe(false)
+    expect(app.trayLabels()[0]).toBe('Add your API key in Settings before recording.')
   })
 
   it('stops the engine when Murmur quits', async () => {

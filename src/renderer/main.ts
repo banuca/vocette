@@ -1,5 +1,5 @@
 import './styles.css'
-import type { AppContext } from './app-context'
+import type { AppContext, NavigationIntent } from './app-context'
 import { escapeHtml, friendlyError } from './dom'
 import { createHistorySaveWarning, trackHistorySaveStatus } from './history-save-warning'
 import { createRecordingControl } from './recording-control'
@@ -7,12 +7,12 @@ import { icon } from './icons'
 import { applyTheme, createThemeToggle, type ThemeToggle } from './theme'
 import type { MicrophoneAccess } from './setup-guide'
 import { renderAbout } from './pages/about'
-import { renderHistory } from './pages/history'
-import { renderSettings } from './pages/settings'
+import { renderHistory, type HistoryView } from './pages/history'
+import { renderSettings, type SettingsView } from './pages/settings'
 import { effectiveRecordingMode, globalShortcutUsable } from '../shared/capabilities'
 import type { EngineStatus } from '../shared/engine'
 import { chordLabel } from '../shared/keycodes'
-import type { AppInfo, HistoryEntry, Page, PublicSettings, WorkflowStatus } from '../shared/types'
+import type { AppInfo, HistoryEntry, Page, PublicSettings } from '../shared/types'
 
 const root = document.querySelector<HTMLDivElement>('#app')
 if (!root) throw new Error('Application root was not found.')
@@ -72,9 +72,8 @@ async function mount(): Promise<void> {
   applyTheme(document.documentElement, settings.theme)
 
   let activePage: Page = 'history'
-  let workflowStatus: WorkflowStatus = { phase: 'idle', message: 'Ready' }
-  let historyView: { refresh: () => void } | null = null
-  let settingsView: { apply: (next: PublicSettings) => void; dispose: () => void } | null = null
+  let historyView: HistoryView | null = null
+  let settingsView: SettingsView | null = null
 
   appRoot.innerHTML = `
     <div class="app-shell">
@@ -127,7 +126,7 @@ async function mount(): Promise<void> {
 
   const updateRecordControl = (): void => {
     recordControl.apply({
-      status: workflowStatus,
+      status: context.workflow,
       platform: context.platform,
       ready: context.engine.ready,
       notReadyReason: context.engine.notReadyReason
@@ -140,10 +139,13 @@ async function mount(): Promise<void> {
     const shortcut = appRoot.querySelector<HTMLElement>('#sidebar-shortcut')
     const mode = appRoot.querySelector<HTMLElement>('#sidebar-shortcut-mode')
     const usable = globalShortcutUsable(context.platform.capabilities)
-    if (status) status.textContent = workflowStatus.message
+    // "Ready" beside a green dot while nothing can be transcribed yet reads as
+    // a contradiction of the setup card right next to it.
+    const idleButNotReady = context.workflow.phase === 'idle' && !context.engine.ready
+    if (status) status.textContent = idleButNotReady ? 'Not set up yet' : context.workflow.message
     if (dot) {
-      const off = context.settings.hotkeyEnabled && usable ? '' : ' off'
-      dot.className = `status-dot ${workflowStatus.phase}${off}`
+      const off = context.settings.hotkeyEnabled && usable && !idleButNotReady ? '' : ' off'
+      dot.className = `status-dot ${context.workflow.phase}${off}`
     }
     if (shortcut) {
       shortcut.textContent = usable ? chordLabel(context.settings.shortcut.keys) : 'Not available'
@@ -166,6 +168,7 @@ async function mount(): Promise<void> {
     appInfo,
     platform: appInfo.platformStatus,
     engine,
+    workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
     setHeading: (nextTitle, nextSubtitle) => {
       title.textContent = nextTitle
@@ -186,18 +189,24 @@ async function mount(): Promise<void> {
       settingsView?.apply(context.settings)
     },
     applyEngine: (next) => {
-      const readinessChanged =
+      const stepsChanged =
+        next.engine !== context.engine.engine ||
         next.ready !== context.engine.ready ||
         next.notReadyReason !== context.engine.notReadyReason
       context.engine = next
-      updateRecordControl()
-      // Download progress arrives several times a second; the setup guidance
-      // only changes with readiness, so History is redrawn only then.
-      if (readinessChanged) historyView?.refresh()
+      // The sidebar says "Not set up yet" until the engine is ready.
+      if (stepsChanged) updateSidebar()
+      else updateRecordControl()
+      // Download progress arrives several times a second. The setup steps
+      // only change with the engine or its readiness, so History is redrawn
+      // only then; in between, just the model rows follow the download.
+      if (stepsChanged) historyView?.refresh()
+      else historyView?.applyEngine(next)
+      settingsView?.applyEngine(next)
     },
-    navigate: (page) => {
+    navigate: (page, intent) => {
       activePage = page
-      renderPage()
+      renderPage(intent)
     },
     reloadHistory: async () => {
       context.history = await window.murmur.getHistory()
@@ -217,7 +226,7 @@ async function mount(): Promise<void> {
     }
   )
 
-  const renderPage = (): void => {
+  const renderPage = (intent?: NavigationIntent): void => {
     appRoot.querySelectorAll<HTMLButtonElement>('.nav-item').forEach((button) => {
       button.classList.toggle('active', button.dataset.page === activePage)
     })
@@ -228,7 +237,7 @@ async function mount(): Promise<void> {
     historyView = null
     try {
       if (activePage === 'history') historyView = renderHistory(context)
-      if (activePage === 'settings') settingsView = renderSettings(context)
+      if (activePage === 'settings') settingsView = renderSettings(context, intent)
       if (activePage === 'about') renderAbout(context)
     } catch (error) {
       // A page bug must be visible — once, a render error after the HTML was
@@ -256,8 +265,10 @@ async function mount(): Promise<void> {
   })
 
   window.murmur.onWorkflowStatus((status) => {
-    workflowStatus = status
+    context.workflow = status
     updateSidebar()
+    // Removing the speech model waits for a dictation to finish.
+    settingsView?.applyWorkflow(status)
   })
 
   window.murmur.onSettingsChanged((next) => {

@@ -8,7 +8,7 @@ import { available, unavailable, type PlatformStatus } from '../src/shared/capab
 import type { WorkflowStatus } from '../src/shared/types'
 
 const NEEDS_KEY = 'Add your API key in Settings before recording.'
-const NEEDS_MODEL = 'Download the speech model in Settings first.'
+const NEEDS_MODEL = 'Download the speech model first.'
 
 /**
  * The window control is the entry point that always works, whatever the

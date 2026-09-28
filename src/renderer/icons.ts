@@ -31,6 +31,7 @@ export type IconName =
   | 'keyboard'
   | 'home'
   | 'key'
+  | 'lock'
   | 'empty'
 
 /** The body of each icon: paths only, sharing one set of stroke attributes. */
@@ -65,6 +66,9 @@ const PATHS: Record<IconName, string> = {
     'M6.5 13h.01M17 13h.01"/><path d="M9.5 13h5"/><path d="M8 16.3h8"/>',
   home: '<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.6V19a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V9.6"/><path d="M9.8 20.5v-6h4.4v6"/>',
   key: '<circle cx="8" cy="14.5" r="4.5"/><path d="M11.4 11.6 20 3.5"/><path d="M17 6.5l2.2 2.2"/><path d="M14.6 8.9l2.2 2.2"/>',
+  // A padlock: private by default, which a key would have muddled with the
+  // optional API key.
+  lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 14.5v2"/>',
   // Deliberately not a magnifying glass or a document: an empty history is not
   // a failed search and not a missing file, it is simply a page not yet
   // written on.

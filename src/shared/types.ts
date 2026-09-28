@@ -18,6 +18,11 @@ export interface WorkflowStatus {
   startedAt?: number
 }
 
+/** True while a take is being recorded or transcribed — what the main process calls busy. */
+export function dictationIsBusy(phase: WorkflowPhase): boolean {
+  return phase === 'starting' || phase === 'recording' || phase === 'processing'
+}
+
 /**
  * Whether transcript history is known to be on disk. Deliberately carries no
  * transcript text, file path or raw error: it crosses the IPC bridge into the

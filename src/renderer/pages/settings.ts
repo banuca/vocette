@@ -1,5 +1,7 @@
-import type { AppContext } from '../app-context'
+import type { AppContext, NavigationIntent } from '../app-context'
 import { escapeHtml, friendlyError, keyChips } from '../dom'
+import { createModelRow, localLanguageNote } from '../model-download'
+import type { EngineStatus } from '../../shared/engine'
 import {
   autoPasteSupported,
   clipboardOnlyReason,
@@ -18,8 +20,11 @@ import {
 import {
   LANGUAGE_OPTIONS,
   TRANSCRIPTION_MODELS,
+  dictationIsBusy,
   type PublicSettings,
-  type SettingsUpdate
+  type SettingsUpdate,
+  type TranscriptionEngine,
+  type WorkflowStatus
 } from '../../shared/types'
 import {
   MAX_PROMPT_TERM_CHARS,
@@ -48,12 +53,22 @@ const REPLACEMENTS_HELP =
 const CUSTOM_MODEL_OPTION = '__custom__'
 const MIC_TEST_DURATION_MS = 8000
 
+/** The Transcription card's subtitle; the cloud keeps the key's promise it always made. */
+const LOCAL_SUMMARY = 'Where your speech becomes text.'
+const CLOUD_SUMMARY =
+  'Where your speech becomes text. Your key is encrypted by the operating system and never ' +
+  'displayed again.'
+
 function holdDelayLabel(ms: number): string {
   return ms === 0 ? 'Instantly' : `${ms} ms`
 }
 
 export interface SettingsView {
   apply(next: PublicSettings): void
+  /** The speech model's row follows the download without redrawing the page. */
+  applyEngine(next: EngineStatus): void
+  /** Removing the model waits for a dictation to finish. */
+  applyWorkflow(status: WorkflowStatus): void
   dispose(): void
 }
 
@@ -66,8 +81,11 @@ interface MicTestAttempt {
   cleaned: boolean
 }
 
-export function renderSettings(context: AppContext): SettingsView {
-  context.setHeading('Settings', 'Set up your key, microphone, shortcut, and local history.')
+export function renderSettings(
+  context: AppContext,
+  intent: NavigationIntent = {}
+): SettingsView {
+  context.setHeading('Settings', 'Set up transcription, your microphone, shortcut, and local history.')
 
   /** Fresh view of the settings; updated by `syncControlValues`. */
   let settings = context.settings
@@ -102,45 +120,64 @@ export function renderSettings(context: AppContext): SettingsView {
     <div class="settings-stack">
       <section class="settings-card">
         <div class="settings-heading">
-          <div><h2>Transcription API</h2><p>Your key is encrypted by the operating system and never displayed again.</p></div>
+          <div><h2>Transcription</h2><p id="transcription-summary"></p></div>
           <span class="configured-badge ${settings.apiKeySource !== 'none' ? 'is-configured' : ''}" id="key-badge">${keyBadgeText(settings.apiKeySource)}</span>
         </div>
+
+        <div class="mode-choice engine-choice" role="radiogroup" aria-label="Where transcription runs">
+          <label class="mode-option">
+            <input type="radio" name="engine" value="local" id="engine-local" />
+            <div><strong>On this PC</strong><span>Private and offline. Nothing is sent anywhere. Uses about 1 GB of memory while dictating, released after 5 minutes of rest.</span></div>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="engine" value="cloud" id="engine-cloud" />
+            <div><strong>Cloud, with your API key</strong><span>OpenAI, Groq, Azure or any OpenAI-compatible server. Audio is sent to that provider.</span></div>
+          </label>
+        </div>
+
+        <div class="engine-local-fields" id="local-fields">
+          <div class="model-row" id="model-row"></div>
+        </div>
         <div class="form-grid">
-          <label class="field field-wide"><span>API key</span>
-            <div class="password-row">
-              <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="${settings.apiKeySource !== 'none' ? 'Enter a new key to replace the current key' : 'sk-…'}" />
-              <button class="secondary-button" id="open-api-keys" type="button">Get a key</button>
-            </div>
-            <small>The app sends each completed recording directly to your provider using your key.</small>
-          </label>
-          <div class="field field-wide key-scope" id="key-scope">
-            <label class="checkbox-row">
-              <input id="api-key-session" type="checkbox" />
-              <span>Keep this key for this session only</span>
+          <div class="engine-cloud-fields" id="cloud-fields">
+            <label class="field field-wide"><span>API key</span>
+              <div class="password-row">
+                <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="${settings.apiKeySource !== 'none' ? 'Enter a new key to replace the current key' : 'sk-…'}" />
+                <button class="secondary-button" id="open-api-keys" type="button">Get a key</button>
+              </div>
+              <small>The app sends each completed recording directly to your provider using your key.</small>
             </label>
-            <small id="key-scope-note"></small>
+            <div class="field field-wide key-scope" id="key-scope">
+              <label class="checkbox-row">
+                <input id="api-key-session" type="checkbox" />
+                <span>Keep this key for this session only</span>
+              </label>
+              <small id="key-scope-note"></small>
+            </div>
+            <label class="field field-wide"><span>API endpoint <em>(optional)</em></span>
+              <input id="api-endpoint" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.openai.com/v1" value="${escapeHtml(settings.apiEndpoint)}" />
+              <small>Leave empty for OpenAI. For another OpenAI-compatible provider, paste its base URL — for example <code>https://api.groq.com/openai/v1</code>, or <code>http://localhost:8080/v1</code> for a local transcription server.</small>
+            </label>
+            <label class="field"><span>Model</span>
+              <select id="model">
+                ${TRANSCRIPTION_MODELS.map(
+                  (model) => `<option value="${model}">${model}</option>`
+                ).join('')}
+                ${settings.apiEndpoint ? `<option value="${CUSTOM_MODEL_OPTION}">Custom model…</option>` : ''}
+              </select>
+              <input id="model-custom" class="model-custom-input ${modelIsCustom ? '' : 'is-hidden'}" type="text" spellcheck="false" placeholder="model name, e.g. whisper-large-v3" value="${modelIsCustom ? escapeHtml(settings.model) : ''}" />
+            </label>
           </div>
-          <label class="field field-wide"><span>API endpoint <em>(optional)</em></span>
-            <input id="api-endpoint" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.openai.com/v1" value="${escapeHtml(settings.apiEndpoint)}" />
-            <small>Leave empty for OpenAI. For another OpenAI-compatible provider, paste its base URL — for example <code>https://api.groq.com/openai/v1</code>, or <code>http://localhost:8080/v1</code> for a local transcription server.</small>
-          </label>
-          <label class="field"><span>Model</span>
-            <select id="model">
-              ${TRANSCRIPTION_MODELS.map(
-                (model) => `<option value="${model}">${model}</option>`
-              ).join('')}
-              ${settings.apiEndpoint ? `<option value="${CUSTOM_MODEL_OPTION}">Custom model…</option>` : ''}
-            </select>
-            <input id="model-custom" class="model-custom-input ${modelIsCustom ? '' : 'is-hidden'}" type="text" spellcheck="false" placeholder="model name, e.g. whisper-large-v3" value="${modelIsCustom ? escapeHtml(settings.model) : ''}" />
-          </label>
-          <label class="field"><span>Language</span>
-            <select id="language">
+          <div class="field">
+            <label class="field-label" for="language">Language</label>
+            <select id="language" aria-describedby="language-note">
               ${LANGUAGE_OPTIONS.map(
                 (option) =>
                   `<option value="${option.code}">${escapeHtml(option.label)}${option.code === 'auto' ? '' : ` (${option.code.toUpperCase()})`}</option>`
               ).join('')}
             </select>
-          </label>
+            <small class="language-note" id="language-note" aria-live="polite" hidden></small>
+          </div>
         </div>
         <div class="key-actions" id="key-actions"></div>
       </section>
@@ -276,6 +313,59 @@ export function renderSettings(context: AppContext): SettingsView {
   const vocabularyBadge = query<HTMLElement>('#vocabulary-badge')
   const replacements = query<HTMLTextAreaElement>('#replacements')
   const replacementsNote = query<HTMLElement>('#replacements-note')
+  const engineLocal = query<HTMLInputElement>('#engine-local')
+  const engineCloud = query<HTMLInputElement>('#engine-cloud')
+  const localFields = query<HTMLElement>('#local-fields')
+  const cloudFields = query<HTMLElement>('#cloud-fields')
+  const languageNote = query<HTMLElement>('#language-note')
+  const transcriptionSummary = query<HTMLElement>('#transcription-summary')
+
+  /**
+   * The engine shown as chosen. It can run ahead of the saved one: the setup
+   * card's "use your own API key instead" opens this page with the cloud
+   * picked, and clicking either option picks it. Neither switches anything
+   * until Save settings, like every other control here.
+   */
+  let chosenEngine: TranscriptionEngine = intent.engine ?? settings.engine
+  /**
+   * True while that choice differs from what is saved. An out-of-band repaint
+   * must not take it back from under the fields it revealed — the promise
+   * `vocabularyDirty` makes for the word list, made for the engine.
+   */
+  let engineDirty = chosenEngine !== settings.engine
+
+  /**
+   * On this PC the language only tunes cleanup — unless the model cannot
+   * recognise it at all, which is a warning. Stated from the control, so it
+   * is true before Save; the cloud has no such limit, so says nothing.
+   */
+  const paintLanguageNote = (): void => {
+    if (!languageNote) return
+    const note =
+      chosenEngine === 'local'
+        ? localLanguageNote(languageSelect?.value || settings.language)
+        : null
+    languageNote.textContent = note?.text ?? ''
+    languageNote.hidden = note === null
+    languageNote.className = `language-note${note?.warning ? ' is-warning' : ''}`
+  }
+
+  /** Shows the section for the chosen engine, and only that one. */
+  const syncEngineChoice = (): void => {
+    const local = chosenEngine === 'local'
+    if (engineLocal) engineLocal.checked = local
+    if (engineCloud) engineCloud.checked = !local
+    if (localFields) localFields.hidden = !local
+    if (cloudFields) cloudFields.hidden = local
+    // A key is none of the on-device engine's business; "Key required" over
+    // it would simply be untrue.
+    if (keyBadge) keyBadge.hidden = local
+    if (keyActions) keyActions.hidden = local
+    if (transcriptionSummary) {
+      transcriptionSummary.textContent = local ? LOCAL_SUMMARY : CLOUD_SUMMARY
+    }
+    paintLanguageNote()
+  }
 
   /**
    * True once the user has typed in the box and not yet saved.
@@ -407,6 +497,11 @@ export function renderSettings(context: AppContext): SettingsView {
     paintVocabularyNote()
     if (replacements && !replacementsDirty) replacements.value = next.replacements
     paintReplacementsNote()
+    // An unsaved engine choice outranks the stored one, as a pending chord
+    // does — until the store catches up with it.
+    if (chosenEngine === next.engine) engineDirty = false
+    if (!engineDirty) chosenEngine = next.engine
+    syncEngineChoice()
   }
 
   // --- Capability-driven state --------------------------------------------
@@ -611,6 +706,35 @@ export function renderSettings(context: AppContext): SettingsView {
     commitCapture(button.dataset.keys.split(',').map(Number))
   })
 
+  // --- Engine and the speech model ----------------------------------------
+
+  const chooseEngine = (engine: TranscriptionEngine): void => {
+    chosenEngine = engine
+    engineDirty = engine !== settings.engine
+    syncEngineChoice()
+  }
+  engineLocal?.addEventListener('change', () => {
+    if (engineLocal.checked) chooseEngine('local')
+  })
+  engineCloud?.addEventListener('change', () => {
+    if (engineCloud.checked) chooseEngine('cloud')
+  })
+
+  // The same row as History's setup step, drawn by the same module. Choosing
+  // this PC while the model is missing is allowed: the row offers the
+  // download, and the Record button says what it is waiting for.
+  const modelHost = query<HTMLElement>('#model-row')
+  const modelRow = modelHost
+    ? createModelRow(modelHost, {
+        variant: 'settings',
+        bridge: window.murmur,
+        onStatus: (status) => context.applyEngine(status),
+        confirm: (message) => window.confirm(message)
+      })
+    : null
+  modelRow?.setDictating(dictationIsBusy(context.workflow.phase))
+  modelRow?.apply(context.engine)
+
   // --- Model / language ---------------------------------------------------
 
   modelSelect?.addEventListener('change', () => {
@@ -623,6 +747,10 @@ export function renderSettings(context: AppContext): SettingsView {
   })
 
   modelCustom?.addEventListener('input', paintVocabularyNote)
+
+  // Whether the on-device model can hear the language is part of this
+  // control's state too.
+  languageSelect?.addEventListener('change', paintLanguageNote)
 
   // --- Vocabulary ---------------------------------------------------------
 
@@ -822,6 +950,10 @@ export function renderSettings(context: AppContext): SettingsView {
         : selectedModel
 
     const update: SettingsUpdate = {
+      // Saved like everything else. Choosing this PC before the model is
+      // there is allowed; the model row and the Record button say what is
+      // still missing.
+      engine: chosenEngine,
       shortcut: { keys: currentKeys() },
       holdDelayMs: Number(holdDelay?.value ?? 250),
       // Saved as chosen. A platform that cannot hold downgrades it at use
@@ -854,6 +986,7 @@ export function renderSettings(context: AppContext): SettingsView {
       // and a clamp is shown by repainting them from what actually persisted.
       vocabularyDirty = false
       replacementsDirty = false
+      engineDirty = false
       // Update in place: a full re-render would drop the view reference the
       // shell holds and orphan the capture listener.
       syncControlValues(next)
@@ -883,6 +1016,8 @@ export function renderSettings(context: AppContext): SettingsView {
       // saved yet — repaint the pending chips over the refreshed controls.
       if (pendingKeys) paintChips(pendingKeys)
     },
+    applyEngine: (next) => modelRow?.apply(next),
+    applyWorkflow: (status) => modelRow?.setDictating(dictationIsBusy(status.phase)),
     dispose: () => {
       disposed = true
       releaseCaptureListener?.()

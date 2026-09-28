@@ -7,6 +7,17 @@ All notable changes to this project are documented here. This project adheres to
 
 ### Added
 
+- **Transcription on this PC, by default.** Dictation now runs on your computer with
+  NVIDIA's Parakeet v3 (25 European languages): no API key, no account, and nothing sent
+  anywhere once the 670 MB model is downloaded. A first run opens on **Get started**, whose
+  one step is that download — with progress, Cancel (the next download resumes), and the
+  reason plus **Try again** if it fails. **Settings → Transcription** switches between **On
+  this PC** and **Cloud, with your API key**, showing only the fields for the one chosen;
+  the model row can also remove the model, though never mid-dictation, and a language the
+  model cannot recognise is named in a warning. Until a take could be transcribed, the tray
+  does not offer Start recording and says why. About says where audio goes for the engine
+  in use, and credits the model, sherpa-onnx and ONNX Runtime.
+
 - **Cleanup that actually runs.** The switch used to do nothing unless the language
   was set to exactly English, so Automatic — a common choice — got no cleanup while
   the switch showed as on. Hesitation sounds are now removed in every language, and

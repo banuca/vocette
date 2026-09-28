@@ -1143,7 +1143,7 @@ describe('recording modes and window controls', () => {
     // The on-device engine needs its model, not a key: asking for a key
     // there would send the user looking for the wrong thing.
     for (const reason of [
-      'Download the speech model in Settings first.',
+      'Download the speech model first.',
       'Add your API key in Settings before recording.'
     ]) {
       const { controller, deps } = makeHarness({

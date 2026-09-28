@@ -39,7 +39,12 @@ import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { SettingsStore } from './settings-store'
 import { TranscriptionService } from './transcription-service'
 import { decodeWav } from './wav'
-import { engineReady, type EngineStatus, type ModelStatus } from '../shared/engine'
+import {
+  REMOVE_WHILE_DICTATING,
+  engineReady,
+  type EngineStatus,
+  type ModelStatus
+} from '../shared/engine'
 import { parseReplacements } from '../shared/replacements'
 import { parseVocabulary } from '../shared/vocabulary'
 import {
@@ -108,6 +113,8 @@ let modelDownload: ModelDownload | null = null
 let modelDownloadError: string | null = null
 /** The last engine status sent to the window, so an unchanged one is not sent again. */
 let lastEngineStatus = ''
+/** Readiness as the tray menu last showed it, so download progress never rebuilds it. */
+let trayReadiness = ''
 
 let isQuitting = false
 let mainWindowReady = false
@@ -285,6 +292,14 @@ function broadcastEngineStatus(): void {
   if (serialised === lastEngineStatus) return
   lastEngineStatus = serialised
   mainWindow?.webContents.send('engine:status', status)
+  // The tray offers Start recording only when a take could be transcribed,
+  // so it follows readiness — a download finishing, the model removed — but
+  // not every tick of the download in between.
+  if (readinessKey(status) !== trayReadiness) rebuildTrayMenu()
+}
+
+function readinessKey(status: Pick<EngineStatus, 'ready' | 'notReadyReason'>): string {
+  return `${status.ready}:${status.notReadyReason ?? ''}`
 }
 
 /**
@@ -636,8 +651,18 @@ function rebuildTrayMenu(): void {
   const settings = settingsStore.getPublic()
   const recording = dictation.isRecording()
   const busy = dictation.isBusy()
+  // Read fresh, like the rest of the menu: a few file sizes, never a hash.
+  const readiness = engineStatus()
+  trayReadiness = readinessKey(readiness)
   const template: MenuItemConstructorOptions[] = [
-    { label: shortcutHintLabel(), enabled: false },
+    // A shortcut hint while nothing could be transcribed would promise a
+    // dictation that cannot happen, so the reason takes its place.
+    {
+      label: readiness.ready
+        ? shortcutHintLabel()
+        : (readiness.notReadyReason ?? 'Transcription is not set up yet.'),
+      enabled: false
+    },
     // Visible wherever the user is: the window may be hidden when a save fails.
     ...(historyStore.getSaveStatus().saveFailed
       ? [{ label: HISTORY_SAVE_FAILED_TRAY_LABEL, enabled: false } as MenuItemConstructorOptions]
@@ -647,7 +672,7 @@ function rebuildTrayMenu(): void {
     // when a menu is open is not a target the user chose to dictate into.
     {
       label: recording ? 'Stop recording' : 'Start recording',
-      enabled: recording || !busy,
+      enabled: recording || (!busy && readiness.ready),
       click: () => (recording ? dictation.stopDictation() : dictation.startDictation('ui'))
     },
     { label: 'Cancel dictation', enabled: busy, click: () => dictation.cancelDictation() },
@@ -806,9 +831,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('engine:remove-model', async (event) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
-    if (dictation.isBusy()) {
-      throw new Error('Wait for the current dictation to finish before removing the speech model.')
-    }
+    if (dictation.isBusy()) throw new Error(REMOVE_WHILE_DICTATING)
     await stopModelDownload()
     // The worker holds the model in memory and may hold its files open.
     localEngine.unload()

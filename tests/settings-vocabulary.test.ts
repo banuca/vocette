@@ -177,6 +177,7 @@ async function makeHarness(overrides: Partial<PublicSettings> = {}) {
     appInfo: { version: '0.4.0', platform: 'win32', platformStatus: TEST_PLATFORM },
     platform: TEST_PLATFORM,
     engine: TEST_ENGINE,
+    workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
     setHeading: vi.fn(),
     applySettings: vi.fn(),
