@@ -51,6 +51,11 @@ interface StartupHarness {
   pruneCalls: number[]
   loginItems: Array<{ openAtLogin: boolean; args?: string[] }>
   hookStarted: () => boolean
+  /** How often the keyboard hook has been started, and stopped. */
+  hookStarts: () => number
+  hookStops: () => number
+  /** Fires one of Electron's power events, as Windows would. */
+  powerEvent: (event: 'suspend' | 'resume' | 'lock-screen' | 'unlock-screen') => void
   invoke: (channel: string, fromMainWindow: boolean, ...args: unknown[]) => unknown
   /** Delivers a message from the hidden recorder window. */
   emitFromRecorder: (channel: string, payload: unknown) => void
@@ -145,6 +150,9 @@ async function startApp(options: {
   let trays = 0
   let quits = 0
   let hookStarted = false
+  let hookStarts = 0
+  let hookStops = 0
+  const powerListeners = new Map<string, Array<() => void>>()
   let shortcutPress: (() => void) | null = null
   let shortcutArm: (() => void) | null = null
   let shortcutDisarm: (() => void) | null = null
@@ -296,6 +304,11 @@ async function startApp(options: {
       }
     },
     safeStorage: { isEncryptionAvailable: () => false },
+    powerMonitor: {
+      on: vi.fn((event: string, listener: () => void) => {
+        powerListeners.set(event, [...(powerListeners.get(event) ?? []), listener])
+      })
+    },
     globalShortcut: {
       register: vi.fn((accelerator: string) => {
         if (options.acceleratorTaken) return false
@@ -456,9 +469,12 @@ async function startApp(options: {
           resetKeyState: vi.fn(),
           suppressSyntheticInput: vi.fn(),
           registrationError: () => null,
-          stop: vi.fn(),
+          stop: (): void => {
+            hookStops += 1
+          },
           start: (): void => {
             hookStarted = true
+            hookStarts += 1
           }
         }
       },
@@ -539,6 +555,11 @@ async function startApp(options: {
     pruneCalls,
     loginItems,
     hookStarted: () => hookStarted,
+    hookStarts: () => hookStarts,
+    hookStops: () => hookStops,
+    powerEvent: (event) => {
+      for (const listener of powerListeners.get(event) ?? []) listener()
+    },
     invoke: (channel: string, fromMainWindow: boolean, ...args: unknown[]): unknown => {
       const handler = ipcHandlers.get(channel)
       if (!handler) throw new Error(`No handler registered for ${channel}.`)
@@ -1661,5 +1682,74 @@ describe('a server of the user’s own, with no key', () => {
       ms: null,
       error: 'Could not reach the transcription service. Check your internet connection.'
     })
+  })
+})
+
+describe('after a sleep or the lock screen', () => {
+  const startTake = (app: StartupHarness): string => {
+    app.invoke('dictation:start', true)
+    const start = app
+      .sentToRecorder()
+      .filter((message) => message.channel === 'recorder:start')
+      .at(-1)?.payload as { requestId: string }
+    app.emitFromRecorder('recorder:started', { requestId: start.requestId })
+    return start.requestId
+  }
+  const lastPhase = (app: StartupHarness): string | undefined =>
+    (
+      app
+        .sentToMain()
+        .filter(({ channel }) => channel === 'workflow:status')
+        .at(-1)?.payload as { phase?: string } | undefined
+    )?.phase
+
+  it('puts the keyboard hook back when the user returns, once for a resume and unlock together', async () => {
+    const app = await startApp()
+    expect(app.hookStarts()).toBe(1)
+
+    app.powerEvent('resume')
+    expect(app.hookStops()).toBe(1)
+    expect(app.hookStarts()).toBe(2)
+
+    app.powerEvent('unlock-screen')
+    expect(app.hookStarts()).toBe(2)
+  })
+
+  it('leaves the hook alone when the PC goes to sleep or is locked', async () => {
+    const app = await startApp()
+    app.powerEvent('suspend')
+    app.powerEvent('lock-screen')
+    expect(app.hookStops()).toBe(0)
+    expect(app.hookStarts()).toBe(1)
+  })
+
+  it('finishes a take still recording when the PC is locked, so what was said is kept', async () => {
+    const app = await startApp()
+    const requestId = startTake(app)
+    expect(lastPhase(app)).toBe('recording')
+
+    app.powerEvent('lock-screen')
+    expect(app.sentToRecorder().at(-1)).toEqual({
+      channel: 'recorder:stop',
+      payload: { requestId }
+    })
+  })
+
+  it('finishes it too when the PC goes to sleep', async () => {
+    const app = await startApp()
+    const requestId = startTake(app)
+    app.powerEvent('suspend')
+    expect(app.sentToRecorder().at(-1)).toEqual({
+      channel: 'recorder:stop',
+      payload: { requestId }
+    })
+  })
+
+  it('cancels a take found still recording when the user returns, then puts the hook back', async () => {
+    const app = await startApp()
+    startTake(app)
+    app.powerEvent('unlock-screen')
+    expect(lastPhase(app)).toBe('cancelled')
+    expect(app.hookStarts()).toBe(2)
   })
 })

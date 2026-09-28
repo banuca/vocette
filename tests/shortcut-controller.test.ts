@@ -12,7 +12,13 @@ const hook = {
     list.push(listener as (event: { keycode: number }) => void)
     hook.listeners.set(event, list)
   },
-  off: vi.fn(),
+  off: vi.fn((event: string, listener: (payload: never) => void) => {
+    const list = hook.listeners.get(event) ?? []
+    hook.listeners.set(
+      event,
+      list.filter((entry) => entry !== (listener as unknown))
+    )
+  }),
   start: vi.fn(),
   stop: vi.fn(),
   keyTap: vi.fn(),
@@ -41,6 +47,7 @@ function makeController(
   const onArm = vi.fn()
   const onDisarm = vi.fn()
   const onEscape = vi.fn()
+  const onError = vi.fn()
   const controller = new ShortcutController({
     chord: { keys: overrides.keys ?? [KEY.Ctrl, KEY.Shift] },
     holdDelayMs: overrides.holdDelayMs ?? 250,
@@ -49,12 +56,12 @@ function makeController(
     onArm,
     onDisarm,
     onEscape,
-    onError: vi.fn(),
+    onError,
     onCapture
   })
   controller.start()
   if (overrides.tapToFire) controller.setTapToFire(true)
-  return { controller, onPress, onRelease, onCapture, onArm, onDisarm, onEscape }
+  return { controller, onPress, onRelease, onCapture, onArm, onDisarm, onEscape, onError }
 }
 
 beforeEach(() => {
@@ -643,5 +650,37 @@ describe('Esc', () => {
     expect(onDisarm).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(1000)
     expect(onPress).not.toHaveBeenCalled()
+  })
+})
+
+describe('putting the hook back after a sleep or a lock', () => {
+  it('works again with nothing left held from before', () => {
+    const { controller, onPress } = makeController({ holdDelayMs: 0 })
+    // Win + L: the key-ups are made on the lock screen, where no hook sees them.
+    keyDown(KEY.Meta)
+    keyDown(KEY.L)
+    // So Win still counts as held, and the chord refuses to fire beside it.
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    expect(onPress).not.toHaveBeenCalled()
+    keyUp(KEY.Shift)
+    keyUp(KEY.Ctrl)
+
+    controller.stop()
+    controller.start()
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports a hook error once, however often the hook was put back', () => {
+    const { controller, onError } = makeController()
+    controller.stop()
+    controller.start()
+    controller.stop()
+    controller.start()
+    hook.emit('error', { keycode: 0 })
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(hook.start).toHaveBeenCalled()
   })
 })

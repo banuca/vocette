@@ -116,7 +116,7 @@ On Wayland the shortcut is registered with the desktop portal rather than observ
 
 Auto-paste is honest about its limits. Injected keystrokes cannot reach an elevated Windows window or a macOS secure-input field, and transcription takes seconds during which you may switch apps. When either happens — or when the target simply cannot be identified — the app leaves the transcript on your clipboard and tells you to paste manually instead of claiming a paste that never landed. Focus is never forcibly taken back to make a paste succeed. When a paste does go through, the clipboard is only borrowed: what you had copied is put back moments later, so the overlay says **Pasted** rather than implying the transcript is still there. If it went to the wrong window, **Alt + Shift + V** pastes your last dictation again (Windows).
 
-The tray menu also has **Start / Stop recording**, **Cancel dictation**, **Reset shortcut state** — for the rare case where a key-up is missed, which happens if you release the chord while a UAC prompt has focus — and **Retry last dictation** after a failed transcription, which the window also offers as **Retry** beside Record.
+The tray menu also has **Start / Stop recording**, **Cancel dictation**, **Reset shortcut state** — for the rare case where a key-up is missed, which happens if you release the chord while a UAC prompt has focus (after sleep or the lock screen Murmur does this itself) — and **Retry last dictation** after a failed transcription, which the window also offers as **Retry** beside Record.
 
 ![Listening](docs/screenshots/overlay-recording.png)
 

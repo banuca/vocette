@@ -208,6 +208,14 @@ All notable changes to this project are documented here. This project adheres to
 
 ### Fixed
 
+- **The shortcut keeps working after sleep and the lock screen.** Windows can drop the
+  keyboard hook while the PC is away, and the key-ups of Win + L happen where no hook can
+  see them, so the shortcut could go dead until Murmur was restarted. The hook is now put
+  back, with nothing held, when the PC wakes or is unlocked. A take still recording when
+  the PC sleeps or locks is finished rather than lost, and the microphone does not stay
+  open behind the lock screen; what was said is kept on the clipboard and in History, and
+  pasted only if the window it was meant for is in front when it is ready. A hook error
+  after several sleeps is reported once, not once per wake.
 - In **Press to start and stop**, and for a take started from the window, the overlay said
   “Release Left Ctrl + Left Shift to finish” once recording began, which was wrong for both.
   It now keeps the words for how the take was started.

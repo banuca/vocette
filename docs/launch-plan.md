@@ -70,9 +70,9 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 | 14 | Opt-in update check | Free | todo | |
 | R1 | Silence guard: no text invented from a silent take, no engine call | Free | committed | e1480e5 |
 | R2 | Live microphone level in the overlay ("is it hearing me?") | Free | committed | 5230a6e |
-| R3 | Esc cancels a hands-free (toggle) recording | Free | todo | |
+| R3 | Esc cancels a hands-free (toggle) recording | Free | committed | 06b284d |
 | R4 | Bluetooth headset hint beside the microphone picker | Free | committed | 11c3d57 |
-| R5 | Re-arm the keyboard hook after sleep/resume and unlock | Free | todo | |
+| R5 | Re-arm the keyboard hook after sleep/resume and unlock | Free | committed | (next) |
 | 15 | Packaging (sherpa-onnx unpack, native check, release build outside synced folder) | — | todo | |
 | 16 | Docs: README, SECURITY, CHANGELOG, CONTRIBUTING (DCO), platform matrix | — | todo | |
 | 17 | Website: landing, pricing, privacy, terms, refund | — | todo | |
@@ -132,6 +132,8 @@ still-pending feature-1 vocabulary steps 2–6 from `operating-plan.md` §6.
 | 5 | 832 (lane B) → 889 after merge; fetch counts asserted per case; retry now always clipboard-only (window/tray Retry would have pasted into Murmur itself) | — | a real 429/5xx from a provider |
 | 2 | tsc, lint, 572 tests; probe of 25 realistic sentences incl. real engine output | E2E: fake-mic c-disfluent.wav through the built app → "So I think we should. Move the meeting to Wednesday." (fillers and spoken correction applied; the recogniser's own full stop kept) | Settings rows by hand |
 | 3 | tsc, lint, 626 tests (lane B); 755 after merge | — (no runtime surface beyond settings) | Settings box on screen; {date} locale in packaged app |
+| R3 | 1329 tests; Esc only on its own (modifier = other shortcut), not while capturing/disabled/echo; cancels toggle or window takes while starting/recording, never held or processing | Built app, fake mic: window take shows "Press Stop when you have finished · Esc to cancel" and it fits (230 of 248 px measured); longer chords fall back to "the shortcut"; Settings shows the Esc line under Press to start and stop | a real Esc key press (not injected: it would reach the owner's foreground app) |
+| R5 | 1340 tests; rearmPlan (debounce 3 s, clock set back); hook error listener attached once per start; startup wiring: resume/unlock re-arm once, suspend/lock finish a recording take, a take still recording at wake is cancelled | Built app: F24 injected via SendInput seen by the hook through Change-shortcut capture before and after a genuine powerMonitor 'resume' (native uiohook stop+start, 4 ms); capability stayed available | a real sleep/wake and Win+L cycle |
 | 7a | tsc, lint, 701 tests; build has out/main/engine-worker.js | E2E through built app, fake mic: cold stop→text 4.5–4.7 s (spawn + load), warm 0.36 s for a 4–5 s take (3 rounds); model id recorded in History; clipboard delivery; worker smoke by the builder incl. damaged-model recovery, 65 s split, packaged --dir build with native check passing | full 640 MB download; cancel/resume vs real server; idle unload in real time; NSIS installer |
 
 ## 8. Owner actions before the first sale (collected for the end)

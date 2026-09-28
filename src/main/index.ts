@@ -12,6 +12,7 @@ import {
   ipcMain,
   nativeImage,
   net,
+  powerMonitor,
   screen,
   session,
   shell,
@@ -40,6 +41,7 @@ import { createPlatformAdapter } from './platform'
 import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform/types'
 import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
+import { rearmPlan } from './rearm-plan'
 import {
   LICENCE_MESSAGES,
   LicenceClient,
@@ -155,6 +157,8 @@ let quitFlushed = false
 let lastBroadcastPhase: WorkflowStatus['phase'] | null = null
 /** Whether Alt + Shift + V is actually registered, not merely switched on. */
 let pasteLastRegistered = false
+/** When the keyboard hook was last put back after a sleep or a lock. */
+let lastRearmAt: number | null = null
 
 function clearTimer(timer: NodeJS.Timeout | null): null {
   if (timer) clearTimeout(timer)
@@ -819,6 +823,35 @@ function applyRecordingMode(): void {
 }
 
 /**
+ * The PC is going to sleep or being locked. A take still recording is finished,
+ * not thrown away — a lock that comes on its own can arrive in the middle of a
+ * long dictation — and the microphone does not stay open behind the lock
+ * screen. What was said is transcribed as usual, and pasted only if the window
+ * it was meant for is still in front when it is ready; otherwise it is left on
+ * the clipboard and in History.
+ */
+function finishTakeBeforeAway(): void {
+  if (dictation.isRecording()) dictation.stopDictation()
+}
+
+/**
+ * The user is back from a sleep or the lock screen: the keyboard hook is put
+ * back with nothing held (see `rearmPlan`). A take somehow still recording is
+ * cancelled first.
+ */
+function rearmShortcut(): void {
+  const now = Date.now()
+  const plan = rearmPlan({ recording: dictation.isRecording(), lastRearmAt, now })
+  if (plan === 'skip') return
+  lastRearmAt = now
+  if (plan === 'cancel-then-rearm') dictation.cancelDictation()
+  shortcutController.stop()
+  shortcutController.start()
+  // Starting again can fail, or succeed where it failed before.
+  refreshCapabilities()
+}
+
+/**
  * The newest transcript, pasted again into whatever has focus. Nothing when
  * there is no history yet, or while a take is running.
  */
@@ -1410,6 +1443,10 @@ async function bootstrap(): Promise<void> {
   createTray()
   applyLaunchAtLogin(initial.launchAtLogin)
   shortcutController.start()
+  powerMonitor.on('suspend', finishTakeBeforeAway)
+  powerMonitor.on('lock-screen', finishTakeBeforeAway)
+  powerMonitor.on('resume', rearmShortcut)
+  powerMonitor.on('unlock-screen', rearmShortcut)
   applyPasteLastShortcut(initial.pasteLastShortcut)
   // Starting may have discovered the shortcut cannot be registered at all.
   refreshCapabilities()

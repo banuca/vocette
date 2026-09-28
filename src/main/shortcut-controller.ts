@@ -19,6 +19,14 @@ export const SYNTHETIC_ECHO_MS = 180
  */
 export const ARM_INTENT_MS = 100
 
+/** uiohook's types do not declare its 'error' event, so it is reached through this. */
+interface HookErrorEmitter {
+  on(event: 'error', listener: () => void): void
+  off(event: 'error', listener: () => void): void
+}
+
+const hookErrors = (): HookErrorEmitter => uIOhook as unknown as HookErrorEmitter
+
 /**
  * Watches the global keyboard for the hold-to-talk chord.
  *
@@ -69,13 +77,9 @@ export class ShortcutController implements ShortcutBackend {
   start(): void {
     if (this.running) return
     // An EventEmitter with no 'error' listener throws on emit, which would take
-    // the whole app down from inside the native hook. uiohook's types do not
-    // declare the event, so this is attached through the emitter interface.
-    ;(uIOhook as unknown as { on(event: 'error', listener: () => void): void }).on('error', () => {
-      this.options.onError(
-        'The keyboard hook reported an error. Restart the app if the shortcut stops working.'
-      )
-    })
+    // the whole app down from inside the native hook. Attached once per start
+    // and removed on stop, so a hook put back after a sleep reports once.
+    hookErrors().on('error', this.handleHookError)
     uIOhook.on('keydown', this.handleKeyDown)
     uIOhook.on('keyup', this.handleKeyUp)
     try {
@@ -83,6 +87,7 @@ export class ShortcutController implements ShortcutBackend {
       this.running = true
       this.startError = null
     } catch {
+      hookErrors().off('error', this.handleHookError)
       uIOhook.off('keydown', this.handleKeyDown)
       uIOhook.off('keyup', this.handleKeyUp)
       // Recorded as well as reported: the capability snapshot has to be able
@@ -108,6 +113,7 @@ export class ShortcutController implements ShortcutBackend {
     } catch {
       // Already torn down.
     }
+    hookErrors().off('error', this.handleHookError)
     this.running = false
   }
 
@@ -215,6 +221,12 @@ export class ShortcutController implements ShortcutBackend {
     const announced = this.armAnnounced
     this.armAnnounced = false
     return announced
+  }
+
+  private readonly handleHookError = (): void => {
+    this.options.onError(
+      'The keyboard hook reported an error. Restart the app if the shortcut stops working.'
+    )
   }
 
   /** The hold delay has run out on an armed chord. */
