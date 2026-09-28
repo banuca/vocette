@@ -1055,13 +1055,14 @@ const recorderIds = (app: StartupHarness, channel: string): string[] =>
     .map((message) => (message.payload as { requestId: string }).requestId)
 
 describe('listening from the keypress', () => {
-  it('opens the microphone when the chord is armed, unseen, and warms the engine on this PC', async () => {
+  it('opens the microphone when the chord is armed, unseen, and loads nothing yet', async () => {
     const app = await startApp({ engine: 'local', modelState: 'installed' })
     const shown = workflowPhases(app).length
     app.armShortcut()
     const opened = recorderIds(app, 'recorder:start')
     expect(opened).toHaveLength(1)
-    expect(app.engine.prewarm).toHaveBeenCalledTimes(1)
+    // It may yet be another shortcut: the engine waits for a confirmed take.
+    expect(app.engine.prewarm).not.toHaveBeenCalled()
     expect(workflowPhases(app)).toHaveLength(shown)
 
     // Another shortcut after all: closed again, and still nothing shown.
@@ -1105,10 +1106,12 @@ describe('listening from the keypress', () => {
     expect(app.engine.prewarm).not.toHaveBeenCalled()
   })
 
-  it('warms the engine for a take started from the window too', async () => {
+  it('warms the engine for a take started from the window, once its microphone is live', async () => {
     const app = await startApp({ engine: 'local', modelState: 'installed' })
     app.invoke('dictation:start', true)
-    expect(recorderIds(app, 'recorder:start')).toHaveLength(1)
+    const [requestId] = recorderIds(app, 'recorder:start')
+    expect(app.engine.prewarm).not.toHaveBeenCalled()
+    app.emitFromRecorder('recorder:started', { requestId })
     expect(app.engine.prewarm).toHaveBeenCalledTimes(1)
   })
 })

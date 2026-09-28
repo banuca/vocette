@@ -2487,35 +2487,40 @@ describe('instant capture: listening from the keypress', () => {
     expectUnseen(harness)
   })
 
-  it('warms the engine at the keypress and at an ordinary start, never costing the take anything', () => {
+  it('warms the engine only once a take is confirmed and live, never costing the take anything', () => {
     const harness = makeHarness()
-    const { controller, deps } = harness
+    const { controller, deps, lastRequestId } = harness
     const prewarm = vi.fn(() => {
       throw new Error('The speech engine could not start on this PC.')
     })
     Object.assign(deps, { prewarm })
 
+    // A keypress that may yet be another shortcut loads nothing.
     controller.prepareDictation()
-    expect(prewarm).toHaveBeenCalledTimes(1)
-    // After the microphone was asked for: the device is the slower of the two.
-    expect(deps.sendToRecorder.mock.invocationCallOrder[0]).toBeLessThan(
-      prewarm.mock.invocationCallOrder[0] ?? 0
-    )
-    // Confirming the take opens nothing new, so warms nothing new.
+    controller.onRecorderStarted({ requestId: lastRequestId() })
+    expect(prewarm).not.toHaveBeenCalled()
+    // Confirmed, with the microphone already live: now it warms, once.
     controller.onShortcutPressed()
     expect(prewarm).toHaveBeenCalledTimes(1)
-    expect(controller.getStatus().phase).toBe('starting')
+    expect(controller.getStatus().phase).toBe('recording')
 
+    // An ordinary start warms when the microphone answers, not when asked for:
+    // loading beside the device's own start-up slowed the device.
     controller.cancelDictation()
     controller.startDictation('ui')
+    expect(prewarm).toHaveBeenCalledTimes(1)
+    controller.onRecorderStarted({ requestId: lastRequestId() })
     expect(prewarm).toHaveBeenCalledTimes(2)
-    expect(controller.getStatus().phase).toBe('starting')
+    expect(controller.getStatus().phase).toBe('recording')
 
-    const off = makeHarness({ settings: { instantCapture: false } })
-    const offPrewarm = vi.fn()
-    Object.assign(off.deps, { prewarm: offPrewarm })
-    off.controller.prepareDictation()
-    expect(offPrewarm).not.toHaveBeenCalled()
+    // A keypress abandoned before it was confirmed never warms at all.
+    const abandoned = makeHarness()
+    const abandonedPrewarm = vi.fn()
+    Object.assign(abandoned.deps, { prewarm: abandonedPrewarm })
+    abandoned.controller.prepareDictation()
+    abandoned.controller.onRecorderStarted({ requestId: abandoned.lastRequestId() })
+    abandoned.controller.abandonPreparation()
+    expect(abandonedPrewarm).not.toHaveBeenCalled()
   })
 })
 

@@ -176,8 +176,9 @@ export interface DictationDeps {
   onRetryChanged?(available: boolean): void
   /**
    * Gets the speech engine ready while the user is still speaking, so the
-   * transcription does not wait for it to load. Only ever a head start: a
-   * failure is reported by the take that needs the engine.
+   * transcription does not wait for it to load. Called once a take is both
+   * confirmed and live. Only ever a head start: a failure is reported by the
+   * take that needs the engine.
    */
   prewarm?(): void
   /**
@@ -392,7 +393,6 @@ export class DictationController {
       requestId: this.currentRequestId,
       microphoneId: settings.microphoneId
     })
-    this.prewarm()
   }
 
   /**
@@ -432,7 +432,6 @@ export class DictationController {
       requestId: this.currentRequestId,
       microphoneId: settings.microphoneId
     })
-    this.prewarm()
   }
 
   /**
@@ -596,6 +595,13 @@ export class DictationController {
   /** The microphone is live and the take is on screen: say so, and time it. */
   private enterRecording(startedAt: number): void {
     this.startWatchdog = clearTimer(this.startWatchdog)
+    // The engine starts loading only now, with the microphone live and the
+    // take confirmed. Loading it alongside the microphone's own start-up
+    // measurably slowed the device (about 1 s longer on a cold start on a
+    // 15 W laptop), and loading it for a keypress that turns out to be
+    // another shortcut would burn seconds of CPU for nothing. From here the
+    // load overlaps the user's speech, which is all a head start needs.
+    this.prewarm()
     this.broadcast({
       phase: 'recording',
       message: 'Listening…',
