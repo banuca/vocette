@@ -118,6 +118,7 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     autoPaste: true,
     restoreClipboard: true,
     pasteLastShortcut: true,
+    instantCapture: true,
     removeFillers: true,
     spokenCorrections: true,
     spokenFormatting: true,
