@@ -1,9 +1,13 @@
 # Screenshots
 
-Captures of the **built** renderer — `out/renderer`, not a mock-up — with a
-synthetic bridge in place of the real one. Every transcript here is invented.
-No profile is read, no API key exists, no microphone is opened and no network
-request is made.
+Every transcript here is invented.
+
+The four the README shows — `history.png`, `history-light.png`, `settings.png` and
+`overlay-recording.png` — were captured on 28 September 2026 from the real built app
+(0.5.0 work), with a scratch profile holding invented history, the on-device engine
+installed, and a fake microphone for the overlay. The rest are captures of the 0.4.0
+renderer with a synthetic bridge, from before the on-device engine, Pro and AI polish;
+they show those screens as they were then.
 
 Regenerate after any interface change; a screenshot of a version of the app
 that no longer exists is worse than none.

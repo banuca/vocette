@@ -5,6 +5,13 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-28
+
+Murmur now transcribes on your PC by default — no key, no account — and gains a
+30-day Pro trial, a one-off Pro licence, AI polish, snippets, instant capture,
+Esc to cancel, a measured wait on every dictation, an opt-in update check and a
+Windows release build that is checked before it is trusted.
+
 ### Added
 
 - **Transcription on this PC, by default.** Dictation now runs on your computer with

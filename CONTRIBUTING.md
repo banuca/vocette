@@ -119,11 +119,28 @@ exercised by whoever wrote it.
   `uiohook-napi`'s enum because the renderer cannot load native modules.
   `tests/keycodes.test.ts` keeps the two in sync; if you add keys, add them to
   both.
-- **`uIOhook` events are typed loosely upstream** — see the cast in
-  `ShortcutController.start()` for the `error` listener.
+- **`uIOhook` events are typed loosely upstream** — see `hookErrors()` in
+  `src/main/shortcut-controller.ts` for the `error` listener, which is attached
+  per start and removed per stop so a hook put back after sleep reports once.
 - **The overlay stylesheet does not transition colours that come from custom
   properties.** Chromium does not reliably re-target such a transition, and the
   badge silently kept the previous phase's colour when it did.
+
+## Sign your commits (Developer Certificate of Origin)
+
+Murmur is sold as well as given away, so every contribution needs a clear
+right to include it. By signing off a commit you certify the
+[Developer Certificate of Origin](https://developercertificate.org/): that you
+wrote the change, or otherwise have the right to submit it under the project's
+licence. Sign off with:
+
+```bash
+git commit -s
+```
+
+which adds a `Signed-off-by: Your Name <you@example.com>` line with the name
+and email from your Git configuration. Pull requests with unsigned commits
+cannot be merged; `git commit --amend -s` or `git rebase --signoff` fixes them.
 
 ## Code of conduct
 
