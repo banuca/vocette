@@ -3,6 +3,7 @@ import { BLUETOOTH_HEADSET_NOTE, looksLikeBluetoothHeadset } from '../bluetooth-
 import { escapeHtml, friendlyError, keyChips } from '../dom'
 import { replacementsPlanNote, vocabularyPlanNote } from '../licence-text'
 import { createModelRow, localLanguageNote } from '../model-download'
+import { createPolishCard, polishCardMarkup } from '../polish-card'
 import type { EngineStatus } from '../../shared/engine'
 import { vocabularyTermLimit } from '../../shared/entitlement'
 import {
@@ -247,6 +248,7 @@ export function renderSettings(
         </label>
         <small class="field-note" id="replacements-note" aria-live="polite"></small>
       </section>
+${polishCardMarkup()}
 
       <section class="settings-card">
         <div class="settings-heading"><div><h2>Recording</h2><p>How a dictation starts, and which microphone it uses.</p></div></div>
@@ -341,6 +343,15 @@ export function renderSettings(
 
   const query = <T extends HTMLElement>(selector: string): T | null =>
     context.content.querySelector<T>(selector)
+
+  // AI polish keeps its own controls; Save collects them with the rest.
+  const polishCard = createPolishCard(
+    query,
+    window.murmur,
+    settings,
+    context.licence.plan !== 'free',
+    (next) => context.applySettings(next)
+  )
 
   const holdDelay = query<HTMLSelectElement>('#hold-delay')
   const hotkeyEnabled = query<HTMLInputElement>('#hotkey-enabled')
@@ -651,6 +662,7 @@ export function renderSettings(
     paintVocabularyNote()
     if (replacements && !replacementsDirty) replacements.value = next.replacements
     paintReplacementsNote()
+    polishCard.apply(next)
     // An unsaved engine choice outranks the stored one, as a pending chord
     // does — until the store catches up with it.
     if (chosenEngine === next.engine) engineDirty = false
@@ -1258,7 +1270,8 @@ export function renderSettings(
       apiEndpoint: endpointInput?.value.trim() ?? '',
       ...(apiKey
         ? { apiKey, apiKeyScope: sessionScope?.checked ? ('session' as const) : ('persist' as const) }
-        : {})
+        : {}),
+      ...polishCard.collect()
     }
 
     try {
@@ -1270,6 +1283,7 @@ export function renderSettings(
       vocabularyDirty = false
       replacementsDirty = false
       engineDirty = false
+      polishCard.saved(next)
       // Update in place: a full re-render would drop the view reference the
       // shell holds and orphan the capture listener.
       syncControlValues(next)
@@ -1310,6 +1324,7 @@ export function renderSettings(
     applyLicence: () => {
       paintVocabularyNote()
       paintReplacementsNote()
+      polishCard.applyPlan(context.licence.plan !== 'free')
     },
     dispose: () => {
       disposed = true

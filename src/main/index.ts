@@ -43,6 +43,8 @@ import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { rearmPlan } from './rearm-plan'
 import { UpdateChecker } from './update-check'
+import { polishText, requestPolish } from './polish-service'
+import { OPENAI_POLISH_ENDPOINT, type PolishOutcome } from '../shared/polish'
 import {
   LICENCE_MESSAGES,
   LicenceClient,
@@ -110,6 +112,8 @@ const RETENTION_RETRY_ADVICE =
   'setting again in Settings to retry the cleanup.'
 /** "Paste last dictation", in Electron's accelerator syntax. */
 const PASTE_LAST_ACCELERATOR = 'Alt+Shift+V'
+/** What Test sends for polish: short, with a filler to remove. */
+const POLISH_TEST_TEXT = 'this is a test um of the polish'
 
 let mainWindow: BrowserWindow | null = null
 let recorderWindow: BrowserWindow | null = null
@@ -252,6 +256,44 @@ function broadcastStatus(status: WorkflowStatus): void {
   }
 }
 
+/**
+ * The key polish is sent with: its own, if one is saved; otherwise the
+ * transcription key, but only when both go to OpenAI — a key is never sent to
+ * a provider it was not given for. A key that cannot be read sends none, and
+ * the provider's refusal says so.
+ */
+function polishKey(): string {
+  try {
+    const own = settingsStore.getPolishKey()
+    if (own) return own
+    const settings = settingsStore.getInternal()
+    const toOpenAI = settings.polishEndpoint.trim().replace(/\/+$/u, '') === OPENAI_POLISH_ENDPOINT
+    return toOpenAI && settings.apiEndpoint === '' ? settingsStore.getApiKey() : ''
+  } catch {
+    return ''
+  }
+}
+
+/** One polish attempt with the saved settings, for a dictation or for Test. */
+function polishRequest(text: string, signal?: AbortSignal): Parameters<typeof requestPolish>[0] {
+  const settings = settingsStore.getInternal()
+  return {
+    text,
+    style: settings.polishStyle,
+    instructions: settings.polishInstructions,
+    terms: planVocabulary(settings.vocabulary, entitlement().pro),
+    endpoint: settings.polishEndpoint,
+    model: settings.polishModel,
+    apiKey: polishKey(),
+    budgetMs: settings.polishBudgetMs,
+    signal
+  }
+}
+
+function polishDictation(text: string, signal: AbortSignal): Promise<PolishOutcome> {
+  return polishText(polishRequest(text, signal))
+}
+
 function shortcutLabel(): string {
   return chordLabel(settingsStore.getInternal().shortcut.keys)
 }
@@ -294,6 +336,8 @@ function workflowSettings(): WorkflowSettings {
     model: settings.engine === 'local' ? LOCAL_MODEL.id : settings.model,
     language: settings.language,
     pro,
+    // Pro only: a Free user's saved switch sends nothing anywhere.
+    polish: pro && settings.polishEnabled,
     // The first 50 terms and 20 rules on Free, all of them with Pro. The
     // terms feed both the cloud request and the correction after it.
     vocabulary: planVocabulary(settings.vocabulary, pro),
@@ -685,6 +729,7 @@ function createDictationController(): DictationController {
       if (modelStatus().state !== 'installed') return
       localEngine.prewarm()
     },
+    polish: polishDictation,
     commonWords: loadCommonWords
   })
 }
@@ -1081,6 +1126,27 @@ function registerIpc(): void {
     return result
   })
 
+  ipcMain.handle('settings:clear-polish-key', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return settingsStore.clearPolishKey()
+  })
+  // Test for polish: one short sentence to the saved provider, as a dictation
+  // would send it, and what came back.
+  ipcMain.handle('polish:test', async (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    const started = performance.now()
+    try {
+      const text = await requestPolish(polishRequest(POLISH_TEST_TEXT))
+      return { ok: true, text: text.trim(), ms: Math.round(performance.now() - started), error: null }
+    } catch (error) {
+      return {
+        ok: false,
+        text: null,
+        ms: null,
+        error: error instanceof Error ? error.message : 'Polish could not be tested.'
+      }
+    }
+  })
   ipcMain.handle('settings:clear-api-key', (event) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
     const result = settingsStore.clearApiKey()

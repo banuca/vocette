@@ -29,6 +29,15 @@ import {
 import { RECORDING_MODES, type RecordingMode } from '../shared/capabilities'
 import { clampReplacements } from '../shared/replacements'
 import { clampVocabulary } from '../shared/vocabulary'
+import {
+  DEFAULT_POLISH,
+  MAX_POLISH_INSTRUCTIONS_CHARS,
+  POLISH_BUDGETS_MS,
+  POLISH_MODEL_PATTERN,
+  POLISH_STYLES,
+  type PolishBudgetMs,
+  type PolishStyle
+} from '../shared/polish'
 import { assessSecureStorage, type SecureStorageAssessment } from './secure-storage'
 
 /** v5 added `theme`; earlier files load with the default. */
@@ -115,6 +124,15 @@ export interface StoredSettings {
   updateCheck: boolean
   /** When an update check last finished, so a restart cannot make it daily-plus. */
   lastUpdateCheckAt: string | null
+  /** AI polish (Pro); see `src/shared/polish.ts`. */
+  polishEnabled: boolean
+  polishStyle: PolishStyle
+  polishInstructions: string
+  polishEndpoint: string
+  polishModel: string
+  polishBudgetMs: PolishBudgetMs
+  /** The polish provider's key, encrypted like the transcription key. */
+  encryptedPolishKey: string
 }
 
 export const DEFAULT_SETTINGS: StoredSettings = {
@@ -151,7 +169,14 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   deviceTag: '',
   licence: null,
   updateCheck: false,
-  lastUpdateCheckAt: null
+  lastUpdateCheckAt: null,
+  polishEnabled: DEFAULT_POLISH.enabled,
+  polishStyle: DEFAULT_POLISH.style,
+  polishInstructions: DEFAULT_POLISH.instructions,
+  polishEndpoint: DEFAULT_POLISH.endpoint,
+  polishModel: DEFAULT_POLISH.model,
+  polishBudgetMs: DEFAULT_POLISH.budgetMs,
+  encryptedPolishKey: ''
 }
 
 const MAX_API_KEY_LENGTH = 512
@@ -162,6 +187,8 @@ const modelSet = new Set<string>(TRANSCRIPTION_MODELS)
 const recordingModeSet = new Set<string>(RECORDING_MODES)
 const themeSet = new Set<string>(THEMES)
 const engineSet = new Set<string>(TRANSCRIPTION_ENGINES)
+const polishStyleSet = new Set<string>(POLISH_STYLES)
+const polishBudgetSet = new Set<number>(POLISH_BUDGETS_MS)
 /** A model name for custom endpoints: provider slug, letters/digits/dots/dashes. */
 const CUSTOM_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u
 
@@ -202,6 +229,16 @@ function isValidEndpoint(value: string): boolean {
   if (url.protocol === 'https:') return true
   if (url.protocol !== 'http:') return false
   return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+}
+
+/** A polish endpoint follows the transcription rules, but may never be empty. */
+function isValidPolishEndpoint(value: string): boolean {
+  return value !== '' && value.length <= MAX_ENDPOINT_LENGTH && isValidEndpoint(value)
+}
+
+/** Empty is allowed and means "not chosen yet"; polish is then not attempted. */
+function isValidPolishModel(value: string): boolean {
+  return value === '' || POLISH_MODEL_PATTERN.test(value)
 }
 
 export function isValidModel(value: string, apiEndpoint: string): boolean {
@@ -343,6 +380,31 @@ export function normaliseSettings(value: unknown): StoredSettings {
     // Added within v5: absent means off, as on a fresh install. Only a real
     // true switches it on, so no damaged file can start sending requests.
     updateCheck: candidate.updateCheck === true,
+    // Added within v5, like the update check: absent means off, with the
+    // OpenAI preset filled in, as on a fresh install.
+    polishEnabled: candidate.polishEnabled === true,
+    polishStyle:
+      typeof candidate.polishStyle === 'string' && polishStyleSet.has(candidate.polishStyle)
+        ? (candidate.polishStyle as PolishStyle)
+        : DEFAULT_POLISH.style,
+    polishInstructions:
+      typeof candidate.polishInstructions === 'string'
+        ? candidate.polishInstructions.slice(0, MAX_POLISH_INSTRUCTIONS_CHARS)
+        : DEFAULT_POLISH.instructions,
+    polishEndpoint:
+      typeof candidate.polishEndpoint === 'string' && isValidPolishEndpoint(candidate.polishEndpoint)
+        ? candidate.polishEndpoint
+        : DEFAULT_POLISH.endpoint,
+    polishModel:
+      typeof candidate.polishModel === 'string' && isValidPolishModel(candidate.polishModel)
+        ? candidate.polishModel
+        : DEFAULT_POLISH.model,
+    polishBudgetMs:
+      typeof candidate.polishBudgetMs === 'number' && polishBudgetSet.has(candidate.polishBudgetMs)
+        ? (candidate.polishBudgetMs as PolishBudgetMs)
+        : DEFAULT_POLISH.budgetMs,
+    encryptedPolishKey:
+      typeof candidate.encryptedPolishKey === 'string' ? candidate.encryptedPolishKey : '',
     lastUpdateCheckAt:
       typeof candidate.lastUpdateCheckAt === 'string' &&
       candidate.lastUpdateCheckAt.length <= 64 &&
@@ -492,7 +554,16 @@ export class SettingsStore {
       vocabulary: stored.vocabulary,
       replacements: stored.replacements,
       apiEndpoint: stored.apiEndpoint,
-      apiKeySource: this.apiKeySource()
+      apiKeySource: this.apiKeySource(),
+      polish: {
+        enabled: stored.polishEnabled,
+        style: stored.polishStyle,
+        instructions: stored.polishInstructions,
+        endpoint: stored.polishEndpoint,
+        model: stored.polishModel,
+        budgetMs: stored.polishBudgetMs,
+        keySource: stored.encryptedPolishKey ? 'stored' : 'none'
+      }
     }
   }
 
@@ -510,14 +581,41 @@ export class SettingsStore {
    * Main process only. Leaves out the API key and the licence, which have
    * their own accessors, so neither is handed around with the rest.
    */
-  getInternal(): Omit<StoredSettings, 'encryptedApiKey' | 'version' | 'licence'> {
+  getInternal(): Omit<
+    StoredSettings,
+    'encryptedApiKey' | 'encryptedPolishKey' | 'version' | 'licence'
+  > {
     const {
       encryptedApiKey: _key,
+      encryptedPolishKey: _polishKey,
       version: _version,
       licence: _licence,
       ...values
     } = this.settings
     return { ...values }
+  }
+
+  /** The polish provider's key, decrypted; empty when none is saved. */
+  getPolishKey(): string {
+    if (!this.settings.encryptedPolishKey) return ''
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Secure storage is unavailable, so the saved polish key cannot be read.')
+    }
+    try {
+      return safeStorage.decryptString(Buffer.from(this.settings.encryptedPolishKey, 'base64'))
+    } catch {
+      throw new Error('The saved polish key could not be read. Enter it again in Settings.')
+    }
+  }
+
+  /** Forgets the polish key, and scrubs the recovery copies so it does not linger. */
+  clearPolishKey(): PublicSettings {
+    const next = { ...this.settings, encryptedPolishKey: '' }
+    this.persistence.writeJsonAtomic(this.filePath, next)
+    this.persistence.removeJsonRecoveryCopies(this.filePath)
+    this.persistence.refreshJsonRecoveryBackup(this.filePath)
+    this.settings = next
+    return this.getPublic()
   }
 
   /** The licence activated on this PC, without its key, or null. */
@@ -693,6 +791,16 @@ export class SettingsStore {
     }
     // Only ever set: once dismissed, the notice is gone for good.
     if (update.trialEndNoticeDismissed === true) this.settings.trialEndNoticeDismissed = true
+    if (update.polish && typeof update.polish === 'object') this.applyPolishUpdate(update.polish)
+    if (typeof update.polishKey === 'string' && update.polishKey.trim()) {
+      const polishKey = update.polishKey.trim()
+      if (polishKey.length > MAX_API_KEY_LENGTH) {
+        throw new Error('That polish key is too long to be valid.')
+      }
+      // As for the transcription key: never obfuscated and called encrypted.
+      if (!this.storage.usable) throw new Error(this.storage.reason)
+      this.settings.encryptedPolishKey = safeStorage.encryptString(polishKey).toString('base64')
+    }
 
     if (typeof update.apiKey === 'string' && update.apiKey.trim()) {
       const apiKey = update.apiKey.trim()
@@ -714,6 +822,34 @@ export class SettingsStore {
 
     this.write()
     return this.getPublic()
+  }
+
+  /** Each polish field that is valid; an endpoint or model that is not is refused. */
+  private applyPolishUpdate(polish: NonNullable<SettingsUpdate['polish']>): void {
+    if (typeof polish.enabled === 'boolean') this.settings.polishEnabled = polish.enabled
+    if (typeof polish.style === 'string' && polishStyleSet.has(polish.style)) {
+      this.settings.polishStyle = polish.style
+    }
+    if (typeof polish.instructions === 'string') {
+      this.settings.polishInstructions = polish.instructions.slice(0, MAX_POLISH_INSTRUCTIONS_CHARS)
+    }
+    if (typeof polish.budgetMs === 'number' && polishBudgetSet.has(polish.budgetMs)) {
+      this.settings.polishBudgetMs = polish.budgetMs
+    }
+    if (typeof polish.endpoint === 'string' && polish.endpoint !== this.settings.polishEndpoint) {
+      const endpoint = polish.endpoint.trim()
+      if (!isValidPolishEndpoint(endpoint)) {
+        throw new Error(
+          'That polish endpoint is not valid. Use an https:// URL, or http://localhost for a model on this PC.'
+        )
+      }
+      this.settings.polishEndpoint = endpoint
+    }
+    if (typeof polish.model === 'string' && polish.model !== this.settings.polishModel) {
+      const model = polish.model.trim()
+      if (!isValidPolishModel(model)) throw new Error('That polish model name is not valid.')
+      this.settings.polishModel = model
+    }
   }
 
   /** Drops the session key, falling back to a stored one if there is one. */

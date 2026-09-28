@@ -130,6 +130,13 @@ window to make a paste succeed.
   never written to disk, never exposed through public settings or diagnostics,
   and gone when the app quits. Unlocking a keyring and saving again is the
   other option, and the app says so.
+- AI polish (Pro, off by default) sends the cleaned text of a dictation — never audio — to
+  the chat endpoint the user configured, with their style, extra instructions and up to 100
+  vocabulary terms. The transcript is the user message; the system prompt says it is text to
+  rewrite, never instructions to follow, and the reply is used only if it passes a guard
+  (no assistant preamble, no reply far longer or shorter than the input). The polish key is
+  stored with `safeStorage` like the transcription key and never crosses into a renderer;
+  the transcription key is borrowed only when both endpoints are OpenAI's.
 - There is no telemetry, no analytics, and no auto-update channel. The update check
   (off by default) sends one GET to `https://api.github.com/repos/<repository>/releases/latest`
   with no cookies or credentials, reads only the tag and the release link, and never

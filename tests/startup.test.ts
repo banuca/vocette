@@ -121,6 +121,12 @@ async function startApp(options: {
   polarReply?: (url: string, init: RequestInit) => Response | Promise<Response>
   /** GitHub's answer to an update check; without one, GitHub cannot be reached. */
   githubReply?: () => Response
+  /** The saved transcription key, as the store would decrypt it. */
+  apiKey?: string
+  /** The saved polish key, likewise. */
+  polishKey?: string
+  /** Polish settings as saved. */
+  polish?: Partial<Pick<typeof DEFAULT_SETTINGS, 'polishEndpoint' | 'polishModel' | 'polishEnabled'>>
 } = {}): Promise<StartupHarness> {
   vi.resetModules()
 
@@ -170,7 +176,8 @@ async function startApp(options: {
     historyRetentionDays: 30,
     trialStartedAt: options.trialStartedAt ?? null,
     deviceTag: '7F3A',
-    apiEndpoint: options.apiEndpoint ?? DEFAULT_SETTINGS.apiEndpoint
+    apiEndpoint: options.apiEndpoint ?? DEFAULT_SETTINGS.apiEndpoint,
+    ...options.polish
   }
   let licence: Record<string, string> | null = options.licensed
     ? {
@@ -351,7 +358,9 @@ async function startApp(options: {
         launchAtLogin: false,
         recordingMode: 'hold'
       })
-      getApiKey = () => ''
+      getApiKey = () => options.apiKey ?? ''
+      getPolishKey = () => options.polishKey ?? ''
+      clearPolishKey = vi.fn(() => ({}))
       keyStorage = () => ({ usable: true, reason: '', backend: 'os' })
       update = vi.fn((patch: Partial<typeof DEFAULT_SETTINGS>) => {
         storedSettings = { ...storedSettings, ...patch }
@@ -1838,5 +1847,95 @@ describe('the update check', () => {
       error: 'Could not reach GitHub. Check your internet connection and try again.'
     })
     expect(app.trayLabels().some((label) => label.startsWith('Update available'))).toBe(false)
+  })
+})
+
+describe('AI polish', () => {
+  const polishReply = (): Response =>
+    new Response(JSON.stringify({ choices: [{ message: { content: 'This is a test of the polish.' } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+  const stubChat = () => {
+    const calls: Array<{ url: string; init: RequestInit }> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init })
+        return polishReply()
+      })
+    )
+    return calls
+  }
+
+  it('answers Test and Remove key only from the main window', async () => {
+    const app = await startApp()
+    for (const channel of ['polish:test', 'settings:clear-polish-key']) {
+      // One handler is async and rejects; the other throws. Either way, refused.
+      await expect(Promise.resolve().then(() => app.invoke(channel, false))).rejects.toThrow(
+        'Forbidden.'
+      )
+    }
+  })
+
+  it('tests with the saved provider, and reports what came back', async () => {
+    const calls = stubChat()
+    const app = await startApp({
+      polishKey: 'sk-polish',
+      polish: { polishEndpoint: 'https://llm.example.com/v1', polishModel: 'house-model' }
+    })
+    const result = (await app.invoke('polish:test', true)) as { ok: boolean; text: string; ms: number }
+    expect(result).toMatchObject({ ok: true, text: 'This is a test of the polish.' })
+    expect(result.ms).toBeGreaterThanOrEqual(0)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe('https://llm.example.com/v1/chat/completions')
+    expect((calls[0]?.init.headers as Record<string, string>).Authorization).toBe('Bearer sk-polish')
+    const body = JSON.parse(String(calls[0]?.init.body)) as { model: string; messages: Array<{ content: string }> }
+    expect(body.model).toBe('house-model')
+    expect(body.messages[1]?.content).toBe('this is a test um of the polish')
+  })
+
+  it('borrows the transcription key only when both go to OpenAI', async () => {
+    const both = stubChat()
+    const openai = await startApp({ apiKey: 'sk-openai' })
+    await openai.invoke('polish:test', true)
+    expect((both[0]?.init.headers as Record<string, string>).Authorization).toBe('Bearer sk-openai')
+    vi.unstubAllGlobals()
+
+    // Transcription goes to Groq: its key is Groq's, and never goes to OpenAI.
+    const elsewhere = stubChat()
+    const groq = await startApp({ apiKey: 'gsk-groq', apiEndpoint: 'https://api.groq.com/openai/v1' })
+    await groq.invoke('polish:test', true)
+    expect(elsewhere[0]?.init.headers).not.toHaveProperty('Authorization')
+    vi.unstubAllGlobals()
+
+    // Polish goes to a server of the user's own: the OpenAI key stays put.
+    const local = stubChat()
+    const ollama = await startApp({
+      apiKey: 'sk-openai',
+      polish: { polishEndpoint: 'http://localhost:11434/v1', polishModel: 'llama3.2:3b' }
+    })
+    await ollama.invoke('polish:test', true)
+    expect(local[0]?.url).toBe('http://localhost:11434/v1/chat/completions')
+    expect(local[0]?.init.headers).not.toHaveProperty('Authorization')
+  })
+
+  it('says why a test failed, in a sentence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed')
+      })
+    )
+    const app = await startApp({
+      polish: { polishEndpoint: 'http://localhost:11434/v1', polishModel: 'llama3.2:3b' }
+    })
+    await expect(app.invoke('polish:test', true)).resolves.toEqual({
+      ok: false,
+      text: null,
+      ms: null,
+      error: 'Could not reach localhost:11434. Is it running?'
+    })
   })
 })

@@ -48,6 +48,11 @@ export const UPDATE_CHECK_NOTICE =
   'Checking for updates, which you switch on below or ask for with Check now, asks GitHub ' +
   'for the latest version number and sends nothing about you.'
 
+/** Said with the rest whenever AI polish is on: the one time text leaves for a model. */
+export const POLISH_NOTICE =
+  'With AI polish on, the text of each dictation (never the audio) is sent to the polish ' +
+  'provider you chose in Settings.'
+
 /** Under the switch, where it is turned on. */
 export const UPDATE_CHECK_EXPLANATION =
   'Sends one request to GitHub (api.github.com) asking for the latest Murmur version. ' +
@@ -59,20 +64,21 @@ export const UPDATE_CHECK_EXPLANATION =
  * on-device user that their audio goes to "the provider you configure" would
  * be as wrong as telling a cloud user that it stays here.
  */
-export function privacyNotice(engine: TranscriptionEngine): string {
+export function privacyNotice(engine: TranscriptionEngine, polish = false): string {
+  const polishing = polish ? ` ${POLISH_NOTICE}` : ''
   if (engine === 'local') {
     return (
       `${INDEPENDENT} Your audio is transcribed on this PC and never leaves it, and ` +
       'neither does the vocabulary you set in Settings. The only thing Murmur downloads is ' +
-      `the speech model, once, from Hugging Face. ${PRO_ACTIVATION_NOTICE} ` +
+      `the speech model, once, from Hugging Face.${polishing} ${PRO_ACTIVATION_NOTICE} ` +
       UPDATE_CHECK_NOTICE
     )
   }
   return (
     `${INDEPENDENT} It sends your audio — and the vocabulary you set in Settings, which is ` +
     'what makes those words come back spelled correctly — only to the transcription provider ' +
-    `you configure, using your own API key. ${PRO_ACTIVATION_NOTICE} ${UPDATE_CHECK_NOTICE} ` +
-    'Nothing else leaves this computer.'
+    `you configure, using your own API key.${polishing} ${PRO_ACTIVATION_NOTICE} ` +
+    `${UPDATE_CHECK_NOTICE} Nothing else leaves this computer.`
   )
 }
 
@@ -124,7 +130,9 @@ export function renderAbout(context: AppContext): AboutView {
   `
 
   const notice = context.content.querySelector<HTMLElement>('#privacy-notice')
-  if (notice) notice.textContent = privacyNotice(engine)
+  // Polish counts only where it can run: switched on, with Pro.
+  const polishing = context.settings.polish?.enabled === true && context.licence.plan !== 'free'
+  if (notice) notice.textContent = privacyNotice(engine, polishing)
 
   // textContent: the model's attribution comes from its manifest, and no text
   // on this page is parsed as markup.

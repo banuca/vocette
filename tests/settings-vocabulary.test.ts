@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_POLISH } from '../src/shared/polish'
 import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
@@ -164,6 +165,7 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     replacements: '',
     apiEndpoint: '',
     apiKeySource: 'none',
+    polish: { ...DEFAULT_POLISH, keySource: 'none' },
     ...overrides
   }
 }

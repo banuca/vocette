@@ -943,6 +943,11 @@ a:focus-visible {
   font-size: 11px;
 }
 
+/* A dictation AI polish rewrote. */
+.history-tag {
+  color: var(--accent);
+}
+
 .history-text {
   margin: 5px 0 0;
   max-width: 82ch;
@@ -2021,6 +2026,61 @@ a:focus-visible {
 
 .nav-dot[hidden] {
   display: none;
+}
+
+.polish-card [hidden] {
+  display: none;
+}
+
+.polish-switch {
+  margin-top: 4px;
+  margin-bottom: 12px;
+  border-top: 0;
+}
+
+.polish-styles {
+  margin-top: 4px;
+}
+
+.polish-provider {
+  margin-top: 12px;
+}
+
+/* Styled like the word lists, but prose: the page's own font, not monospace. */
+.polish-instructions {
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+
+.polish-instructions:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.polish-test-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.polish-test-row .connection-result {
+  margin-top: 0;
+}
+
+.polish-privacy {
+  margin-top: 10px;
 }
 
 .updates-card {

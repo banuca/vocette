@@ -222,6 +222,21 @@ All notable changes to this project are documented here. This project adheres to
   could not check. An update on offer adds one line to the tray menu and a dot beside
   About; there are no dialogs or notifications, and nothing is downloaded or installed.
 
+- **AI polish (Pro).** A new **Settings → AI polish** card: switch on **Polish my dictation**
+  and a language model rewrites each dictation before it is pasted — **Clean** (grammar and
+  punctuation, your words kept), **Professional**, **Casual** or **Notes** (bullet points when
+  you list things), plus optional extra instructions. Providers: OpenAI (borrowing your OpenAI
+  transcription key when transcription goes to OpenAI too), Ollama or LM Studio on this PC,
+  Groq, or any OpenAI-compatible server. **Wait at most** 2, 4 or 8 seconds: if polishing takes
+  longer, or its reply looks wrong (an assistant's preamble, or far longer or shorter than
+  what you said), your text is pasted as it was and the overlay says “Pasted — unpolished
+  (took too long)”. Polish never fails a dictation. It runs after cleanup and before your
+  replacements, so snippets are pasted exactly as written; it is told the transcript is text
+  to rewrite, never a message to answer; and your vocabulary is spelled as you wrote it.
+  History marks a polished entry “Polished” and keeps the text polish started from. **Test**
+  sends one short sentence to the saved provider and shows what came back. Only the text is
+  ever sent, never audio, and About says so while polish is on.
+
 ### Fixed
 
 - **The shortcut keeps working after sleep and the lock screen.** Windows can drop the

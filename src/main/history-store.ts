@@ -17,7 +17,7 @@ import {
 const MAX_ENTRIES = 5000
 
 /** The optional fields that carry text, checked and clamped like `text` itself. */
-const OPTIONAL_TEXT_FIELDS = ['heardText', 'uneditedText'] as const
+const OPTIONAL_TEXT_FIELDS = ['heardText', 'uneditedText', 'originalText'] as const
 
 interface HistoryPersistence {
   writeJsonAtomicAsync: typeof writeJsonAtomicAsync

@@ -106,7 +106,7 @@ describe('the words about the plans', () => {
     expect(PRO_ADDS).toEqual([
       'Up to 500 vocabulary terms in use, instead of 50',
       'Up to 200 replacements and snippets in use, instead of 20',
-      'AI polish, arriving in an update'
+      'AI polish: your dictation rewritten in the style you choose, with your own provider or a model on this PC'
     ])
     expect(FREE_FOREVER[0]).toBe(
       'Dictation on this PC or in the cloud — any length, as often as you like'

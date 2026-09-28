@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { PlatformStatus, SettingsPane } from '../shared/capabilities'
 import type { EngineStatus } from '../shared/engine'
 import type { UpdateStatus } from '../shared/update'
+import type { PolishTestResult } from '../shared/polish'
 import type {
   AppInfo,
   HistoryEntry,
@@ -24,6 +25,8 @@ const api = {
   saveSettings: (update: SettingsUpdate): Promise<PublicSettings> =>
     ipcRenderer.invoke('settings:save', update),
   clearApiKey: (): Promise<PublicSettings> => ipcRenderer.invoke('settings:clear-api-key'),
+  clearPolishKey: (): Promise<PublicSettings> => ipcRenderer.invoke('settings:clear-polish-key'),
+  testPolish: (): Promise<PolishTestResult> => ipcRenderer.invoke('polish:test'),
   clearSessionApiKey: (): Promise<PublicSettings> =>
     ipcRenderer.invoke('settings:clear-session-key'),
   // One second of silence to the saved cloud endpoint, with the saved key and

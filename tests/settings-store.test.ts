@@ -221,7 +221,8 @@ describe('validation', () => {
         'vocabulary',
         'replacements',
         'apiEndpoint',
-        'apiKeySource'
+        'apiKeySource',
+        'polish'
       ].sort()
     )
   })
@@ -1078,6 +1079,116 @@ describe('the update check', () => {
     expect(store.getInternal().updateCheck).toBe(true)
     expect(store.getPublic()).not.toHaveProperty('updateCheck')
     expect(store.getPublic()).not.toHaveProperty('lastUpdateCheckAt')
+  })
+})
+
+describe('AI polish', () => {
+  it('is off with the OpenAI preset on a fresh install, and in a file that predates it', () => {
+    const polish = new SettingsStore(file).getPublic().polish
+    expect(polish).toEqual({
+      enabled: false,
+      style: 'clean',
+      instructions: '',
+      endpoint: 'https://api.openai.com/v1',
+      model: 'gpt-4.1-mini',
+      budgetMs: 4000,
+      keySource: 'none'
+    })
+    expect(normaliseSettings({ version: 5 }).polishEnabled).toBe(false)
+  })
+
+  it('saves each field, and survives a restart', () => {
+    const store = new SettingsStore(file)
+    store.update({
+      polish: {
+        enabled: true,
+        style: 'notes',
+        instructions: 'British spelling.',
+        endpoint: 'http://localhost:11434/v1',
+        model: 'llama3.2:3b',
+        budgetMs: 8000
+      }
+    })
+    expect(new SettingsStore(file).getPublic().polish).toEqual({
+      enabled: true,
+      style: 'notes',
+      instructions: 'British spelling.',
+      endpoint: 'http://localhost:11434/v1',
+      model: 'llama3.2:3b',
+      budgetMs: 8000,
+      keySource: 'none'
+    })
+  })
+
+  it('leaves the rest alone when one field is saved', () => {
+    const store = new SettingsStore(file)
+    store.update({ polish: { style: 'casual' } })
+    expect(store.getPublic().polish).toMatchObject({ style: 'casual', enabled: false, budgetMs: 4000 })
+  })
+
+  it('ignores a style or a wait it does not know, and clamps the instructions', () => {
+    const store = new SettingsStore(file)
+    store.update({
+      polish: {
+        style: 'shouty' as never,
+        budgetMs: 3000 as never,
+        instructions: 'x'.repeat(600)
+      }
+    })
+    const polish = store.getPublic().polish
+    expect(polish.style).toBe('clean')
+    expect(polish.budgetMs).toBe(4000)
+    expect(polish.instructions).toHaveLength(500)
+    expect(normaliseSettings({ polishStyle: 'shouty', polishBudgetMs: 1 }).polishStyle).toBe('clean')
+    expect(normaliseSettings({ polishEnabled: 'true' }).polishEnabled).toBe(false)
+  })
+
+  it('refuses an endpoint or model it cannot use, and says so', () => {
+    const store = new SettingsStore(file)
+    expect(() => store.update({ polish: { endpoint: 'http://llm.example.com/v1' } })).toThrow(
+      'That polish endpoint is not valid.'
+    )
+    expect(() => store.update({ polish: { endpoint: '' } })).toThrow('That polish endpoint is not valid.')
+    expect(() => store.update({ polish: { model: 'two words' } })).toThrow(
+      'That polish model name is not valid.'
+    )
+    // An empty model is allowed: it means one has not been chosen yet.
+    store.update({ polish: { endpoint: 'http://localhost:1234/v1', model: '' } })
+    expect(store.getPublic().polish).toMatchObject({ endpoint: 'http://localhost:1234/v1', model: '' })
+    expect(normaliseSettings({ polishEndpoint: 'ftp://x' }).polishEndpoint).toBe('https://api.openai.com/v1')
+  })
+
+  it('keeps its key encrypted, out of the window, and apart from the transcription key', () => {
+    const store = new SettingsStore(file)
+    store.update({ apiKey: 'sk-transcribe', polishKey: 'sk-polish' })
+    expect(store.getPublic().polish.keySource).toBe('stored')
+    expect(JSON.stringify(store.getPublic())).not.toContain('sk-polish')
+    expect(JSON.stringify(store.getInternal())).not.toContain('sk-polish')
+    expect(readFileSync(file, 'utf8')).not.toContain('sk-polish')
+    expect(store.getPolishKey()).toBe('sk-polish')
+    expect(store.getApiKey()).toBe('sk-transcribe')
+    expect(new SettingsStore(file).getPolishKey()).toBe('sk-polish')
+  })
+
+  it('forgets the key on request, and scrubs the recovery copies', () => {
+    const removeCopies = vi.fn(removeJsonRecoveryCopies)
+    const refreshBackup = vi.fn(refreshJsonRecoveryBackup)
+    const store = new SettingsStore(file, {
+      writeJsonAtomic,
+      removeJsonRecoveryCopies: removeCopies,
+      refreshJsonRecoveryBackup: refreshBackup
+    })
+    store.update({ polishKey: 'sk-polish' })
+    expect(store.clearPolishKey().polish.keySource).toBe('none')
+    expect(store.getPolishKey()).toBe('')
+    expect(removeCopies).toHaveBeenCalled()
+    expect(refreshBackup).toHaveBeenCalled()
+  })
+
+  it('will not write its key where secure storage is unfit', () => {
+    const store = new SettingsStore(file, {}, { usable: false, reason: 'No keyring here.', backend: 'basic_text' })
+    expect(() => store.update({ polishKey: 'sk-plain' })).toThrow('No keyring here.')
+    expect(store.getPublic().polish.keySource).toBe('none')
   })
 })
 

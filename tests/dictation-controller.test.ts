@@ -18,6 +18,8 @@ function makeHarness(
     /** Whether Esc is being watched; left out, the dependency is absent. */
     escapeWatched?: boolean
     shortcutLabel?: string
+    /** AI polish, as the main process would run it; left out, there is none. */
+    polish?: DictationDeps['polish']
   } = {}
 ) {
   const settings: WorkflowSettings = {
@@ -34,6 +36,7 @@ function makeHarness(
     model: 'gpt-transcribe',
     language: 'en',
     pro: true,
+    polish: false,
     vocabulary: [],
     replacements: [],
     microphoneId: 'mic-1',
@@ -78,6 +81,7 @@ function makeHarness(
     ...(overrides.escapeWatched === undefined
       ? {}
       : { escapeWatched: () => overrides.escapeWatched === true }),
+    ...(overrides.polish ? { polish: overrides.polish } : {}),
     onRetryChanged
   }
 
@@ -3141,5 +3145,136 @@ describe('the finish hint', () => {
     harness.controller.onRecorderStarted({ requestId: harness.lastRequestId() })
     harness.controller.onShortcutPressed()
     expect(details(harness)).toEqual(['Press Left Ctrl + Left Shift to finish · Esc to cancel'])
+  })
+})
+
+describe('AI polish', () => {
+  const polished = (text: string) =>
+    vi.fn<NonNullable<DictationDeps['polish']>>(async () => ({ text, polished: true, note: null }))
+
+  async function dictate(
+    harness: ReturnType<typeof makeHarness>,
+    heard: string
+  ): Promise<void> {
+    harness.deps.transcribe.mockResolvedValueOnce(heard)
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const requestId = harness.beginRecording()
+    harness.controller.onShortcutReleased()
+    const done = harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 1200
+    })
+    await vi.advanceTimersByTimeAsync(2_000)
+    await done
+  }
+
+  const lastSuccess = (harness: ReturnType<typeof makeHarness>): WorkflowStatus | undefined =>
+    harness.deps.broadcastStatus.mock.calls
+      .map(([status]) => status)
+      .filter((status) => status.phase === 'success')
+      .at(-1)
+
+  it('pastes the polished text, and History keeps what polish started from', async () => {
+    const polish = polished('I think we should move the meeting to Wednesday.')
+    const harness = makeHarness({ settings: { polish: true }, polish })
+    await dictate(harness, 'um so I think we should move the meeting to Wednesday')
+
+    // Polish is handed the cleaned text, not the raw one.
+    expect(polish).toHaveBeenCalledWith(
+      'So I think we should move the meeting to Wednesday',
+      expect.any(AbortSignal)
+    )
+    expect(harness.deps.writeClipboard).toHaveBeenCalledWith(
+      'I think we should move the meeting to Wednesday.'
+    )
+    expect(harness.deps.recordHistory).toHaveBeenCalledWith(
+      'I think we should move the meeting to Wednesday.',
+      1200,
+      'gpt-transcribe',
+      {
+        heardText: 'um so I think we should move the meeting to Wednesday',
+        originalText: 'So I think we should move the meeting to Wednesday',
+        waitMs: expect.any(Number)
+      }
+    )
+    expect(lastSuccess(harness)?.message).toBe('Pasted')
+  })
+
+  it('is never asked while polish is off, or for a take with Pro gone', async () => {
+    const polish = polished('Never.')
+    const harness = makeHarness({ settings: { polish: false }, polish })
+    await dictate(harness, 'hello world')
+    expect(polish).not.toHaveBeenCalled()
+    expect(harness.deps.recordHistory.mock.calls[0]?.[3]).not.toHaveProperty('originalText')
+  })
+
+  it('runs before the user’s own rules, so a snippet is pasted exactly as written', async () => {
+    const polish = polished('Send it to my email.')
+    const harness = makeHarness({
+      settings: { polish: true, replacements: [{ spoken: 'my email', written: 'name@example.com' }] },
+      polish
+    })
+    await dictate(harness, 'send it to my email')
+    expect(harness.deps.writeClipboard).toHaveBeenCalledWith('Send it to name@example.com.')
+  })
+
+  it('pastes the text unpolished when polish could not finish, and says why', async () => {
+    const polish = vi.fn<NonNullable<DictationDeps['polish']>>(async (text) => ({
+      text,
+      polished: false,
+      note: 'took too long'
+    }))
+    const harness = makeHarness({ settings: { polish: true }, polish })
+    await dictate(harness, 'hello world')
+    expect(harness.deps.writeClipboard).toHaveBeenCalledWith('Hello world')
+    expect(lastSuccess(harness)?.message).toBe('Pasted — unpolished (took too long)')
+    // Nothing was polished, so nothing is kept as the text before it.
+    expect(harness.deps.recordHistory.mock.calls[0]?.[3]).not.toHaveProperty('originalText')
+    expect(harness.controller.canRetry()).toBe(false)
+  })
+
+  it('pastes nothing when the take is cancelled while it is being polished', async () => {
+    let finish: (value: { text: string; polished: boolean; note: null }) => void = () => {}
+    const polish = vi.fn<NonNullable<DictationDeps['polish']>>(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const harness = makeHarness({ settings: { polish: true }, polish })
+    harness.deps.transcribe.mockResolvedValueOnce('hello world')
+    const requestId = harness.beginRecording()
+    harness.controller.onShortcutReleased()
+    const done = harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 1200
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(polish).toHaveBeenCalledTimes(1)
+    const signal = polish.mock.calls[0]?.[1]
+
+    harness.controller.cancelDictation()
+    expect(signal?.aborted).toBe(true)
+    finish({ text: 'Hello, world.', polished: true, note: null })
+    await vi.advanceTimersByTimeAsync(500)
+    await done
+    expect(harness.deps.writeClipboard).not.toHaveBeenCalled()
+    expect(harness.deps.recordHistory).not.toHaveBeenCalled()
+  })
+
+  it('counts the polish in the wait the user sat through', async () => {
+    const polish = vi.fn<NonNullable<DictationDeps['polish']>>(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(() => resolve({ text: 'Hello, world.', polished: true, note: null }), 900)
+        )
+    )
+    const harness = makeHarness({ settings: { polish: true }, polish })
+    await dictate(harness, 'hello world')
+    expect(harness.deps.recordHistory.mock.calls[0]?.[3]?.waitMs).toBeGreaterThanOrEqual(900)
   })
 })

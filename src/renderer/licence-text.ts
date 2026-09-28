@@ -97,8 +97,7 @@ export const TRIAL_END_NOTICE =
 export const PRO_ADDS: readonly string[] = [
   `Up to ${PRO_VOCABULARY_TERMS} vocabulary terms in use, instead of ${FREE_VOCABULARY_TERMS}`,
   `Up to ${PRO_REPLACEMENT_RULES} replacements and snippets in use, instead of ${FREE_REPLACEMENT_RULES}`,
-  // Said as it is: until AI polish ships, the list does not pretend it has.
-  'AI polish, arriving in an update'
+  'AI polish: your dictation rewritten in the style you choose, with your own provider or a model on this PC'
 ]
 
 /** The left-hand column: what never needs Pro. */

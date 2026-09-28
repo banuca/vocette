@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_POLISH } from '../src/shared/polish'
 import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
@@ -151,7 +152,8 @@ async function makeFocusedMicHarness() {
     vocabulary: '',
     replacements: '',
     apiEndpoint: '',
-    apiKeySource: 'none'
+    apiKeySource: 'none',
+    polish: { ...DEFAULT_POLISH, keySource: 'none' }
   }
   const context: AppContext = {
     content: new FakeElement(elements) as unknown as HTMLElement,
@@ -340,7 +342,8 @@ describe('settings microphone test ownership', () => {
       vocabulary: '',
       replacements: '',
       apiEndpoint: '',
-      apiKeySource: 'none'
+      apiKeySource: 'none',
+      polish: { ...DEFAULT_POLISH, keySource: 'none' }
     }
     const context: AppContext = {
       content: content as unknown as HTMLElement,

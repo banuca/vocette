@@ -60,7 +60,7 @@ Everyone gets Pro free for their first 30 days. After that, Free keeps everythin
 | Clipboard restore, paste last dictation, Retry, history | ✓ | ✓ |
 | Vocabulary terms in use | 50 | 500 |
 | Replacements and snippets in use | 20 | 200 |
-| AI polish | — | When it ships |
+| AI polish — your dictation rewritten as Clean, Professional, Casual or Notes | — | ✓ |
 
 Nothing is deleted when Pro lapses: a longer list keeps every line, only its first part is used, and the note under each box says so. Pro is a one-off purchase through Polar, the payment provider, for up to three PCs. **Activate** on the Pro page sends your key and a device label (“Murmur on Windows · 7F3A”) to Polar once, and Murmur never checks it again; **Release this PC** frees a device slot for another one.
 
@@ -182,6 +182,7 @@ Every window runs with `contextIsolation: true`, `sandbox: true`, `nodeIntegrati
 - The foreground checks read a window handle and an elevation or secure-input flag. No window contents, titles or input are read, and nothing is stored.
 - Before an automatic paste, what is on your clipboard is copied into memory so it can be put back afterwards. It is held only until then, and is never written to disk or sent anywhere.
 - Activating Pro sends your licence key, a device label and the app version to Polar (US), once, when you press **Activate**; **Release this PC** sends the key again to free the slot. Nothing else about Pro is ever sent, and the buyer details Polar returns are discarded.
+- AI polish (Pro) is off until you switch it on in **Settings → AI polish**. Then the text of each dictation — never the audio — is sent to the provider you chose there, with your extra instructions and your vocabulary terms, and nothing else. Choose **Ollama on this PC** or **LM Studio on this PC** to keep it on your computer. Its key is encrypted like the transcription key; the OpenAI preset borrows your OpenAI transcription key only when transcription goes to OpenAI too.
 - Checking for updates is off until you switch it on in **About**. Then — and whenever you press **Check now** — Murmur sends one request to GitHub (`api.github.com`) for the latest version number, at most once a day on its own. Nothing about you or your dictation is sent, and nothing is ever downloaded or installed automatically.
 - No telemetry, no analytics, no automatic updates.
 

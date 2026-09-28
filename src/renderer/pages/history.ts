@@ -366,6 +366,13 @@ export function renderHistory(context: AppContext): HistoryView {
       metadata.textContent = `${formatDate(entry.createdAt)} · ${formatDuration(entry.durationMs)} · ${wordCount(entry.text)} words`
       // Only where it was measured; older dictations say nothing rather than guess.
       if (isMeasuredWait(entry.waitMs)) metadata.append(` · ready in ${formatWait(entry.waitMs)}`)
+      // AI polish rewrote this one; Show original still shows what was heard.
+      if (entry.originalText !== undefined) {
+        const polished = document.createElement('span')
+        polished.className = 'history-tag'
+        polished.textContent = 'Polished'
+        metadata.append(' · ', polished)
+      }
       if (entry.editedAt) {
         const edited = document.createElement('span')
         edited.textContent = 'Edited'

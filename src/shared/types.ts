@@ -1,3 +1,4 @@
+import type { PolishSettings, PolishSettingsUpdate } from './polish'
 import type { PlatformStatus, RecordingMode } from './capabilities'
 import type { Plan } from './entitlement'
 import type { ShortcutChord } from './shortcuts'
@@ -69,6 +70,11 @@ export interface HistoryEntry {
   editedAt?: string
   /** The text as it was before the first hand edit; later edits leave it alone. */
   uneditedText?: string
+  /**
+   * The text AI polish started from — after cleanup, before polish — kept
+   * when polish changed it. Its presence is what marks an entry as polished.
+   */
+  originalText?: string
   /**
    * How long the user waited for the text, in milliseconds: from letting go of
    * the shortcut (or pressing Stop, or Retry) until it was ready to paste.
@@ -224,6 +230,8 @@ export interface PublicSettings {
    */
   apiEndpoint: string
   apiKeySource: ApiKeySource
+  /** AI polish (Pro). The key stays in the main process; only whether one is saved crosses. */
+  polish: PolishSettings
 }
 
 export interface SettingsUpdate {
@@ -257,6 +265,10 @@ export interface SettingsUpdate {
   apiKeyScope?: 'persist' | 'session'
   /** Dismisses the one notice that the trial has ended. Only `true` does anything. */
   trialEndNoticeDismissed?: boolean
+  /** Any of the polish settings; the rest are left as they are. */
+  polish?: PolishSettingsUpdate
+  /** A key for the polish provider, stored encrypted. Empty changes nothing. */
+  polishKey?: string
 }
 
 /**

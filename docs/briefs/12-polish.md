@@ -91,3 +91,27 @@ polish), history-store optional field round-trip, settings-store fields.
 ## Done when
 
 `npm run typecheck && npx vitest run && npm run lint` pass. Do not commit.
+
+## Notes added (28 Sep 2026) — built against the current code
+
+- **Settings shape.** Stored flat (`polishEnabled`, `polishStyle`, `polishInstructions`,
+  `polishEndpoint`, `polishModel`, `polishBudgetMs`, `encryptedPolishKey`); public as one
+  nested `polish` object with `keySource: 'none' | 'stored'` and never the key. Update via
+  `SettingsUpdate.polish` (partial) and `polishKey`; `settings:clear-polish-key` clears it and
+  scrubs recovery copies like the transcription key. No session-only scope for this key:
+  where secure storage is unfit, saving it is refused with the storage reason.
+- **Defaults.** Off; style Clean; budget 4 s; endpoint `https://api.openai.com/v1`, model
+  `gpt-4.1-mini` (the OpenAI preset). Model names allow `:` `/` `@` (Ollama `llama3.2:3b`,
+  LM Studio `org/model`): `^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,127}$`; empty model allowed and
+  means "not configured" (polish then skips with the note "no model chosen").
+- **Key.** The polish key if saved; otherwise, only when the polish endpoint is OpenAI's and
+  the transcription endpoint is OpenAI's too, the transcription key. Never sent elsewhere.
+- **Pipeline.** vocabulary correction → cleanup → polish (only `pro && polishEnabled`) →
+  replacements → deliver. `WorkflowSettings.polish: boolean`; dep `polish(text, signal)`.
+  The wait (feature 10) includes polish time. History keeps `originalText` (post-cleanup,
+  pre-polish) when polish changed the text; `heardText` stays the raw recogniser output, so
+  Show original keeps showing what was heard. A "Polished" tag marks entries with
+  `originalText`.
+- **Overlay.** On a skipped/failed polish: "<delivery message> — unpolished (<reason>)".
+- **Fetch.** Global `fetch`, like the transcription service (not `net.fetch`).
+- **Privacy.** About's notice adds the polish sentence whenever polish is on.

@@ -181,7 +181,7 @@ describe('the Pro page', () => {
     expect(at('#pro-adds').children.map((item) => item.textContent)).toEqual([
       'Up to 500 vocabulary terms in use, instead of 50',
       'Up to 200 replacements and snippets in use, instead of 20',
-      'AI polish, arriving in an update'
+      'AI polish: your dictation rewritten in the style you choose, with your own provider or a model on this PC'
     ])
     expect(at('#free-forever').children).toHaveLength(4)
     expect(at('#buy-pro').textContent).toBe('Buy Pro — US$29, once, for up to 3 PCs')

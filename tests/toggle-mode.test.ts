@@ -50,6 +50,7 @@ function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
     model: 'gpt-transcribe',
     language: 'en',
     pro: true,
+    polish: false,
     vocabulary: [],
     replacements: [],
     microphoneId: 'mic-1',

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { cleanupTranscript } from '../shared/cleanup'
 import { applyReplacements, type ReplacementRule } from '../shared/replacements'
 import { correctVocabulary, type CommonWordTest } from '../shared/vocabulary-correction'
+import type { PolishOutcome } from '../shared/polish'
 import type { RecordingMode } from '../shared/capabilities'
 import type {
   HistoryEntry,
@@ -105,6 +106,11 @@ export interface WorkflowSettings {
    * 20 rules — so nothing here needs to look, until a Pro-only step does.
    */
   pro: boolean
+  /**
+   * AI polish for this take: switched on, and Pro. The caller works it out,
+   * so a Free user's saved switch never sends anything anywhere.
+   */
+  polish: boolean
   /** Parsed once by the caller, and cut to the plan's limit; the controller only forwards it. */
   vocabulary: string[]
   /** Parsed once by the caller, like the vocabulary; the controller only applies them. */
@@ -135,7 +141,7 @@ export interface ForegroundState {
  * object rather than more positional parameters, so a later field — how long
  * the wait after release was, say — joins without touching every caller.
  */
-export type HistoryExtras = Pick<HistoryEntry, 'heardText' | 'waitMs'>
+export type HistoryExtras = Pick<HistoryEntry, 'heardText' | 'waitMs' | 'originalText'>
 
 export interface TranscriptionPayload {
   /**
@@ -207,6 +213,12 @@ export interface DictationDeps {
    * take that needs the engine.
    */
   prewarm?(): void
+  /**
+   * AI polish (Pro): the cleaned text rewritten in the user's style, inside
+   * their time limit. Always resolves; `note` says why the text went out
+   * unpolished. Only called while `WorkflowSettings.polish` is on.
+   */
+  polish?(text: string, signal: AbortSignal): Promise<PolishOutcome>
   /**
    * The common English words the vocabulary correction must leave alone,
    * loaded on first use. Without it every word counts as common, so only the
@@ -1105,10 +1117,28 @@ export class DictationController {
         spokenCorrections: settings.spokenCorrections,
         spokenFormatting: settings.spokenFormatting
       })
+
+      // AI polish (Pro) works on the cleaned text, before the user's own
+      // rules, so a snippet is pasted exactly as they wrote it. Its time limit
+      // is its own; running out of it, or any failure, costs only the polish.
+      let finished = cleaned
+      let polishedFrom: string | null = null
+      let polishNote: string | null = null
+      if (settings.polish && this.deps.polish && cleaned.trim()) {
+        const outcome = await this.deps.polish(cleaned, attempt.controller.signal)
+        if (!this.ownsAttempt(attempt)) return
+        if (outcome.polished) {
+          finished = outcome.text
+          polishedFrom = cleaned
+        }
+        polishNote = outcome.note
+      }
+
       // The user's own rules run last, on the finished text: a phrase matches
-      // what cleanup left, and what they wrote is not capitalised or tidied
-      // afterwards. What is pasted and what history keeps are the same text.
-      const text = applyReplacements(cleaned, settings.replacements)
+      // what cleanup (and polish) left, and what they wrote is not capitalised
+      // or tidied afterwards. What is pasted and what history keeps are the
+      // same text.
+      const text = applyReplacements(finished, settings.replacements)
       if (!text) throw new Error('Only filler words or silence were detected.')
       if (!this.ownsAttempt(attempt)) return
       // The text is ready to paste: this is the wait the user sat through,
@@ -1121,12 +1151,10 @@ export class DictationController {
       // never cost the user what they said. Outer whitespace carries no words,
       // and on its own is not a change worth keeping.
       const heard = rawText.trim()
-      this.deps.recordHistory(
-        text,
-        attempt.take.durationMs,
-        settings.model,
-        heard !== text ? { heardText: heard, waitMs } : { waitMs }
-      )
+      const extras: HistoryExtras = { waitMs }
+      if (heard !== text) extras.heardText = heard
+      if (polishedFrom !== null) extras.originalText = polishedFrom
+      this.deps.recordHistory(text, attempt.take.durationMs, settings.model, extras)
       if (!this.ownsAttempt(attempt)) return
 
       const message = await this.pasteOrExplain({
@@ -1151,7 +1179,13 @@ export class DictationController {
       if (!this.ownsAttempt(attempt)) return
 
       this.broadcast(
-        { phase: 'success', message, detail: previewOf(text), waitMs },
+        {
+          phase: 'success',
+          // Said plainly when polish was wanted and did not happen.
+          message: polishNote ? `${message} — unpolished (${polishNote})` : message,
+          detail: previewOf(text),
+          waitMs
+        },
         SUCCESS_RESET_MS
       )
       if (!this.ownsAttempt(attempt)) return
