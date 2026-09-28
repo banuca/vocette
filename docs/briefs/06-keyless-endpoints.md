@@ -48,3 +48,11 @@ tested through an extracted pure function if practical.
 ## Done when
 
 `npm run typecheck && npx vitest run && npm run lint` pass. Do not commit.
+
+## Notes added before the build (28 Sep 2026)
+
+- `engineReady` lives in `src/shared/engine.ts`; the setup guide's cloud step id is
+  `transcription` (not `api-key`); the cloud section of Settings was rebuilt by 07b — read
+  `src/renderer/pages/settings.ts` before editing it.
+- The cloud service now has a silent retry (brief 05): the test-connection call must not
+  retry (pass a flag, or call `send` once), and a 10 s timeout applies.

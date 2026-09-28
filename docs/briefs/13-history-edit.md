@@ -67,3 +67,13 @@ through the serialised write tail (no lost write when interleaved with `add`).
 ## Done when
 
 `npm run typecheck && npx vitest run && npm run lint` pass. Do not commit.
+
+## Notes added before the build (28 Sep 2026)
+
+- `recordHistory(text, durationMs, model)` is the current dep signature; change it to take
+  an extras object (`{ heardText?, … }`) so brief 10's `waitMs` can join it later.
+- The pipeline in `processTake` is: vocabulary correction → cleanup → replacements. The
+  recogniser's raw text (before correction) is what `heardText` stores, only when it
+  differs from the delivered text.
+- Polish (brief 12) has not been built yet: implement `heardText` only; leave a comment
+  that 12 adds `originalText`.

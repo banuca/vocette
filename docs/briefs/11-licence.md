@@ -173,3 +173,16 @@ controller/workflow cap tests (51st term not sent when free, sent when pro).
 ## Done when
 
 `npm run typecheck && npx vitest run && npm run lint` pass. Do not commit.
+
+## Notes added before the build (28 Sep 2026)
+
+- Settings now also hold `engine`, `restoreClipboard`, `pasteLastShortcut`,
+  `instantCapture`, `replacements`, `spokenCorrections`, `spokenFormatting`: the
+  `getPublic()` allow-list must list every one of them (and its key-set test catches a miss).
+- The vocabulary is used twice now — by the cloud request (prompt/keywords) and by the
+  post-recognition correction (`src/shared/vocabulary-correction.ts`). The Free/Pro cap on
+  terms applies to both, through `workflowSettings()`.
+- Replacements: `parseReplacements` caps at `MAX_REPLACEMENT_RULES` (200); the Free cap of
+  20 is applied in `workflowSettings()`.
+- `app:info` still lacks its `fromMain` guard — fix it here as the brief says.
+- Run vitest from the upper-case path `C:\Users\KIRINDE\Desktop\voice-hotkey`.
