@@ -16,6 +16,12 @@ export interface WorkflowStatus {
   detail?: string
   /** Epoch ms the recording began, for the overlay's elapsed timer. */
   startedAt?: number
+  /**
+   * Whether a failed take is being kept for Retry. The dictation controller
+   * sets it on every status it sends, idle included, so the window never has
+   * to ask.
+   */
+  canRetry?: boolean
 }
 
 /** True while a take is being recorded or transcribed — what the main process calls busy. */

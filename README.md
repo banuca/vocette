@@ -14,7 +14,7 @@ No subscription, no shared backend, no maintainer holding your transcription bil
 
 Before upload, leading and trailing silence is trimmed so you are not billed for it, and the audio is converted to 16 kHz WAV — the format these models transcribe best. Audio is held in memory only as long as it takes to transcribe, and is never written to disk. Transcript text and basic timing are stored locally, beside your settings, in the app's own data folder.
 
-A transcription failure keeps the recording in memory, so **Retry last dictation** can send the exact same take again — no need to re-speak.
+A transcription failure keeps the recording in memory, so **Retry** — beside Record in the window, or **Retry last dictation** in the tray — can send the exact same take again, with no need to re-speak. A retried take is copied to the clipboard rather than pasted, because by then the window in front is Murmur, not the app you were dictating into. Before it comes to that, a busy cloud service — a rate limit, a server error or a dropped connection — is retried once on its own, so most of those failures never reach you.
 
 ## Two ways to record, and a button that always works
 
@@ -100,7 +100,7 @@ On Wayland the shortcut is registered with the desktop portal rather than observ
 
 Auto-paste is honest about its limits. Injected keystrokes cannot reach an elevated Windows window or a macOS secure-input field, and transcription takes seconds during which you may switch apps. When either happens — or when the target simply cannot be identified — the app leaves the transcript on your clipboard and tells you to paste manually instead of claiming a paste that never landed. Focus is never forcibly taken back to make a paste succeed. When a paste does go through, the clipboard is only borrowed: what you had copied is put back moments later, so the overlay says **Pasted** rather than implying the transcript is still there. If it went to the wrong window, **Alt + Shift + V** pastes your last dictation again (Windows).
 
-The tray menu also has **Start / Stop recording**, **Cancel dictation**, **Reset shortcut state** — for the rare case where a key-up is missed, which happens if you release the chord while a UAC prompt has focus — and **Retry last dictation** after a failed transcription.
+The tray menu also has **Start / Stop recording**, **Cancel dictation**, **Reset shortcut state** — for the rare case where a key-up is missed, which happens if you release the chord while a UAC prompt has focus — and **Retry last dictation** after a failed transcription, which the window also offers as **Retry** beside Record.
 
 ![Listening](docs/screenshots/overlay-recording.png)
 

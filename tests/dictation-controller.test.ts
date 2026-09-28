@@ -131,7 +131,8 @@ describe('hold → recording → release', () => {
         durationMs: 2100,
         model: 'gpt-transcribe',
         language: 'en',
-        vocabulary: []
+        vocabulary: [],
+        onRetry: expect.any(Function)
       },
       expect.any(AbortSignal)
     )
@@ -610,7 +611,8 @@ describe('paste last dictation', () => {
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith({
       phase: 'success',
       message: 'Pasted your last dictation',
-      detail: 'Earlier words.'
+      detail: 'Earlier words.',
+      canRetry: false
     })
     // Nothing is transcribed again, and nothing new goes into history.
     expect(deps.transcribe).not.toHaveBeenCalled()
@@ -1131,7 +1133,11 @@ describe('cancellation ownership', () => {
 
     expect(deps.paste).not.toHaveBeenCalled()
     expect(deps.playSound).not.toHaveBeenCalledWith('success')
-    expect(deps.broadcastStatus).toHaveBeenLastCalledWith({ phase: 'idle', message: 'Ready' })
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith({
+      phase: 'idle',
+      message: 'Ready',
+      canRetry: false
+    })
   })
 })
 
@@ -1259,12 +1265,43 @@ describe('errors and retry', () => {
     expect(deps.transcribe).toHaveBeenCalledTimes(2)
     expect(deps.writeClipboard).toHaveBeenCalledWith('On the second try.')
     expect(deps.paste).not.toHaveBeenCalled()
+    // Retry is pressed in Murmur's own window or tray, so the result goes to
+    // the clipboard for the user to paste where they meant it to go.
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
-      expect.objectContaining({ message: expect.stringContaining('paste manually') })
+      expect.objectContaining({ phase: 'success', message: 'Copied to clipboard' })
     )
     expect(controller.canRetry()).toBe(false)
     expect(deps.onRetryChanged).toHaveBeenLastCalledWith(false)
     expect([...audio]).toEqual([0, 0, 0])
+  })
+
+  it('never pastes a retry into whatever has focus, which is Murmur itself', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    // The window in front when Retry is pressed checks out as a valid target —
+    // it is Murmur's own window — and still nothing may be typed into it.
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    deps.transcribe
+      .mockRejectedValueOnce(new Error('The transcription service is temporarily unavailable.'))
+      .mockResolvedValueOnce('On the second try.')
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([9, 9, 9]),
+      mimeType: 'audio/wav',
+      durationMs: 1200
+    })
+    deps.captureForeground.mockClear()
+
+    const retryPromise = controller.retryLast()
+    await vi.advanceTimersByTimeAsync(80)
+    await retryPromise
+
+    expect(deps.captureForeground).not.toHaveBeenCalled()
+    expect(deps.clearForeground).toHaveBeenCalled()
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.snapshotClipboard).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).toHaveBeenLastCalledWith('On the second try.')
   })
 
   it('can retry again after a second failure', async () => {
@@ -1306,6 +1343,157 @@ describe('errors and retry', () => {
     expect([...audio]).toEqual([0])
   })
 
+  /** A shortcut take whose transcription fails once, left showing its error. */
+  async function failOnce(harness: ReturnType<typeof makeHarness>): Promise<void> {
+    harness.deps.transcribe.mockRejectedValueOnce(
+      new Error('The transcription service is temporarily unavailable.')
+    )
+    const requestId = harness.beginRecording()
+    harness.controller.onShortcutReleased()
+    await harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([4, 4]),
+      mimeType: 'audio/wav',
+      durationMs: 400
+    })
+  }
+
+  it('tells the window on every status whether a failed take is kept, idle included', async () => {
+    const harness = makeHarness()
+    const { deps } = harness
+    await failOnce(harness)
+
+    // Nothing was kept while the take was being recorded.
+    expect(deps.broadcastStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'recording', canRetry: false })
+    )
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'error', canRetry: true })
+    )
+    vi.advanceTimersByTime(4500)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith({
+      phase: 'idle',
+      message: 'Ready',
+      canRetry: true
+    })
+  })
+
+  it('stops offering Retry once the retried take has landed', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    await failOnce(harness)
+    deps.transcribe.mockResolvedValueOnce('On the second try.')
+    deps.broadcastStatus.mockClear()
+
+    const retry = controller.retryLast()
+    await vi.advanceTimersByTimeAsync(80)
+    await retry
+
+    // Still kept while it is being sent again, in case this attempt fails too…
+    expect(deps.broadcastStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'processing', canRetry: true })
+    )
+    // …and no longer offered from the moment it has been delivered.
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', canRetry: false })
+    )
+    vi.advanceTimersByTime(1600)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'idle', canRetry: false })
+    )
+  })
+
+  it('stops offering Retry the moment a new take starts', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    await failOnce(harness)
+
+    // While the error is still on screen: that is when people press again.
+    controller.startDictation('ui')
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting', canRetry: false })
+    )
+  })
+
+  it('keeps a failed on-device take for Retry too', async () => {
+    const harness = makeHarness({
+      settings: { engine: 'local', model: 'parakeet-tdt-0.6b-v3-int8' }
+    })
+    await failOnce(harness)
+    expect(harness.deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'error', canRetry: true })
+    )
+    expect(harness.controller.canRetry()).toBe(true)
+  })
+
+  it('says the service was busy while it is asked once more, then carries on', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.transcribe.mockImplementationOnce(async (payload) => {
+      payload.onRetry?.()
+      return 'Landed after all.'
+    })
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2]),
+      mimeType: 'audio/wav',
+      durationMs: 700
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await processing
+
+    expect(deps.broadcastStatus).toHaveBeenCalledWith({
+      phase: 'processing',
+      message: 'Transcribing…',
+      detail: 'The service was busy — trying once more',
+      canRetry: false
+    })
+    const processingDetails = deps.broadcastStatus.mock.calls
+      .map(([status]) => status)
+      .filter((status) => status.phase === 'processing')
+      .map((status) => status.detail)
+    expect(processingDetails).toEqual([
+      'Your audio is being converted to text',
+      'The service was busy — trying once more'
+    ])
+    // The retry was the service's own business: the take still lands.
+    expect(deps.recordHistory).toHaveBeenCalledWith('Landed after all.', 700, 'gpt-transcribe')
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success' })
+    )
+  })
+
+  it('does not bring a cancelled take back to "Transcribing…" when the service retries', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    let announceRetry!: () => void
+    let finish!: (text: string) => void
+    deps.transcribe.mockImplementationOnce(
+      (payload) =>
+        new Promise<string>((resolve) => {
+          announceRetry = () => payload.onRetry?.()
+          finish = resolve
+        })
+    )
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2]),
+      mimeType: 'audio/wav',
+      durationMs: 700
+    })
+
+    controller.cancelDictation()
+    const broadcasts = deps.broadcastStatus.mock.calls.length
+    announceRetry()
+    finish('Too late.')
+    await processing
+
+    expect(deps.broadcastStatus).toHaveBeenCalledTimes(broadcasts)
+    expect(controller.getStatus().phase).toBe('cancelled')
+  })
+
   it('sends the user to Settings when transcription is not set up', () => {
     const { controller, deps } = makeHarness({
       settings: {
@@ -1337,7 +1525,11 @@ describe('status lifecycle', () => {
 
     vi.advanceTimersByTime(1600)
     expect(controller.getStatus().phase).toBe('idle')
-    expect(deps.broadcastStatus).toHaveBeenLastCalledWith({ phase: 'idle', message: 'Ready' })
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith({
+      phase: 'idle',
+      message: 'Ready',
+      canRetry: false
+    })
   })
 
   it('accepts a new press while a success message is still showing', async () => {

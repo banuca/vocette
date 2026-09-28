@@ -574,7 +574,9 @@ a:focus-visible {
   background: var(--status-bad);
 }
 
-.record-cancel {
+/* Retry shares Cancel's look: they are never shown at the same time. */
+.record-cancel,
+.record-retry {
   min-width: 78px;
   min-height: 34px;
   padding: 7px 14px;
@@ -585,7 +587,8 @@ a:focus-visible {
   border-radius: var(--radius-pill);
 }
 
-.record-cancel:hover {
+.record-cancel:hover,
+.record-retry:hover {
   color: var(--text-heading);
   border-color: var(--text-muted);
 }
@@ -671,7 +674,8 @@ a:focus-visible {
   letter-spacing: -0.015em;
 }
 
-#record-host.is-hero .record-cancel {
+#record-host.is-hero .record-cancel,
+#record-host.is-hero .record-retry {
   order: 4;
 }
 

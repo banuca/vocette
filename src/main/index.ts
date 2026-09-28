@@ -480,7 +480,10 @@ async function transcribe(payload: TranscriptionPayload, signal: AbortSignal): P
     language: payload.language,
     terms: payload.vocabulary,
     endpoint: settingsStore.getInternal().apiEndpoint,
-    signal
+    signal,
+    // The cloud path only: its one quiet retry is announced through this. The
+    // on-device engine restarts its own worker instead, and has no busy server.
+    onRetry: payload.onRetry
   })
 }
 

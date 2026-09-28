@@ -2,7 +2,8 @@ import { clipboardOnlyReason, globalShortcutUsable, type PlatformStatus } from '
 import type { WorkflowStatus } from '../shared/types'
 
 /**
- * The Record / Stop / Cancel control.
+ * The Record / Stop / Cancel control, with Retry beside Record while a failed
+ * take is kept.
  *
  * It is rendered once and moved: a compact pill in the top bar on most pages,
  * and the large round control at the head of History. Moving the same element
@@ -34,6 +35,8 @@ export interface RecordingControlState {
   /** What clicking the primary button should do, or null when it is inert. */
   primaryAction: ControlAction | null
   cancelVisible: boolean
+  /** A failed take is kept to send again, and nothing is running now. */
+  retryVisible: boolean
   phaseLabel: string
   tone: ControlTone
   /** A short explanation shown beside the control, or null when unremarkable. */
@@ -69,6 +72,9 @@ export function recordingControlState(input: RecordingControlInput): RecordingCo
   const { ready } = input
   const recording = phase === 'starting' || phase === 'recording'
   const busy = recording || phase === 'processing'
+  // For as long as the main process keeps a failed take — on the error, and
+  // after it has faded to Ready — but never mid-take, when it would be refused.
+  const retryVisible = input.status.canRetry === true && !busy
 
   const hint = (): string | null => {
     if (!ready) return input.notReadyReason ?? NOT_READY
@@ -93,6 +99,7 @@ export function recordingControlState(input: RecordingControlInput): RecordingCo
       primaryEnabled: true,
       primaryAction: 'stop',
       cancelVisible: true,
+      retryVisible,
       phaseLabel: input.status.message,
       tone: phase,
       hint: hint()
@@ -107,6 +114,7 @@ export function recordingControlState(input: RecordingControlInput): RecordingCo
       // Cancellation is the point of this button: a slow provider must never
       // leave the user with nothing to press.
       cancelVisible: true,
+      retryVisible,
       phaseLabel: input.status.message,
       tone: 'processing',
       hint: hint()
@@ -123,6 +131,7 @@ export function recordingControlState(input: RecordingControlInput): RecordingCo
     primaryEnabled: ready,
     primaryAction: ready ? 'start' : null,
     cancelVisible: false,
+    retryVisible,
     phaseLabel: phase === 'idle' ? idleLabel : input.status.message,
     tone: phase === 'idle' ? 'idle' : (phase as ControlTone),
     hint: hint()
@@ -133,6 +142,8 @@ export interface RecordingControlBridge {
   startRecording(): Promise<void>
   stopRecording(): Promise<void>
   cancelRecording(): Promise<void>
+  /** Sends the kept recording again. Nothing is re-recorded. */
+  retryLastDictation(): Promise<void>
 }
 
 export interface RecordingControlView {
@@ -156,6 +167,7 @@ export function createRecordingControl(
         <span class="record-icon" id="record-icon" aria-hidden="true"></span>
         <span class="record-label" id="record-label"></span>
       </button>
+      <button class="record-retry" id="record-retry" type="button" title="Send the last recording again">Retry</button>
       <button class="record-cancel" id="record-cancel" type="button" title="Discard this recording">Cancel</button>
       <span class="record-phase" id="record-phase" aria-live="polite"></span>
     </div>
@@ -165,6 +177,7 @@ export function createRecordingControl(
   const primary = host.querySelector<HTMLButtonElement>('#record-primary')
   const icon = host.querySelector<HTMLElement>('#record-icon')
   const label = host.querySelector<HTMLElement>('#record-label')
+  const retry = host.querySelector<HTMLButtonElement>('#record-retry')
   const cancel = host.querySelector<HTMLButtonElement>('#record-cancel')
   const phase = host.querySelector<HTMLElement>('#record-phase')
   const hint = host.querySelector<HTMLElement>('#record-hint')
@@ -197,6 +210,9 @@ export function createRecordingControl(
     if (action === 'start') run(() => bridge.startRecording())
     if (action === 'stop') run(() => bridge.stopRecording())
   })
+  retry?.addEventListener('click', () => {
+    run(() => bridge.retryLastDictation())
+  })
   cancel?.addEventListener('click', () => {
     run(() => bridge.cancelRecording())
   })
@@ -217,6 +233,7 @@ export function createRecordingControl(
       }
       if (icon) icon.innerHTML = state.primaryAction === 'stop' ? STOP_ICON : MIC_ICON
       if (label) label.textContent = state.primaryLabel
+      if (retry) retry.hidden = !state.retryVisible
       if (cancel) cancel.hidden = !state.cancelVisible
       if (phase) phase.textContent = state.phaseLabel
       showHint(state.hint)

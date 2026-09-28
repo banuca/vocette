@@ -43,6 +43,8 @@ const MODIFIER_RELEASE_MS = 1500
 const MODIFIER_POLL_MS = 15
 /** Longest transcript shown in full beside a success message. */
 const PREVIEW_CHARS = 68
+/** Shown while the cloud service, having answered busy, is asked once more. */
+const BUSY_RETRY_DETAIL = 'The service was busy — trying once more'
 
 export type SoundKind = 'start' | 'success' | 'error'
 
@@ -111,6 +113,12 @@ export interface TranscriptionPayload {
   model: string
   language: string
   vocabulary: string[]
+  /**
+   * Called when the service answered busy and is being asked once more, so
+   * the overlay can say why this take is taking longer. Only the cloud path
+   * calls it: the on-device engine restarts its own worker instead.
+   */
+  onRetry?: () => void
 }
 
 export interface DictationDeps {
@@ -442,11 +450,16 @@ export class DictationController {
 
     // A fresh id invalidates any stale recorder events still in flight.
     this.currentRequestId = randomUUID()
-    this.clipboardOnly = take.clipboardOnly
-    // A retry of a window-started take still has no target to capture.
-    if (take.clipboardOnly) this.deps.clearForeground()
-    else this.deps.captureForeground()
-    const attempt = this.beginProcessingAttempt(take, false)
+    // Every Retry is pressed in Murmur's own window or tray menu, so whatever
+    // has focus now is Murmur, not the app the take was dictated for.
+    // Capturing it would paste the transcript into Murmur itself — and, with
+    // the clipboard given back afterwards, leave it only in History. A retry
+    // is therefore delivered to the clipboard, like a take started from the
+    // window, for the user to paste where they meant it to go. The retained
+    // take itself is left as it was, sharing the same audio.
+    this.clipboardOnly = true
+    this.deps.clearForeground()
+    const attempt = this.beginProcessingAttempt({ ...take, clipboardOnly: true }, false)
     await this.processTake(attempt, 'Retrying your last recording', true)
   }
 
@@ -676,9 +689,9 @@ export class DictationController {
 
     try {
       const settings = this.deps.getSettings()
-      // Only the audio, its shape and the engine that should hear it leave
-      // here; how this take is to be delivered afterwards is nobody else's
-      // business.
+      // Only the audio, its shape, the engine that should hear it and a way
+      // to say it is trying again leave here; how this take is to be
+      // delivered afterwards is nobody else's business.
       const rawText = await this.deps.transcribe(
         {
           engine: settings.engine,
@@ -687,7 +700,17 @@ export class DictationController {
           durationMs: attempt.take.durationMs,
           model: settings.model,
           language: settings.language,
-          vocabulary: settings.vocabulary
+          vocabulary: settings.vocabulary,
+          onRetry: () => {
+            // A take cancelled or superseded meanwhile keeps whatever the
+            // overlay shows now; it is not brought back to "Transcribing…".
+            if (!this.ownsAttempt(attempt)) return
+            this.broadcast({
+              phase: 'processing',
+              message: 'Transcribing…',
+              detail: BUSY_RETRY_DETAIL
+            })
+          }
         },
         attempt.controller.signal
       )
@@ -728,6 +751,12 @@ export class DictationController {
       })
       if (!message || !this.ownsAttempt(attempt)) return
 
+      // Delivered, so nothing is left to retry — and the success status has
+      // to say so, or the window would go on offering Retry for a take that
+      // has just landed.
+      this.setRetryTake(null)
+      if (!this.ownsAttempt(attempt)) return
+
       this.broadcast({ phase: 'success', message, detail: previewOf(text) }, SUCCESS_RESET_MS)
       if (!this.ownsAttempt(attempt)) return
 
@@ -735,8 +764,6 @@ export class DictationController {
       if (!this.ownsAttempt(attempt)) return
 
       attempt.take.audio.fill(0)
-      if (!this.ownsAttempt(attempt)) return
-      this.setRetryTake(null)
     } catch (error) {
       if (!this.ownsAttempt(attempt)) return
 
@@ -767,8 +794,11 @@ export class DictationController {
   }
 
   private broadcast(status: WorkflowStatus, resetAfterMs = 0): void {
-    this.currentStatus = status
-    this.deps.broadcastStatus(status)
+    // On every status, idle included: the window's Retry button follows it,
+    // and has no other way to learn that a failed take is still kept.
+    const stamped: WorkflowStatus = { ...status, canRetry: this.retryTake !== null }
+    this.currentStatus = stamped
+    this.deps.broadcastStatus(stamped)
 
     this.statusResetTimer = clearTimer(this.statusResetTimer)
     if (resetAfterMs > 0) {

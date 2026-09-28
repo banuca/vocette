@@ -91,6 +91,22 @@ All notable changes to this project are documented here. This project adheres to
   elevation checks as a dictation: for a paste that went to the wrong place. If
   another app already owns the combination, Settings says so. It is deliberately not
   in the tray menu — opening the menu takes focus away from the window you want it in.
+- **A retry is copied, not pasted.** Retry is pressed in Murmur's own window or tray,
+  so the window in front is Murmur itself; a retried take used to be pasted there (into
+  whatever field had focus) and, with the clipboard given back, could end up only in
+  History. It now goes to the clipboard, like a take started from the window.
+- **A busy service is retried once, and Retry is in the window.** A rate limit (429),
+  a server error (5xx) or a dropped connection used to cost a 4.5-second error and a
+  hunt through the tray. Now the cloud request is quietly sent once more — after the
+  pause the service asks for in `Retry-After`, held to between 0.25 and 5 seconds, or
+  0.7 seconds otherwise — while the overlay says “The service was busy — trying once
+  more”. Only once, and never for a rejected request — a bad key, a wrong address or
+  model, a recording that is too large — nor after a two-minute timeout, which would
+  only fail the same way again; a dictation cancelled during the pause sends nothing
+  more. When a take still fails, **Retry** appears beside Record in the window, in the
+  top bar and at the head of History, for as long as the recording is kept, and sends
+  it again without re-speaking — on-device takes included. Starting a new dictation or
+  cancelling removes it, just as it greys out **Retry last dictation** in the tray.
 
 ### Fixed
 
