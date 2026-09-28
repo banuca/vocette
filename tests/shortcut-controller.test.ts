@@ -40,6 +40,7 @@ function makeController(
   const onCapture = vi.fn()
   const onArm = vi.fn()
   const onDisarm = vi.fn()
+  const onEscape = vi.fn()
   const controller = new ShortcutController({
     chord: { keys: overrides.keys ?? [KEY.Ctrl, KEY.Shift] },
     holdDelayMs: overrides.holdDelayMs ?? 250,
@@ -47,12 +48,13 @@ function makeController(
     onRelease,
     onArm,
     onDisarm,
+    onEscape,
     onError: vi.fn(),
     onCapture
   })
   controller.start()
   if (overrides.tapToFire) controller.setTapToFire(true)
-  return { controller, onPress, onRelease, onCapture, onArm, onDisarm }
+  return { controller, onPress, onRelease, onCapture, onArm, onDisarm, onEscape }
 }
 
 beforeEach(() => {
@@ -553,6 +555,91 @@ describe('arming, so listening can start before the hold delay has passed', () =
     holdChord()
     vi.advanceTimersByTime(ARM_INTENT_MS)
     expect(onArm).toHaveBeenCalledTimes(1)
+    expect(onDisarm).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(1000)
+    expect(onPress).not.toHaveBeenCalled()
+  })
+})
+
+describe('Esc', () => {
+  it('reports Esc pressed on its own, once per press', () => {
+    const { controller, onEscape } = makeController()
+    expect(controller.supportsEscape).toBe(true)
+    keyDown(KEY.Escape)
+    // Auto-repeat while it is held is the same press.
+    keyDown(KEY.Escape)
+    keyDown(KEY.Escape)
+    expect(onEscape).toHaveBeenCalledTimes(1)
+    keyUp(KEY.Escape)
+    keyDown(KEY.Escape)
+    expect(onEscape).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves Esc with a modifier to the shortcut it belongs to', () => {
+    const { onEscape } = makeController({ keys: [KEY.Ctrl, KEY.Space] })
+    // Ctrl + Shift + Esc is Task Manager; Alt + Esc switches windows.
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    keyDown(KEY.Escape)
+    keyUp(KEY.Escape)
+    keyUp(KEY.Shift)
+    keyUp(KEY.Ctrl)
+    keyDown(KEY.Alt)
+    keyDown(KEY.Escape)
+    expect(onEscape).not.toHaveBeenCalled()
+  })
+
+  it('counts Esc as alone while a key that is not a modifier is held', () => {
+    const { onEscape } = makeController()
+    keyDown(KEY.A)
+    keyDown(KEY.Escape)
+    expect(onEscape).toHaveBeenCalledTimes(1)
+  })
+
+  it('is not reported while a shortcut is being recorded, or with the shortcut off', () => {
+    const { controller, onEscape, onCapture } = makeController()
+    controller.beginCapture()
+    keyDown(KEY.Escape)
+    expect(onEscape).not.toHaveBeenCalled()
+    // Recorded as part of the new chord instead, as any key is.
+    expect(onCapture).toHaveBeenLastCalledWith([KEY.Escape], false)
+    controller.cancelCapture()
+    keyUp(KEY.Escape)
+
+    controller.setEnabled(false)
+    keyDown(KEY.Escape)
+    expect(onEscape).not.toHaveBeenCalled()
+  })
+
+  it("ignores the app's own injected keystrokes", () => {
+    const { controller, onEscape } = makeController()
+    controller.suppressSyntheticInput(180)
+    keyDown(KEY.Escape)
+    expect(onEscape).not.toHaveBeenCalled()
+  })
+
+  it('still ends a pending arm, as any key outside the chord does', () => {
+    const { onEscape, onArm, onDisarm, onPress } = makeController()
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    vi.advanceTimersByTime(ARM_INTENT_MS)
+    expect(onArm).toHaveBeenCalledTimes(1)
+    // With the chord's modifiers held this is not Esc alone, and it is a key
+    // outside the chord: the arm ends and nothing records.
+    keyDown(KEY.Escape)
+    expect(onEscape).not.toHaveBeenCalled()
+    expect(onDisarm).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(1000)
+    expect(onPress).not.toHaveBeenCalled()
+  })
+
+  it('reports Esc and ends the arm when the chord has no modifier', () => {
+    const { onEscape, onArm, onDisarm, onPress } = makeController({ keys: [KEY.F9] })
+    keyDown(KEY.F9)
+    vi.advanceTimersByTime(ARM_INTENT_MS)
+    expect(onArm).toHaveBeenCalledTimes(1)
+    keyDown(KEY.Escape)
+    expect(onEscape).toHaveBeenCalledTimes(1)
     expect(onDisarm).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(1000)
     expect(onPress).not.toHaveBeenCalled()

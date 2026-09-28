@@ -12,7 +12,14 @@ import type { Page, WorkflowStatus } from '../src/shared/types'
 /** Stands in for the snapshot of whatever the user had copied. */
 const USER_CLIPBOARD = { snapshot: 'what the user had copied' }
 
-function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
+function makeHarness(
+  overrides: {
+    settings?: Partial<WorkflowSettings>
+    /** Whether Esc is being watched; left out, the dependency is absent. */
+    escapeWatched?: boolean
+    shortcutLabel?: string
+  } = {}
+) {
   const settings: WorkflowSettings = {
     recordingMode: 'hold',
     instantCapture: true,
@@ -67,7 +74,10 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
     captureForeground,
     clearForeground,
     getForegroundState,
-    shortcutLabel: () => 'Left Ctrl + Left Shift',
+    shortcutLabel: () => overrides.shortcutLabel ?? 'Left Ctrl + Left Shift',
+    ...(overrides.escapeWatched === undefined
+      ? {}
+      : { escapeWatched: () => overrides.escapeWatched === true }),
     onRetryChanged
   }
 
@@ -2856,5 +2866,166 @@ describe('the plan limits, as a take uses them', () => {
     expect(pro.deps.recordHistory).toHaveBeenCalledWith('Say W0 and W20.', 100, 'gpt-transcribe', {
       heardText: 'Say word0 and word20.'
     })
+  })
+})
+
+describe('Esc cancels a recording nobody is holding a key for', () => {
+  const lastStatus = (harness: ReturnType<typeof makeHarness>): WorkflowStatus | undefined =>
+    harness.deps.broadcastStatus.mock.calls.at(-1)?.[0]
+
+  it('cancels a hands-free recording, unheard', async () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' }, escapeWatched: true })
+    const { controller, deps } = harness
+    const requestId = harness.beginRecording()
+    expect(controller.getStatus().phase).toBe('recording')
+
+    controller.cancelOnEscape()
+    expect(deps.sendToRecorder).toHaveBeenLastCalledWith('recorder:cancel', { requestId })
+    expect(lastStatus(harness)).toEqual(
+      expect.objectContaining({ phase: 'cancelled', message: 'Dictation cancelled' })
+    )
+    // Audio that still arrives for it is thrown away.
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 1500
+    })
+    expect(deps.transcribe).not.toHaveBeenCalled()
+    expect(deps.recordHistory).not.toHaveBeenCalled()
+    expect(controller.canRetry()).toBe(false)
+  })
+
+  it('cancels while the microphone is still opening', () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' }, escapeWatched: true })
+    harness.controller.onShortcutPressed()
+    expect(harness.controller.getStatus().phase).toBe('starting')
+    harness.controller.cancelOnEscape()
+    expect(harness.controller.getStatus().phase).toBe('cancelled')
+  })
+
+  it('cancels a take started from the window, whatever the mode', () => {
+    const harness = makeHarness({ escapeWatched: true })
+    harness.controller.startDictation('ui')
+    harness.controller.onRecorderStarted({ requestId: harness.lastRequestId() })
+    harness.controller.cancelOnEscape()
+    expect(harness.controller.getStatus().phase).toBe('cancelled')
+  })
+
+  it('leaves a take that is held to talk alone', () => {
+    const harness = makeHarness({ escapeWatched: true })
+    harness.beginRecording()
+    harness.controller.cancelOnEscape()
+    expect(harness.controller.getStatus().phase).toBe('recording')
+  })
+
+  it('leaves a take alone once it is being transcribed', async () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' }, escapeWatched: true })
+    const { controller, deps } = harness
+    let finish: (text: string) => void = () => {}
+    deps.transcribe.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve
+        })
+    )
+    const requestId = harness.beginRecording()
+    controller.onShortcutPressed()
+    const delivered = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 1500
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.getStatus().phase).toBe('processing')
+
+    controller.cancelOnEscape()
+    expect(controller.getStatus().phase).toBe('processing')
+    finish('Hello world.')
+    await vi.advanceTimersByTimeAsync(100)
+    await delivered
+    expect(deps.recordHistory).toHaveBeenCalledTimes(1)
+  })
+
+  it('does nothing when nothing is recording, nor to a keypress take not yet confirmed', () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' }, escapeWatched: true })
+    harness.controller.cancelOnEscape()
+    expect(harness.deps.broadcastStatus).not.toHaveBeenCalled()
+
+    // A provisional take is the shortcut's to keep or drop. Esc is a key
+    // outside the chord, so the arm ending is what lets it go.
+    harness.controller.prepareDictation()
+    harness.controller.cancelOnEscape()
+    expect(harness.deps.broadcastStatus).not.toHaveBeenCalled()
+    expect(harness.deps.sendToRecorder).not.toHaveBeenCalledWith(
+      'recorder:cancel',
+      expect.anything()
+    )
+  })
+})
+
+describe('the finish hint', () => {
+  const details = (harness: ReturnType<typeof makeHarness>): (string | undefined)[] =>
+    harness.deps.broadcastStatus.mock.calls.map(([status]) => status.detail)
+
+  it('hold to talk: keep holding, then let go', () => {
+    const harness = makeHarness({ escapeWatched: true })
+    harness.beginRecording()
+    expect(details(harness)).toEqual([
+      'Keep holding the shortcut',
+      'Release Left Ctrl + Left Shift to finish'
+    ])
+  })
+
+  it('hands-free: press again, or Esc', () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' }, escapeWatched: true })
+    harness.beginRecording()
+    expect(details(harness)).toEqual([
+      'Press Left Ctrl + Left Shift to finish · Esc to cancel',
+      'Press Left Ctrl + Left Shift to finish · Esc to cancel'
+    ])
+  })
+
+  it('hands-free with a long chord: the chord is not spelt out, so Esc stays visible', () => {
+    const harness = makeHarness({
+      settings: { recordingMode: 'toggle' },
+      escapeWatched: true,
+      shortcutLabel: 'Left Ctrl + Left Alt + Space'
+    })
+    harness.beginRecording()
+    expect(details(harness).at(-1)).toBe('Press the shortcut again to finish · Esc to cancel')
+  })
+
+  it('from the window: press Stop, or Esc', () => {
+    const harness = makeHarness({ escapeWatched: true })
+    harness.controller.startDictation('ui')
+    harness.controller.onRecorderStarted({ requestId: harness.lastRequestId() })
+    expect(details(harness)).toEqual([
+      'Press Stop when you have finished · Esc to cancel',
+      'Press Stop when you have finished · Esc to cancel'
+    ])
+  })
+
+  it('offers Esc only while it is being watched', () => {
+    const toggle = makeHarness({ settings: { recordingMode: 'toggle' }, escapeWatched: false })
+    toggle.beginRecording()
+    expect(details(toggle)).toEqual([
+      'Press Left Ctrl + Left Shift again to finish',
+      'Press Left Ctrl + Left Shift again to finish'
+    ])
+
+    const fromWindow = makeHarness({ escapeWatched: false })
+    fromWindow.controller.startDictation('ui')
+    fromWindow.controller.onRecorderStarted({ requestId: fromWindow.lastRequestId() })
+    expect(details(fromWindow).at(-1)).toBe('Press Stop when you have finished')
+  })
+
+  it('gives a hands-free take opened at the keypress the same hint once confirmed', () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' }, escapeWatched: true })
+    harness.controller.prepareDictation()
+    harness.controller.onRecorderStarted({ requestId: harness.lastRequestId() })
+    harness.controller.onShortcutPressed()
+    expect(details(harness)).toEqual(['Press Left Ctrl + Left Shift to finish · Esc to cancel'])
   })
 })

@@ -1,7 +1,7 @@
 import { uIOhook } from 'uiohook-napi'
 import { chordIsSatisfied, type ShortcutChord } from '../shared/shortcuts'
 import { MAX_CHORD_KEYS } from '../shared/shortcuts'
-import { sortChordKeys } from '../shared/keycodes'
+import { isModifier, KEY, sortChordKeys } from '../shared/keycodes'
 import type { ShortcutBackend, ShortcutBackendOptions } from './platform/types'
 
 export type ShortcutControllerOptions = ShortcutBackendOptions
@@ -43,6 +43,7 @@ export class ShortcutController implements ShortcutBackend {
   /** libuiohook reports key-up, so hold-to-talk is genuinely supported. */
   readonly supportsHold = true
   readonly supportsCapture = true
+  readonly supportsEscape = true
   private pressed = new Set<number>()
   private chord: ShortcutChord
   private holdDelayMs: number
@@ -247,8 +248,16 @@ export class ShortcutController implements ShortcutBackend {
     if (!this.enabled) return
 
     const repeated = this.pressed.has(event.keycode)
+    // Esc counts only on its own. With a modifier it is some other shortcut —
+    // Ctrl + Shift + Esc is Task Manager, Alt + Esc switches windows — so it
+    // is checked before this key joins the ones held.
+    const escapeAlone = event.keycode === KEY.Escape && ![...this.pressed].some(isModifier)
     this.pressed.add(event.keycode)
     if (repeated) return
+
+    // Reported before anything else is decided, and without stopping it: the
+    // Esc is still a key outside the chord, so it ends a pending arm below.
+    if (escapeAlone) this.options.onEscape?.()
 
     if (this.active) {
       // Already dictating; nothing else to decide. This is also why a chord

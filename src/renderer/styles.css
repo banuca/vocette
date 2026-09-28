@@ -1441,6 +1441,10 @@ a:focus-visible {
   line-height: 1.5;
 }
 
+.mode-option span[hidden] {
+  display: none;
+}
+
 /* --- Transcription engine ---------------------------------------------- */
 
 /* The engine choice reuses the recording-mode cards; what follows it is only

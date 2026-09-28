@@ -665,6 +665,10 @@ function createDictationController(): DictationController {
     clearForeground: () => foreground.clear(),
     getForegroundState: () => foreground.check(),
     shortcutLabel,
+    escapeWatched: () =>
+      shortcutController.supportsEscape &&
+      shortcutController.isEnabled() &&
+      shortcutController.registrationError() === null,
     onRetryChanged: () => rebuildTrayMenu(),
     // The model loads while the user is still speaking. Only the on-device
     // engine has anything to load, and only once its model is on disk: a
@@ -1384,6 +1388,8 @@ async function bootstrap(): Promise<void> {
     // on screen, so the tray menu is not rebuilt for them.
     onArm: () => dictation.prepareDictation(),
     onDisarm: () => dictation.abandonPreparation(),
+    // Esc on its own cancels a recording nobody is holding a key for.
+    onEscape: () => dictation.cancelOnEscape(),
     onError: (message) => dictation.reportError(message),
     onCapture: (keys, done) => {
       if (done) captureTimeout = clearTimer(captureTimeout)

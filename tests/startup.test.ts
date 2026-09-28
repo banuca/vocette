@@ -63,6 +63,8 @@ interface StartupHarness {
   armShortcut: () => void
   /** The armed chord turns out to be another shortcut. */
   disarmShortcut: () => void
+  /** Esc pressed on its own, as the keyboard hook reports it. */
+  pressEscape: () => void
   setCapabilities: (patch: Record<string, unknown>) => void
   sentToMain: () => Array<{ channel: string; payload: unknown }>
   trayLabels: () => string[]
@@ -146,6 +148,7 @@ async function startApp(options: {
   let shortcutPress: (() => void) | null = null
   let shortcutArm: (() => void) | null = null
   let shortcutDisarm: (() => void) | null = null
+  let shortcutEscape: (() => void) | null = null
   const accelerators = new Set<string>()
   // Saved settings are remembered, so a save can be seen to take effect.
   let storedSettings: typeof DEFAULT_SETTINGS = {
@@ -432,13 +435,16 @@ async function startApp(options: {
         onPress: () => void
         onArm?: () => void
         onDisarm?: () => void
+        onEscape?: () => void
       }) => {
         shortcutPress = backendOptions.onPress
         shortcutArm = backendOptions.onArm ?? null
         shortcutDisarm = backendOptions.onDisarm ?? null
+        shortcutEscape = backendOptions.onEscape ?? null
         return {
           supportsHold: true,
           supportsCapture: true,
+          supportsEscape: true,
           setEnabled: vi.fn(),
           setChord: vi.fn(),
           setHoldDelay: vi.fn(),
@@ -547,6 +553,10 @@ async function startApp(options: {
     disarmShortcut: () => {
       if (!shortcutDisarm) throw new Error('The shortcut backend was given no onDisarm.')
       shortcutDisarm()
+    },
+    pressEscape: () => {
+      if (!shortcutEscape) throw new Error('The shortcut backend was given no onEscape.')
+      shortcutEscape()
     },
     setCapabilities: (patch: Record<string, unknown>) => {
       currentCapabilities = { ...fullyCapable, ...patch }
@@ -787,6 +797,33 @@ describe('the tray keeps up with the workflow', () => {
 
     app.invoke('dictation:cancel', true)
     expect(app.trayLabels()).toContain('Start recording')
+  })
+
+  it('cancels a take started from the window when Esc is pressed on its own', async () => {
+    const app = await startApp()
+    app.invoke('dictation:start', true)
+    expect(app.trayLabels()).toContain('Stop recording')
+    const starting = app
+      .sentToMain()
+      .filter(({ channel }) => channel === 'workflow:status')
+      .at(-1)?.payload as { detail?: string } | undefined
+    // The keyboard is watched and the shortcut is on, so Esc is offered.
+    expect(starting?.detail).toBe('Press Stop when you have finished · Esc to cancel')
+
+    app.pressEscape()
+    expect(app.trayLabels()).toContain('Start recording')
+    const last = app
+      .sentToMain()
+      .filter(({ channel }) => channel === 'workflow:status')
+      .at(-1)?.payload as { phase?: string } | undefined
+    expect(last?.phase).toBe('cancelled')
+  })
+
+  it('leaves a take held to talk alone when Esc is pressed', async () => {
+    const app = await startApp()
+    app.pressShortcut()
+    app.pressEscape()
+    expect(app.trayLabels()).toContain('Stop recording')
   })
 })
 

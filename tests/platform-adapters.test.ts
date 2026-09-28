@@ -48,6 +48,7 @@ function hookModule(): HookModule & { pastes: string[] } {
     createBackend: (options): ShortcutBackend => ({
       supportsHold: true,
       supportsCapture: true,
+      supportsEscape: true,
       start: () => {},
       stop: () => {},
       setChord: () => {},

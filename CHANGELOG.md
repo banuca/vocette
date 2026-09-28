@@ -197,7 +197,20 @@ All notable changes to this project are documented here. This project adheres to
   an address you have not saved — so while the endpoint, model or key fields hold unsaved
   changes it waits for **Save settings**, and says so.
 
+- **Esc cancels a hands-free recording.** In **Press to start and stop**, and for any take
+  started from the window, Esc on its own cancels the recording as Cancel does: nothing is
+  transcribed, kept or pasted. The overlay says so — “Press Left Ctrl + Left Shift to
+  finish · Esc to cancel” — and a chord too long to fit beside it is called “the shortcut”
+  so the Esc part is never cut off. Esc with a modifier is left alone (Ctrl + Shift + Esc
+  is Task Manager), as is a take held to talk and one already being transcribed. Murmur
+  only watches the key, so the app in front sees the same Esc; Settings says so. Where the
+  keyboard is not watched (a Wayland desktop) or the shortcut is off, Esc is not offered.
+
 ### Fixed
+
+- In **Press to start and stop**, and for a take started from the window, the overlay said
+  “Release Left Ctrl + Left Shift to finish” once recording began, which was wrong for both.
+  It now keeps the words for how the take was started.
 
 - Only the main window can ask for app info, as for every other channel, and the
   settings the window sees are now listed field by field — a new stored field no longer

@@ -20,7 +20,7 @@ A transcription failure keeps the recording in memory, so **Retry** — beside R
 
 **Hold to talk** is the default: hold the shortcut while you speak, release to finish.
 
-**Press to start and stop** is a toggle — one press begins, the next ends it. Choose it because you prefer it, or because you are on a desktop that cannot report a key release.
+**Press to start and stop** is a toggle — one press begins, the next ends it, and Esc on its own cancels (Murmur only watches the key, so the app in front sees that Esc too). Choose it because you prefer it, or because you are on a desktop that cannot report a key release.
 
 **Record / Stop / Cancel** live in the top bar of the window, on every page. They drive exactly the same dictation controller as the shortcut, so there is never a second microphone owner. A recording started from the window is delivered to your clipboard and nothing is typed anywhere — the window in front is Murmur itself, not the app you wanted the text in.
 

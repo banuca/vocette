@@ -58,15 +58,15 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 | 3 | Snippets / replacements (`spoken => written`) | Free (cap later) | committed | 96bb8bc |
 | 4 | Clipboard custody (restore) + honest delivery + "paste last" | Free | committed | f067a4e |
 | 5 | Silent retry (cloud) + Retry in window | Free | committed | a319fea |
-| 6 | Key-free custom endpoints + `transcriptionReady` gate | Free | building (lane C) |  |
+| 6 | Key-free custom endpoints + `transcriptionReady` gate | Free | committed | 98e4c5b |
 | 7a | On-device engine runtime (utility process, model store, router) | Free | committed | 1767354 |
 | 7b | Engine UI: Settings engine card, first-run download, progress | Free | committed | e355adc |
 | 8 | Vocabulary on the local engine + fuzzy vocabulary correction (all engines) | Free | committed | faebde1 |
 | 9 | Start listening at the keypress + engine prewarm | Free | committed | 5f73e73, 486be33 |
 | 10 | Latency shown per dictation | Free | todo | |
-| 11 | Licence, 30-day trial, Account page, Pro gates | Gate | building (lane A) |  |
+| 11 | Licence, 30-day trial, Account page, Pro gates | Gate | committed | 4f6e46b |
 | 12 | AI polish with styles, time budget, raw fallback | Pro | todo | |
-| 13 | History edit, undo delete, show original | Free | building (lane B) |  |
+| 13 | History edit, undo delete, show original | Free | committed | d4702a4, 98ab971 |
 | 14 | Opt-in update check | Free | todo | |
 | R1 | Silence guard: no text invented from a silent take, no engine call | Free | committed | e1480e5 |
 | R2 | Live microphone level in the overlay ("is it hearing me?") | Free | committed | 5230a6e |

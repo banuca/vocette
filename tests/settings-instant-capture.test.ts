@@ -125,6 +125,7 @@ async function makeHarness(
     '#instant-capture-note',
     '#hotkey-enabled',
     '#hotkey-note',
+    '#mode-escape',
     '#save-settings',
     '#settings-feedback'
   ]) {
@@ -284,5 +285,26 @@ describe('the "Start listening as soon as the shortcut is held" switch', () => {
     expect(macos.at('#instant-capture').disabled).toBe(true)
     expect(macos.at('#instant-capture-note').textContent).toBe(permission)
     expect(macos.at('#instant-capture-note').hidden).toBe(false)
+  })
+})
+
+describe('the Esc line under "Press to start and stop"', () => {
+  it('says Esc cancels, and that the app in front sees it too', async () => {
+    const { content, at } = await makeHarness()
+    expect(content.innerHTML).toContain(
+      '<strong>Press to start and stop</strong><span>One press begins recording, the next ends it.</span><span id="mode-escape">Esc cancels. The app you are in sees that Esc too.</span>'
+    )
+    expect(at('#mode-escape').hidden).toBe(false)
+  })
+
+  it('is not there where the keyboard is not watched, since Esc cannot be seen', async () => {
+    const wayland = await makeHarness({
+      platform: platform(
+        'linux',
+        { globalHold: unavailable('Wayland does not let an application watch the keyboard.') },
+        'wayland'
+      )
+    })
+    expect(wayland.at('#mode-escape').hidden).toBe(true)
   })
 })

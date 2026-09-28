@@ -51,6 +51,13 @@ export interface ShortcutBackendOptions {
    * A toggle tap that fires `onPress` on release is an activation, not this.
    */
   onDisarm?(): void
+  /**
+   * Esc went down on its own, with no modifier held, while the shortcut is
+   * enabled and no chord is being recorded. Only a backend that watches the
+   * keyboard calls this, and says so with `supportsEscape`. The key is only
+   * observed: the app in front sees the same Esc.
+   */
+  onEscape?(): void
   onError(message: string): void
   /** Streams the chord being recorded by "Change shortcut". */
   onCapture(keys: number[], done: boolean): void
@@ -68,6 +75,8 @@ export interface ShortcutBackend {
   readonly supportsHold: boolean
   /** True when the backend can record a chord from live input. */
   readonly supportsCapture: boolean
+  /** True when the backend reports Esc through `onEscape`. */
+  readonly supportsEscape: boolean
   start(): void
   stop(): void
   setChord(chord: ShortcutChord): void
@@ -147,6 +156,7 @@ export class NullTargetTracker implements TargetTracker {
 export class NullShortcutBackend implements ShortcutBackend {
   readonly supportsHold = false
   readonly supportsCapture = false
+  readonly supportsEscape = false
 
   constructor(private readonly reason: string) {}
 

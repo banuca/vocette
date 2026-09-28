@@ -258,7 +258,7 @@ export function renderSettings(
           </label>
           <label class="mode-option">
             <input type="radio" name="recording-mode" value="toggle" id="mode-toggle" />
-            <div><strong>Press to start and stop</strong><span>One press begins recording, the next ends it.</span></div>
+            <div><strong>Press to start and stop</strong><span>One press begins recording, the next ends it.</span><span id="mode-escape">Esc cancels. The app you are in sees that Esc too.</span></div>
           </label>
         </div>
         <p class="capability-note" id="mode-note" hidden></p>
@@ -745,6 +745,9 @@ export function renderSettings(
     // Holding needs a key-up the platform may never report.
     const holdPossible = isAvailable(map.globalHold)
     if (modeHold) modeHold.disabled = !holdPossible
+    // Esc is seen by the same watched keyboard, so without one it is not offered.
+    const modeEscape = query<HTMLElement>('#mode-escape')
+    if (modeEscape) modeEscape.hidden = !holdPossible
     const modeNote = query<HTMLElement>('#mode-note')
     if (modeNote) {
       const forced = recordingModeIsForced(settings.recordingMode, map)

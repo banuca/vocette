@@ -58,6 +58,12 @@ const MODIFIER_RELEASE_MS = 1500
 const MODIFIER_POLL_MS = 15
 /** Longest transcript shown in full beside a success message. */
 const PREVIEW_CHARS = 68
+/**
+ * Longest shortcut label the hands-free hint spells out. Measured in the
+ * overlay: "Press Right Ctrl + Right Shift to finish · Esc to cancel" (24
+ * characters of label) fits in its 248 px; a three-key chord does not.
+ */
+const FINISH_HINT_MAX_LABEL = 24
 /** Shown while the cloud service, having answered busy, is asked once more. */
 const BUSY_RETRY_DETAIL = 'The service was busy — trying once more'
 
@@ -186,6 +192,12 @@ export interface DictationDeps {
   getForegroundState(): ForegroundState | null
   /** Display label of the configured chord, for the overlay's release hint. */
   shortcutLabel(): string
+  /**
+   * Whether Esc on its own reaches `cancelOnEscape` right now: the keyboard is
+   * being watched and the shortcut is on. The overlay offers "Esc to cancel"
+   * only then. Without this, it never does.
+   */
+  escapeWatched?(): boolean
   /** Fired when a failed take becomes retryable (or stops being retryable). */
   onRetryChanged?(available: boolean): void
   /**
@@ -398,7 +410,7 @@ export class DictationController {
     this.broadcast({
       phase: 'starting',
       message: 'Starting microphone…',
-      detail: this.startingHint(settings, source)
+      detail: this.finishHint(settings, source, false)
     })
 
     this.startWatchdog = setTimeout(this.startTimedOut, START_WATCHDOG_MS)
@@ -487,6 +499,20 @@ export class DictationController {
     this.broadcast({ phase: 'cancelled', message: 'Dictation cancelled' }, CANCELLED_RESET_MS)
   }
 
+  /**
+   * Esc on its own, pressed anywhere. It cancels a recording nobody is
+   * holding a key for: a hands-free take, or one started from the window. A
+   * take held to talk is left alone, since letting go is how that one ends,
+   * and so is one already being transcribed, which Esc meant for another app
+   * could otherwise throw away.
+   */
+  cancelOnEscape(): void {
+    if (!this.isRecording()) return
+    const handsFree = this.deps.getSettings().recordingMode === 'toggle'
+    if (!handsFree && !this.clipboardOnly) return
+    this.cancelDictation()
+  }
+
   /** One shortcut press, used where the platform cannot report a key release. */
   toggleDictation(source: DictationSource): void {
     if (this.isRecording()) {
@@ -529,7 +555,7 @@ export class DictationController {
       this.broadcast({
         phase: 'starting',
         message: 'Starting microphone…',
-        detail: this.startingHint(settings, 'shortcut')
+        detail: this.finishHint(settings, 'shortcut', false)
       })
       return
     }
@@ -585,11 +611,29 @@ export class DictationController {
     }
   }
 
-  private startingHint(settings: WorkflowSettings, source: DictationSource): string {
-    if (source === 'ui') return 'Press Stop when you have finished'
-    return settings.recordingMode === 'toggle'
-      ? `Press ${this.deps.shortcutLabel()} again to finish`
-      : 'Keep holding the shortcut'
+  /**
+   * How to end the take, in the words that match how it was started. A held
+   * take is told to keep holding while the microphone opens, and to let go
+   * once it is live. The others end with a press, and can be cancelled with
+   * Esc whenever Esc is being watched.
+   */
+  private finishHint(settings: WorkflowSettings, source: DictationSource, live: boolean): string {
+    const label = this.deps.shortcutLabel()
+    if (source === 'shortcut' && settings.recordingMode === 'hold') {
+      return live ? `Release ${label} to finish` : 'Keep holding the shortcut'
+    }
+    const escape = this.deps.escapeWatched?.() ?? false
+    if (source === 'ui') {
+      return escape
+        ? 'Press Stop when you have finished · Esc to cancel'
+        : 'Press Stop when you have finished'
+    }
+    if (!escape) return `Press ${label} again to finish`
+    // The overlay has room for one line. A longer chord is not spelt out, so
+    // the ellipsis never swallows the part about Esc.
+    return label.length <= FINISH_HINT_MAX_LABEL
+      ? `Press ${label} to finish · Esc to cancel`
+      : 'Press the shortcut again to finish · Esc to cancel'
   }
 
   onRecorderStarted(payload: RecorderStartedPayload): void {
@@ -619,7 +663,11 @@ export class DictationController {
     this.broadcast({
       phase: 'recording',
       message: 'Listening…',
-      detail: `Release ${this.deps.shortcutLabel()} to finish`,
+      detail: this.finishHint(
+        this.deps.getSettings(),
+        this.clipboardOnly ? 'ui' : 'shortcut',
+        true
+      ),
       startedAt
     })
     this.deps.playSound('start')
