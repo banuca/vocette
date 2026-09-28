@@ -165,6 +165,8 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     recordingMode: 'hold',
     hotkeyEnabled: true,
     autoPaste: true,
+    restoreClipboard: true,
+    pasteLastShortcut: true,
     removeFillers: true,
     spokenCorrections: true,
     spokenFormatting: true,

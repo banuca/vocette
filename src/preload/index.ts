@@ -6,6 +6,7 @@ import type {
   HistoryEntry,
   HistorySaveStatus,
   Page,
+  PasteLastStatus,
   PublicSettings,
   SettingsUpdate,
   ShortcutCapture,
@@ -55,6 +56,8 @@ const api = {
 
   beginShortcutCapture: (): Promise<void> => ipcRenderer.invoke('shortcut:begin-capture'),
   cancelShortcutCapture: (): Promise<void> => ipcRenderer.invoke('shortcut:cancel-capture'),
+  getPasteLastStatus: (): Promise<PasteLastStatus> =>
+    ipcRenderer.invoke('shortcut:paste-last-status'),
 
   onWorkflowStatus: (callback: (status: WorkflowStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: WorkflowStatus): void => callback(status)

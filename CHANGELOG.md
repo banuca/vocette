@@ -77,6 +77,21 @@ All notable changes to this project are documented here. This project adheres to
   a stray full stop. The note under the box counts the rules and says how many
   lines could not be read as one.
 
+- **Your clipboard, given back.** Automatic paste used to leave every transcript on
+  the clipboard, so whatever you had copied was gone. Now the clipboard is only
+  borrowed: after the paste, what you had copied — text, formatting, an image — is
+  put back about ¾ s later. A file list copied in Explorer, or an application's own
+  private format, cannot be restored. When Murmur does not paste (clipboard-only
+  delivery, focus moved, an elevated window) the transcript stays on the clipboard as
+  before. On by default; **Put my clipboard back** in Settings turns it off. The
+  overlay now says **Pasted** rather than “Copied and pasted”, which stopped being
+  true once the clipboard is given back.
+- **Paste last dictation — Alt + Shift + V** (Windows, on by default) pastes your
+  newest transcript again into the window in front, with the same focus and
+  elevation checks as a dictation: for a paste that went to the wrong place. If
+  another app already owns the combination, Settings says so. It is deliberately not
+  in the tray menu — opening the menu takes focus away from the window you want it in.
+
 ### Fixed
 
 - Cleanup no longer inserts a space after punctuation, which turned `example.com`

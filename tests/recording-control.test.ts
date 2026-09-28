@@ -108,11 +108,11 @@ describe('recordingControlState', () => {
   })
 
   it('shows the outcome of the last take before returning to Record', () => {
-    const result = state({ phase: 'success', message: 'Copied and pasted' })
+    const result = state({ phase: 'success', message: 'Pasted' })
     expect(result).toMatchObject({
       primaryLabel: 'Record',
       primaryAction: 'start',
-      phaseLabel: 'Copied and pasted',
+      phaseLabel: 'Pasted',
       tone: 'success'
     })
     expect(state({ phase: 'cancelled', message: 'Dictation cancelled' }).tone).toBe('cancelled')

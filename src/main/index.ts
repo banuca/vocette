@@ -30,11 +30,13 @@ import {
 import { LocalEngine, type WorkerHandle } from './engine/local-engine'
 import { ModelStore, ModelStoreError, modelsRoot, type DownloadProgress } from './engine/model-store'
 import { LOCAL_MODEL } from './engine/models'
+import { restoreSnapshot, takeSnapshot, type ClipboardSnapshot } from './clipboard-custody'
 import { recordHistoryWithRetention } from './history-retention'
 import { migrateLegacyProfile } from './legacy-profile'
 import { HistoryStore } from './history-store'
 import { createPlatformAdapter } from './platform'
 import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform/types'
+import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { SettingsStore } from './settings-store'
 import { TranscriptionService } from './transcription-service'
@@ -61,6 +63,7 @@ import {
   hasApiKey,
   type HistorySaveStatus,
   type Page,
+  type PasteLastStatus,
   type RecorderAudioPayload,
   type RecorderErrorPayload,
   type RecorderStartedPayload,
@@ -81,6 +84,8 @@ const HISTORY_SAVE_FAILED_TRAY_LABEL =
 const RETENTION_RETRY_ADVICE =
   'Check available disk space and folder permissions, then save your retention ' +
   'setting again in Settings to retry the cleanup.'
+/** "Paste last dictation", in Electron's accelerator syntax. */
+const PASTE_LAST_ACCELERATOR = 'Alt+Shift+V'
 
 let mainWindow: BrowserWindow | null = null
 let recorderWindow: BrowserWindow | null = null
@@ -125,6 +130,8 @@ let captureTimeout: NodeJS.Timeout | null = null
 let overlayVisible = false
 let quitFlushed = false
 let lastBroadcastPhase: WorkflowStatus['phase'] | null = null
+/** Whether Alt + Shift + V is actually registered, not merely switched on. */
+let pasteLastRegistered = false
 
 function clearTimer(timer: NodeJS.Timeout | null): null {
   if (timer) clearTimeout(timer)
@@ -186,7 +193,9 @@ function broadcastStatus(status: WorkflowStatus): void {
     starting: 'Murmur — starting microphone…',
     recording: 'Murmur — listening…',
     processing: 'Murmur — transcribing…',
-    success: 'Murmur — copied to clipboard',
+    // The outcome in its own words: after a paste the clipboard is given
+    // back, so "copied to clipboard" is no longer true of every success.
+    success: `Murmur — ${status.message}`,
     cancelled: 'Murmur — dictation cancelled',
     error: `Murmur — ${status.detail ?? 'dictation failed'}`
   }
@@ -240,6 +249,7 @@ function workflowSettings(): WorkflowSettings {
     recordingMode: effectiveRecordingMode(settings.recordingMode, capabilities),
     autoPaste: settings.autoPaste,
     pasteAvailable: autoPasteSupported(capabilities),
+    restoreClipboard: settings.restoreClipboard,
     removeFillers: settings.removeFillers,
     spokenCorrections: settings.spokenCorrections,
     spokenFormatting: settings.spokenFormatting,
@@ -480,6 +490,15 @@ function createDictationController(): DictationController {
     getSettings: workflowSettings,
     transcribe,
     writeClipboard: (text) => clipboard.writeText(text),
+    // The copy never leaves this process: it is held until the paste has
+    // landed, written back, and dropped.
+    snapshotClipboard: () => takeSnapshot(clipboard),
+    restoreClipboard: (token, ours) => {
+      restoreSnapshot(clipboard, token as ClipboardSnapshot, ours)
+    },
+    // Windows only: the physical key state, so a paste is never sent into
+    // modifiers the user is still holding.
+    modifiersHeld: process.platform === 'win32' ? createModifierProbe() : undefined,
     paste: () => {
       // The hook sees the app's own keystrokes, so input is ignored for a
       // moment first; otherwise a user chord sharing a modifier with the
@@ -635,6 +654,50 @@ function applyRecordingMode(): void {
   )
 }
 
+/**
+ * The newest transcript, pasted again into whatever has focus. Nothing when
+ * there is no history yet, or while a take is running.
+ */
+function pasteLastDictation(): void {
+  // The controller refuses too; checked here first so a press mid-take never
+  // copies the whole history list for nothing.
+  if (dictation.isBusy()) return
+  const newest = historyStore.list()[0]
+  if (!newest) return
+  void dictation.pasteLast(newest.text)
+}
+
+/**
+ * Registers Alt + Shift + V to match the setting, and records whether that
+ * worked: another app may already own the combination, and a switch that
+ * shows as on while doing nothing has to be able to say so.
+ *
+ * Registered with the system rather than watched by the keyboard hook. The
+ * hook only observes keys, so the focused app would receive Alt + Shift + V
+ * too — typed into the very window the paste is meant for.
+ *
+ * Windows only for now. Elsewhere it stays unregistered, and Settings does not
+ * offer it.
+ */
+function applyPasteLastShortcut(enabled: boolean): void {
+  if (pasteLastRegistered) {
+    try {
+      globalShortcut.unregister(PASTE_LAST_ACCELERATOR)
+    } catch {
+      // Already released.
+    }
+    pasteLastRegistered = false
+  }
+  if (!enabled || platform.id !== 'windows') return
+  try {
+    pasteLastRegistered =
+      globalShortcut.register(PASTE_LAST_ACCELERATOR, pasteLastDictation) &&
+      globalShortcut.isRegistered(PASTE_LAST_ACCELERATOR)
+  } catch {
+    pasteLastRegistered = false
+  }
+}
+
 /** The tray's one-line summary of how to start a dictation right now. */
 function shortcutHintLabel(): string {
   const settings = settingsStore.getInternal()
@@ -785,6 +848,9 @@ function registerIpc(): void {
     if (before.recordingMode !== after.recordingMode) applyRecordingMode()
     if (before.theme !== after.theme) broadcastTheme()
     if (before.launchAtLogin !== after.launchAtLogin) applyLaunchAtLogin(after.launchAtLogin)
+    if (before.pasteLastShortcut !== after.pasteLastShortcut) {
+      applyPasteLastShortcut(after.pasteLastShortcut)
+    }
 
     if (await historyStore.prune(after.historyRetentionDays)) {
       mainWindow?.webContents.send('history:changed')
@@ -969,6 +1035,10 @@ function registerIpc(): void {
     if (!fromMain(event)) throw new Error('Forbidden.')
     endCapture()
   })
+  ipcMain.handle('shortcut:paste-last-status', (event): PasteLastStatus => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return { pasteLastRegistered }
+  })
 
   const fromRecorder = (event: IpcMainEvent): boolean => fromWindow(event, recorderWindow)
 
@@ -1080,6 +1150,7 @@ async function bootstrap(): Promise<void> {
   createTray()
   applyLaunchAtLogin(initial.launchAtLogin)
   shortcutController.start()
+  applyPasteLastShortcut(initial.pasteLastShortcut)
   // Starting may have discovered the shortcut cannot be registered at all.
   refreshCapabilities()
 

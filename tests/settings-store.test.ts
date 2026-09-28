@@ -398,6 +398,88 @@ describe('cleanup switches', () => {
   })
 })
 
+describe('clipboard switches', () => {
+  /** A v5 file written before "Put my clipboard back" and Alt + Shift + V existed. */
+  const withoutSwitches = (): Record<string, unknown> => {
+    const v5 = { ...DEFAULT_SETTINGS, autoPaste: false } as Record<string, unknown>
+    delete v5.restoreClipboard
+    delete v5.pasteLastShortcut
+    return v5
+  }
+
+  it('are on for a fresh install', () => {
+    expect(DEFAULT_SETTINGS.restoreClipboard).toBe(true)
+    expect(DEFAULT_SETTINGS.pasteLastShortcut).toBe(true)
+    const store = new SettingsStore(file)
+    expect(store.getPublic().restoreClipboard).toBe(true)
+    expect(store.getPublic().pasteLastShortcut).toBe(true)
+  })
+
+  it('default to on when an existing file predates them', () => {
+    const loaded = normaliseSettings(withoutSwitches())
+    expect(loaded.restoreClipboard).toBe(true)
+    expect(loaded.pasteLastShortcut).toBe(true)
+    // What the file did say survives: adding the fields disturbs nothing.
+    expect(loaded.autoPaste).toBe(false)
+    expect(loaded.version).toBe(SETTINGS_VERSION)
+
+    writeFileSync(file, JSON.stringify(withoutSwitches(), null, 2))
+    const store = new SettingsStore(file)
+    expect(store.getInternal().restoreClipboard).toBe(true)
+    expect(store.getInternal().pasteLastShortcut).toBe(true)
+    expect(store.getInternal().autoPaste).toBe(false)
+  })
+
+  it('ignore a value that is not a boolean on the load path', () => {
+    const loaded = normaliseSettings({ restoreClipboard: 'no', pasteLastShortcut: 0 })
+    expect(loaded.restoreClipboard).toBe(true)
+    expect(loaded.pasteLastShortcut).toBe(true)
+  })
+
+  it('persist false and survive a reload', () => {
+    const store = new SettingsStore(file)
+    const saved = store.update({ restoreClipboard: false, pasteLastShortcut: false })
+    expect(saved.restoreClipboard).toBe(false)
+    expect(saved.pasteLastShortcut).toBe(false)
+
+    const written = JSON.parse(readFileSync(file, 'utf8'))
+    expect(written.restoreClipboard).toBe(false)
+    expect(written.pasteLastShortcut).toBe(false)
+
+    const reopened = new SettingsStore(file)
+    expect(reopened.getPublic().restoreClipboard).toBe(false)
+    expect(reopened.getPublic().pasteLastShortcut).toBe(false)
+    expect(reopened.getInternal().restoreClipboard).toBe(false)
+    expect(reopened.getInternal().pasteLastShortcut).toBe(false)
+  })
+
+  it('are saved independently, and left alone by an update that does not mention them', () => {
+    const store = new SettingsStore(file)
+    store.update({ restoreClipboard: false })
+    expect(store.getPublic().restoreClipboard).toBe(false)
+    expect(store.getPublic().pasteLastShortcut).toBe(true)
+
+    const after = store.update({ autoPaste: false })
+    expect(after.restoreClipboard).toBe(false)
+    expect(after.pasteLastShortcut).toBe(true)
+
+    store.update({ restoreClipboard: true, pasteLastShortcut: false })
+    const reopened = new SettingsStore(file).getPublic()
+    expect(reopened.restoreClipboard).toBe(true)
+    expect(reopened.pasteLastShortcut).toBe(false)
+  })
+
+  it('ignore a value that is not a boolean on save', () => {
+    const store = new SettingsStore(file)
+    store.update({
+      restoreClipboard: 'no' as unknown as boolean,
+      pasteLastShortcut: 1 as unknown as boolean
+    })
+    expect(store.getPublic().restoreClipboard).toBe(true)
+    expect(store.getPublic().pasteLastShortcut).toBe(true)
+  })
+})
+
 describe('API keys where secure storage is unfit', () => {
   const unusable = { usable: false, reason: 'No keyring here.', backend: 'basic_text' }
 

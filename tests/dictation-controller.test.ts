@@ -8,11 +8,15 @@ import {
 } from '../src/main/dictation-controller'
 import type { Page, WorkflowStatus } from '../src/shared/types'
 
+/** Stands in for the snapshot of whatever the user had copied. */
+const USER_CLIPBOARD = { snapshot: 'what the user had copied' }
+
 function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
   const settings: WorkflowSettings = {
     recordingMode: 'hold',
     autoPaste: true,
     pasteAvailable: true,
+    restoreClipboard: true,
     removeFillers: true,
     spokenCorrections: true,
     spokenFormatting: true,
@@ -31,6 +35,8 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
   const sendToRecorder = vi.fn<DictationDeps['sendToRecorder']>()
   const transcribe = vi.fn<DictationDeps['transcribe']>(async () => 'Hello world.')
   const writeClipboard = vi.fn<(text: string) => void>()
+  const snapshotClipboard = vi.fn<() => unknown>(() => USER_CLIPBOARD)
+  const restoreClipboard = vi.fn<(token: unknown, ours: string) => void>()
   const paste = vi.fn<() => void>()
   const playSound = vi.fn<(kind: SoundKind) => void>()
   const broadcastStatus = vi.fn<(status: WorkflowStatus) => void>()
@@ -48,6 +54,8 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
     getSettings: () => settings,
     transcribe,
     writeClipboard,
+    snapshotClipboard,
+    restoreClipboard,
     paste,
     playSound,
     broadcastStatus,
@@ -264,8 +272,9 @@ describe('paste honesty', () => {
     await promise
 
     expect(deps.paste).toHaveBeenCalledTimes(1)
+    // Not "Copied and pasted": the clipboard is given back after the paste.
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
-      expect.objectContaining({ message: 'Copied and pasted' })
+      expect.objectContaining({ message: 'Pasted' })
     )
   })
 
@@ -290,6 +299,441 @@ describe('paste honesty', () => {
 
     expect(deps.getForegroundState).toHaveBeenCalledTimes(2)
     expect(deps.paste).not.toHaveBeenCalled()
+  })
+})
+
+/** A shortcut take, run until its paste has been sent or refused. */
+async function dictate(harness: ReturnType<typeof makeHarness>): Promise<void> {
+  const requestId = harness.beginRecording()
+  harness.controller.onShortcutReleased()
+  const promise = harness.controller.onRecorderAudio({
+    requestId,
+    audio: new Uint8Array([1, 2, 3]),
+    mimeType: 'audio/wav',
+    durationMs: 500
+  })
+  await vi.advanceTimersByTimeAsync(80)
+  await promise
+}
+
+describe('clipboard custody', () => {
+  it('copies the clipboard before the transcript goes on, and gives it back 750 ms after the paste', async () => {
+    const harness = makeHarness()
+    const { deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.snapshotClipboard).toHaveBeenCalledTimes(1)
+    // Taken first, so it holds what the user had rather than the transcript.
+    expect(deps.snapshotClipboard.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.writeClipboard.mock.invocationCallOrder[0] ?? 0
+    )
+
+    vi.advanceTimersByTime(749)
+    expect(deps.restoreClipboard).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(deps.restoreClipboard).toHaveBeenCalledWith(USER_CLIPBOARD, 'Hello world.')
+    expect(deps.restoreClipboard).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes no copy when focus has moved, and leaves the transcript on the clipboard', async () => {
+    const harness = makeHarness()
+    const { deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: false, elevated: false })
+    await dictate(harness)
+
+    expect(deps.snapshotClipboard).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).toHaveBeenCalledWith('Hello world.')
+    vi.advanceTimersByTime(5000)
+    expect(deps.restoreClipboard).not.toHaveBeenCalled()
+  })
+
+  it('keeps the transcript when the paste is refused at the last moment', async () => {
+    const harness = makeHarness()
+    const { deps } = harness
+    // Focus moves during the settle delay, after the copy was taken.
+    deps.getForegroundState
+      .mockReturnValueOnce({ sameWindow: true, elevated: false })
+      .mockReturnValue({ sameWindow: false, elevated: false })
+    await dictate(harness)
+
+    expect(deps.snapshotClipboard).toHaveBeenCalledTimes(1)
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: 'Copied — paste manually (focus moved)' })
+    )
+    // The user has to paste it themselves, so it must still be there.
+    vi.advanceTimersByTime(5000)
+    expect(deps.restoreClipboard).not.toHaveBeenCalled()
+  })
+
+  it('takes no copy when "Put my clipboard back" is off', async () => {
+    const harness = makeHarness({ settings: { restoreClipboard: false } })
+    const { deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Pasted' })
+    )
+    vi.advanceTimersByTime(5000)
+    expect(deps.snapshotClipboard).not.toHaveBeenCalled()
+    expect(deps.restoreClipboard).not.toHaveBeenCalled()
+  })
+
+  it('never reads the clipboard for a delivery that only copies', async () => {
+    // Started from the window: there is no target, so nothing is pasted.
+    const fromWindow = makeHarness()
+    fromWindow.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    fromWindow.controller.startDictation('ui')
+    const requestId = fromWindow.lastRequestId()
+    fromWindow.controller.onRecorderStarted({ requestId })
+    fromWindow.controller.stopDictation()
+    await fromWindow.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 300
+    })
+    expect(fromWindow.deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Copied to clipboard' })
+    )
+    expect(fromWindow.deps.snapshotClipboard).not.toHaveBeenCalled()
+
+    // Automatic paste switched off.
+    const pasteOff = makeHarness({ settings: { autoPaste: false } })
+    pasteOff.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(pasteOff)
+    expect(pasteOff.deps.writeClipboard).toHaveBeenCalledWith('Hello world.')
+    expect(pasteOff.deps.snapshotClipboard).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(5000)
+    expect(fromWindow.deps.restoreClipboard).not.toHaveBeenCalled()
+    expect(pasteOff.deps.restoreClipboard).not.toHaveBeenCalled()
+  })
+
+  it('still gives the clipboard back when the take is cancelled after the paste was sent', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    // Cancelled the instant the keystroke goes out.
+    deps.paste.mockImplementation(() => controller.cancelDictation())
+    await dictate(harness)
+
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'cancelled' })
+    )
+    // The paste already happened, so the loan is returned as if nothing else had.
+    vi.advanceTimersByTime(750)
+    expect(deps.restoreClipboard).toHaveBeenCalledWith(USER_CLIPBOARD, 'Hello world.')
+  })
+
+  it('gives the clipboard back at once when the take is cancelled before the paste', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    await Promise.resolve()
+    // Copied and written; waiting out the settle delay.
+    expect(deps.snapshotClipboard).toHaveBeenCalledTimes(1)
+    expect(deps.writeClipboard).toHaveBeenCalledTimes(1)
+
+    controller.cancelDictation()
+    await vi.advanceTimersByTimeAsync(80)
+    await processing
+
+    expect(deps.paste).not.toHaveBeenCalled()
+    // Nothing was delivered, so nothing borrowed stays borrowed.
+    expect(deps.restoreClipboard).toHaveBeenCalledWith(USER_CLIPBOARD, 'Hello world.')
+    vi.advanceTimersByTime(5000)
+    expect(deps.restoreClipboard).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives back a clipboard still on loan at shutdown, at once', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    expect(deps.restoreClipboard).not.toHaveBeenCalled()
+
+    controller.shutdown()
+    expect(deps.restoreClipboard).toHaveBeenCalledWith(USER_CLIPBOARD, 'Hello world.')
+    // And only once: the scheduled return is not left to run as well.
+    vi.advanceTimersByTime(5000)
+    expect(deps.restoreClipboard).toHaveBeenCalledTimes(1)
+  })
+
+  it('settles a loan still outstanding before copying the clipboard for the next paste', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    expect(deps.restoreClipboard).not.toHaveBeenCalled()
+
+    // Pasted again well inside the 750 ms: the copy must be of what the user
+    // had, so the first loan is returned before the second is taken.
+    const pasting = controller.pasteLast('Hello world.')
+    expect(deps.restoreClipboard).toHaveBeenCalledTimes(1)
+    expect(deps.restoreClipboard.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.snapshotClipboard.mock.invocationCallOrder[1] ?? 0
+    )
+    await vi.advanceTimersByTimeAsync(80)
+    await pasting
+
+    vi.advanceTimersByTime(750)
+    expect(deps.restoreClipboard).toHaveBeenCalledTimes(2)
+  })
+
+  it('pastes anyway when the clipboard cannot be read', async () => {
+    const harness = makeHarness()
+    const { deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    deps.snapshotClipboard.mockImplementation(() => {
+      throw new Error('The clipboard is locked by another application.')
+    })
+    await dictate(harness)
+
+    // A clipboard problem is not a failed dictation: nothing to retry.
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Pasted' })
+    )
+    expect(harness.controller.canRetry()).toBe(false)
+    vi.advanceTimersByTime(5000)
+    expect(deps.restoreClipboard).not.toHaveBeenCalled()
+  })
+})
+
+describe('waiting for held modifier keys before pasting', () => {
+  it('pastes only once Alt and Shift from the shortcut have been let go', async () => {
+    const { controller, deps } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    let held = true
+    const modifiersHeld = vi.fn(() => held)
+    Object.assign(deps, { modifiersHeld })
+
+    const pasting = controller.pasteLast('Earlier words.')
+    await vi.advanceTimersByTimeAsync(80)
+    await vi.advanceTimersByTimeAsync(150)
+    // Still held: a Ctrl + V now would arrive as Ctrl + Alt + Shift + V.
+    expect(deps.paste).not.toHaveBeenCalled()
+
+    held = false
+    await vi.advanceTimersByTimeAsync(30)
+    await pasting
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Pasted your last dictation' })
+    )
+  })
+
+  it('copies instead when the keys are still held after the wait', async () => {
+    const { controller, deps } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    Object.assign(deps, { modifiersHeld: () => true })
+
+    const pasting = controller.pasteLast('Earlier words.')
+    await vi.advanceTimersByTimeAsync(80 + 1500 + 50)
+    await pasting
+
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).toHaveBeenCalledWith('Earlier words.')
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        phase: 'success',
+        message: 'Copied — paste manually (keys were still held down)'
+      })
+    )
+    // The transcript is what the user needs now, so nothing is put back.
+    vi.advanceTimersByTime(1000)
+    expect(deps.restoreClipboard).not.toHaveBeenCalled()
+  })
+
+  it('does not wait when the platform cannot tell', async () => {
+    const { controller, deps } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    Object.assign(deps, { modifiersHeld: () => null })
+
+    const pasting = controller.pasteLast('Earlier words.')
+    await vi.advanceTimersByTimeAsync(80)
+    await pasting
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+  })
+
+  it('never delays a dictation whose shortcut was already released', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const modifiersHeld = vi.fn(() => false)
+    Object.assign(deps, { modifiersHeld })
+    const requestId = beginRecording()
+    controller.onShortcutReleased()
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 1200
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await processing
+    expect(modifiersHeld).toHaveBeenCalled()
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('paste last dictation', () => {
+  it('pastes into the window in front, borrowing the clipboard like a dictation', async () => {
+    const { controller, deps } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const pasting = controller.pasteLast('Earlier words.')
+    await vi.advanceTimersByTimeAsync(80)
+    await pasting
+
+    // The target is captured now, then checked like any other.
+    expect(deps.captureForeground).toHaveBeenCalledTimes(1)
+    expect(deps.captureForeground.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.getForegroundState.mock.invocationCallOrder[0] ?? 0
+    )
+    expect(deps.snapshotClipboard.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.writeClipboard.mock.invocationCallOrder[0] ?? 0
+    )
+    expect(deps.writeClipboard).toHaveBeenCalledWith('Earlier words.')
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith({
+      phase: 'success',
+      message: 'Pasted your last dictation',
+      detail: 'Earlier words.'
+    })
+    // Nothing is transcribed again, and nothing new goes into history.
+    expect(deps.transcribe).not.toHaveBeenCalled()
+    expect(deps.recordHistory).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(750)
+    expect(deps.restoreClipboard).toHaveBeenCalledWith(USER_CLIPBOARD, 'Earlier words.')
+    vi.advanceTimersByTime(1600)
+    expect(controller.getStatus().phase).toBe('idle')
+  })
+
+  it('copies instead of typing into a window it cannot verify or that runs elevated', async () => {
+    const { controller, deps } = makeHarness()
+    await controller.pasteLast('Earlier words.')
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        phase: 'success',
+        message: 'Copied — paste manually (focus could not be verified)'
+      })
+    )
+
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: true })
+    await controller.pasteLast('Earlier words.')
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        phase: 'success',
+        message: 'Copied — paste manually (focused app runs elevated)'
+      })
+    )
+
+    expect(deps.writeClipboard).toHaveBeenCalledTimes(2)
+    expect(deps.writeClipboard).toHaveBeenLastCalledWith('Earlier words.')
+    expect(deps.paste).not.toHaveBeenCalled()
+    // The transcript stays for the user to paste, so nothing is borrowed.
+    expect(deps.snapshotClipboard).not.toHaveBeenCalled()
+  })
+
+  it('is ignored while a take is running', async () => {
+    const { controller, deps, beginRecording } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    beginRecording()
+    const broadcasts = deps.broadcastStatus.mock.calls.length
+
+    await controller.pasteLast('Earlier words.')
+    await vi.advanceTimersByTimeAsync(80)
+
+    expect(deps.writeClipboard).not.toHaveBeenCalled()
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.snapshotClipboard).not.toHaveBeenCalled()
+    // Only the take captured a target.
+    expect(deps.captureForeground).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenCalledTimes(broadcasts)
+    expect(controller.getStatus().phase).toBe('recording')
+  })
+
+  it('pastes with "Paste automatically" off, because it was asked for by name', async () => {
+    const { controller, deps } = makeHarness({ settings: { autoPaste: false } })
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const pasting = controller.pasteLast('Earlier words.')
+    await vi.advanceTimersByTimeAsync(80)
+    await pasting
+
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: 'Pasted your last dictation' })
+    )
+  })
+
+  it('only copies where this platform cannot paste safely', async () => {
+    const { controller, deps } = makeHarness({ settings: { pasteAvailable: false } })
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await controller.pasteLast('Earlier words.')
+
+    expect(deps.writeClipboard).toHaveBeenCalledWith('Earlier words.')
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.snapshotClipboard).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Copied to clipboard' })
+    )
+  })
+
+  it('gives way to a take started during its settle delay', async () => {
+    const { controller, deps } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const pasting = controller.pasteLast('Earlier words.')
+    expect(deps.writeClipboard).toHaveBeenCalledWith('Earlier words.')
+
+    controller.startDictation('shortcut')
+    await vi.advanceTimersByTimeAsync(80)
+    await pasting
+
+    // No keystroke, and no success announced over the new take.
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(controller.getStatus().phase).toBe('starting')
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting' })
+    )
+    // Nothing was pasted, so the clipboard goes back at once.
+    expect(deps.restoreClipboard).toHaveBeenCalledWith(USER_CLIPBOARD, 'Earlier words.')
+  })
+
+  it('lets a second press supersede one still waiting to paste', async () => {
+    const { controller, deps } = makeHarness()
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const first = controller.pasteLast('Earlier words.')
+    const second = controller.pasteLast('Earlier words.')
+    await vi.advanceTimersByTimeAsync(80)
+    await Promise.all([first, second])
+
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    // The first loan was settled when the second borrowed; the second one is
+    // returned on its own schedule, not cut short by the first giving up.
+    expect(deps.restoreClipboard).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(750)
+    expect(deps.restoreClipboard).toHaveBeenCalledTimes(2)
+  })
+
+  it('does nothing without text to paste', async () => {
+    const { controller, deps } = makeHarness()
+    await controller.pasteLast('')
+    expect(deps.captureForeground).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).not.toHaveBeenCalled()
   })
 })
 
@@ -430,7 +874,7 @@ describe('language-aware cleanup', () => {
     expect(deps.recordHistory).toHaveBeenCalledWith('\n', 100, 'gpt-transcribe')
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
-      expect.objectContaining({ phase: 'success', message: 'Copied and pasted' })
+      expect.objectContaining({ phase: 'success', message: 'Pasted' })
     )
   })
 

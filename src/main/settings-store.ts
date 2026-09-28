@@ -41,6 +41,8 @@ export interface StoredSettings {
   recordingMode: RecordingMode
   hotkeyEnabled: boolean
   autoPaste: boolean
+  restoreClipboard: boolean
+  pasteLastShortcut: boolean
   removeFillers: boolean
   spokenCorrections: boolean
   spokenFormatting: boolean
@@ -67,6 +69,8 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   recordingMode: 'hold',
   hotkeyEnabled: true,
   autoPaste: true,
+  restoreClipboard: true,
+  pasteLastShortcut: true,
   removeFillers: true,
   spokenCorrections: true,
   spokenFormatting: true,
@@ -171,6 +175,16 @@ export function normaliseSettings(value: unknown): StoredSettings {
         : DEFAULT_SETTINGS.hotkeyEnabled,
     autoPaste:
       typeof candidate.autoPaste === 'boolean' ? candidate.autoPaste : DEFAULT_SETTINGS.autoPaste,
+    // Added within v5, like the cleanup switches: absent means on, the same as
+    // a fresh install, so an existing user gets their clipboard back too.
+    restoreClipboard:
+      typeof candidate.restoreClipboard === 'boolean'
+        ? candidate.restoreClipboard
+        : DEFAULT_SETTINGS.restoreClipboard,
+    pasteLastShortcut:
+      typeof candidate.pasteLastShortcut === 'boolean'
+        ? candidate.pasteLastShortcut
+        : DEFAULT_SETTINGS.pasteLastShortcut,
     removeFillers:
       typeof candidate.removeFillers === 'boolean'
         ? candidate.removeFillers
@@ -344,6 +358,12 @@ export class SettingsStore {
     }
     if (typeof update.hotkeyEnabled === 'boolean') this.settings.hotkeyEnabled = update.hotkeyEnabled
     if (typeof update.autoPaste === 'boolean') this.settings.autoPaste = update.autoPaste
+    if (typeof update.restoreClipboard === 'boolean') {
+      this.settings.restoreClipboard = update.restoreClipboard
+    }
+    if (typeof update.pasteLastShortcut === 'boolean') {
+      this.settings.pasteLastShortcut = update.pasteLastShortcut
+    }
     if (typeof update.removeFillers === 'boolean') this.settings.removeFillers = update.removeFillers
     if (typeof update.spokenCorrections === 'boolean') {
       this.settings.spokenCorrections = update.spokenCorrections

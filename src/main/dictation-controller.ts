@@ -24,6 +24,25 @@ const ERROR_RESET_MS = 4500
 const CANCELLED_RESET_MS = 1200
 /** Small settle delay before the synthetic Ctrl+V, so clipboard writes propagate. */
 const PASTE_DELAY_MS = 80
+/**
+ * How long after the synthetic Ctrl+V the user's own clipboard is put back.
+ * It is a race either way. Too early, and the target app — which reads the
+ * clipboard when it gets round to handling the keystroke — pastes the old
+ * contents instead of the transcript. Too late, and the user's own next
+ * Ctrl+V pastes the transcript again rather than what they had copied.
+ */
+const CLIPBOARD_RESTORE_MS = 750
+/**
+ * The longest Murmur waits for the user to let go of Ctrl, Shift, Alt or the
+ * Windows key before sending its own Ctrl + V. Pressed straight after Alt +
+ * Shift + V, those keys are still down for a moment, and a paste sent into
+ * them arrives as Ctrl + Alt + Shift + V — which pastes nothing.
+ */
+const MODIFIER_RELEASE_MS = 1500
+/** How often the key state is read while waiting. */
+const MODIFIER_POLL_MS = 15
+/** Longest transcript shown in full beside a success message. */
+const PREVIEW_CHARS = 68
 
 export type SoundKind = 'start' | 'success' | 'error'
 
@@ -44,6 +63,8 @@ export interface WorkflowSettings {
   autoPaste: boolean
   /** Whether this platform can verify a target and type into it at all. */
   pasteAvailable: boolean
+  /** Put the user's own clipboard back once a paste has landed. */
+  restoreClipboard: boolean
   removeFillers: boolean
   spokenCorrections: boolean
   spokenFormatting: boolean
@@ -101,8 +122,20 @@ export interface DictationDeps {
   getSettings(): WorkflowSettings
   transcribe(payload: TranscriptionPayload, signal: AbortSignal): Promise<string>
   writeClipboard(text: string): void
+  /**
+   * Copies whatever the user has on the clipboard, before a transcript is
+   * written over it. Opaque here: only `restoreClipboard` looks inside.
+   */
+  snapshotClipboard(): unknown
+  /** Puts a snapshot back — unless the clipboard no longer holds `ours`. */
+  restoreClipboard(token: unknown, ours: string): void
   /** Injects Ctrl+V into the focused app. */
   paste(): void
+  /**
+   * Whether a modifier key is physically held right now; null when the
+   * platform cannot tell, which never delays a paste.
+   */
+  modifiersHeld?(): boolean | null
   playSound(kind: SoundKind): void
   /** Shows the overlay/main window status. Reset timing is owned here. */
   broadcastStatus(status: WorkflowStatus): void
@@ -134,9 +167,49 @@ interface ProcessingAttempt {
   readonly releaseAudioOnCancel: boolean
 }
 
+/**
+ * The take behind "paste last dictation", which has no audio. It exists so a
+ * paste can hold the attempt slot, and so everything that supersedes a take —
+ * a reset, a failure, shutdown, a newer attempt — supersedes the paste too.
+ */
+const PASTE_ONLY: RetryTake = {
+  audio: new Uint8Array(0),
+  mimeType: '',
+  durationMs: 0,
+  clipboardOnly: false
+}
+
+/** The user's clipboard, lent to a transcript until its paste has landed. */
+interface ClipboardLoan {
+  /** Opaque snapshot, handed back to `restoreClipboard` untouched. */
+  readonly token: unknown
+  /** The transcript written over it; once that is gone, nothing is put back. */
+  readonly ours: string
+  /** Set once the paste has been sent and the return is scheduled. */
+  timer: NodeJS.Timeout | null
+}
+
+/** One hand-over of finished text, from a dictation or from "paste last". */
+interface Delivery {
+  text: string
+  /** False delivers to the clipboard and stops there. */
+  paste: boolean
+  /** Borrow the user's clipboard for the paste, and give it back afterwards. */
+  restoreClipboard: boolean
+  /** The status once the paste has been sent. */
+  pastedMessage: string
+  /** Whether this delivery still owns the outcome; asked after every step. */
+  owns(): boolean
+}
+
 function clearTimer(timer: NodeJS.Timeout | null): null {
   if (timer) clearTimeout(timer)
   return null
+}
+
+/** The transcript as shown under a success message. */
+function previewOf(text: string): string {
+  return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text
 }
 
 /**
@@ -165,6 +238,13 @@ export class DictationController {
   private activeAttempt: ProcessingAttempt | null = null
   /** Set when the current take was started from the app's own window. */
   private clipboardOnly = false
+  /**
+   * The user's clipboard while a transcript is borrowing it: copied just
+   * before the transcript is written, given back once the paste has landed,
+   * and let go of when the transcript has to stay because the paste was
+   * refused. Only one loan is ever outstanding.
+   */
+  private loan: ClipboardLoan | null = null
 
   constructor(private readonly deps: DictationDeps) {}
 
@@ -370,6 +450,51 @@ export class DictationController {
     await this.processTake(attempt, 'Retrying your last recording', true)
   }
 
+  /**
+   * "Paste last dictation": the newest transcript, pasted again into whatever
+   * has focus now — for a paste that landed in the wrong place, or one whose
+   * clipboard has since been given back. The checks are a dictation's: nothing
+   * is typed into a window that runs elevated or cannot be verified; the text
+   * is copied instead, and the overlay says so.
+   */
+  async pasteLast(text: string): Promise<void> {
+    if (this.isBusy() || !text) return
+    const settings = this.deps.getSettings()
+    const attempt = this.beginProcessingAttempt(PASTE_ONLY, false)
+    // A take started during the settle delay owns the overlay from then on;
+    // a success announced over it would strand the recording.
+    const owns = (): boolean => this.ownsAttempt(attempt) && !this.isBusy()
+    // The target is the window in front now: the one the shortcut was pressed in.
+    this.deps.captureForeground()
+
+    try {
+      const message = await this.pasteOrExplain({
+        text,
+        // "Paste automatically" governs what happens after a dictation; this is
+        // a paste asked for by name. Only whether this platform can paste
+        // safely at all still applies.
+        paste: settings.pasteAvailable,
+        restoreClipboard: settings.restoreClipboard,
+        pastedMessage: 'Pasted your last dictation',
+        owns
+      })
+      if (!message || !owns()) return
+      this.broadcast({ phase: 'success', message, detail: previewOf(text) }, SUCCESS_RESET_MS)
+    } catch (error) {
+      if (!owns()) return
+      this.broadcast(
+        {
+          phase: 'error',
+          message: 'Could not paste your last dictation',
+          detail: error instanceof Error ? error.message : 'An unexpected error occurred.'
+        },
+        ERROR_RESET_MS
+      )
+    } finally {
+      if (this.activeAttempt === attempt) this.activeAttempt = null
+    }
+  }
+
   private beginProcessingAttempt(
     take: RetryTake,
     releaseAudioOnCancel: boolean
@@ -405,32 +530,141 @@ export class DictationController {
     return null
   }
 
-  private async pasteOrExplain(
-    attempt: ProcessingAttempt,
-    settings: WorkflowSettings
-  ): Promise<string | null> {
-    // Three separate reasons to deliver to the clipboard and stop there: the
-    // user turned automatic paste off, this platform cannot paste safely at
-    // all, or the take was started from this app's own window and so has no
-    // target. None of them is a failure.
-    if (!settings.autoPaste || !settings.pasteAvailable || attempt.take.clipboardOnly) {
+  /**
+   * Puts the text on the clipboard and, when every check passes, pastes it.
+   * Returns the status to show, or null once the delivery stopped owning the
+   * outcome part-way through.
+   */
+  private async pasteOrExplain(delivery: Delivery): Promise<string | null> {
+    const { text, owns } = delivery
+    if (!delivery.paste) {
+      this.deps.writeClipboard(text)
       return 'Copied to clipboard'
     }
-    if (!this.ownsAttempt(attempt)) return null
 
-    let message = this.manualPasteMessage(this.deps.getForegroundState())
-    if (!this.ownsAttempt(attempt)) return null
-    if (message) return message
+    // Checked before anything is written: a paste refused from the outset
+    // leaves the transcript on the clipboard for good, so the user's own
+    // clipboard is never even read.
+    let refusal = this.manualPasteMessage(this.deps.getForegroundState())
+    if (!owns()) return null
+    if (refusal) {
+      this.deps.writeClipboard(text)
+      return refusal
+    }
 
-    await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
-    if (!this.ownsAttempt(attempt)) return null
+    // Copied before the transcript goes on, or it would be a copy of the
+    // transcript rather than of what the user had.
+    const loan = delivery.restoreClipboard ? this.borrowClipboard(text) : null
+    try {
+      this.deps.writeClipboard(text)
+      if (!owns()) return this.abandonDelivery(loan)
 
-    message = this.manualPasteMessage(this.deps.getForegroundState())
-    if (!this.ownsAttempt(attempt)) return null
-    if (message) return message
+      await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
+      if (!owns()) return this.abandonDelivery(loan)
 
-    this.deps.paste()
-    return 'Copied and pasted'
+      if (!(await this.modifiersReleased(owns))) {
+        if (!owns()) return this.abandonDelivery(loan)
+        // Still held after the wait: a paste now would land as some other
+        // shortcut. The transcript stays for the user to paste themselves.
+        this.leaveTranscript(loan)
+        return 'Copied — paste manually (keys were still held down)'
+      }
+      if (!owns()) return this.abandonDelivery(loan)
+
+      refusal = this.manualPasteMessage(this.deps.getForegroundState())
+      if (!owns()) return this.abandonDelivery(loan)
+      if (refusal) {
+        // Refused at the last moment: now the transcript is what the user
+        // needs on the clipboard, to paste it themselves.
+        this.leaveTranscript(loan)
+        return refusal
+      }
+
+      this.deps.paste()
+    } catch (error) {
+      // Whatever failed, the transcript may be all the user has left to paste.
+      this.leaveTranscript(loan)
+      throw error
+    }
+    // No ownership check between the paste and this: once the keystroke has
+    // been sent, the clipboard is given back even if the take is cancelled.
+    this.returnClipboardLater(loan)
+    return delivery.pastedMessage
+  }
+
+  /**
+   * Waits until no modifier key is held. Resolves true once they are released
+   * (or the platform cannot tell), false if they are still down after
+   * `MODIFIER_RELEASE_MS`. Stops waiting as soon as the delivery is superseded;
+   * the caller checks ownership again.
+   */
+  private async modifiersReleased(owns: () => boolean): Promise<boolean> {
+    const held = this.deps.modifiersHeld
+    if (!held) return true
+    const deadline = Date.now() + MODIFIER_RELEASE_MS
+    while (held() === true) {
+      if (!owns()) return true
+      if (Date.now() >= deadline) return false
+      await new Promise((resolve) => setTimeout(resolve, MODIFIER_POLL_MS))
+    }
+    return true
+  }
+
+  /**
+   * Takes a copy of the user's clipboard before a transcript goes on it. A
+   * loan still outstanding from an earlier paste is settled first, or this copy
+   * would be of that transcript rather than of what the user had.
+   */
+  private borrowClipboard(ours: string): ClipboardLoan | null {
+    this.returnClipboard()
+    try {
+      this.loan = { token: this.deps.snapshotClipboard(), ours, timer: null }
+    } catch {
+      // A clipboard that cannot be read must not cost the user a dictation:
+      // the paste goes ahead, and the transcript simply stays, as it used to.
+      this.loan = null
+    }
+    return this.loan
+  }
+
+  /** Gives back whatever is on loan, now. Safe to call with nothing borrowed. */
+  private returnClipboard(): void {
+    const loan = this.loan
+    if (!loan) return
+    this.loan = null
+    loan.timer = clearTimer(loan.timer)
+    try {
+      this.deps.restoreClipboard(loan.token, loan.ours)
+    } catch {
+      // Best effort: the transcript stays, which is what always happened
+      // before the clipboard was given back at all.
+    }
+  }
+
+  /** Schedules the return once the paste has been sent. */
+  private returnClipboardLater(loan: ClipboardLoan | null): void {
+    if (!loan || this.loan !== loan) return
+    loan.timer = setTimeout(() => {
+      loan.timer = null
+      if (this.loan === loan) this.returnClipboard()
+    }, CLIPBOARD_RESTORE_MS)
+  }
+
+  /** Lets the copy go: the transcript stays on the clipboard. */
+  private leaveTranscript(loan: ClipboardLoan | null): void {
+    if (!loan || this.loan !== loan) return
+    loan.timer = clearTimer(loan.timer)
+    this.loan = null
+  }
+
+  /**
+   * A delivery superseded before its paste was sent. Nothing was delivered, so
+   * what it borrowed goes back at once — but only its own loan: a newer
+   * delivery may already hold another.
+   */
+  private abandonDelivery(loan: ClipboardLoan | null): null {
+    if (loan && this.loan === loan) this.returnClipboard()
+    return null
   }
 
   private async processTake(
@@ -479,20 +713,22 @@ export class DictationController {
       this.deps.recordHistory(text, attempt.take.durationMs, settings.model)
       if (!this.ownsAttempt(attempt)) return
 
-      this.deps.writeClipboard(text)
-      if (!this.ownsAttempt(attempt)) return
-
-      const message = await this.pasteOrExplain(attempt, settings)
+      const message = await this.pasteOrExplain({
+        text,
+        // Three separate reasons to deliver to the clipboard and stop there:
+        // the user turned automatic paste off, this platform cannot paste
+        // safely at all, or the take was started from this app's own window
+        // and so has no target. None of them is a failure.
+        paste: settings.autoPaste && settings.pasteAvailable && !attempt.take.clipboardOnly,
+        restoreClipboard: settings.restoreClipboard,
+        // Not "Copied and pasted": once the clipboard is given back, the
+        // transcript is no longer on it. "Pasted" is true either way.
+        pastedMessage: 'Pasted',
+        owns: () => this.ownsAttempt(attempt)
+      })
       if (!message || !this.ownsAttempt(attempt)) return
 
-      this.broadcast(
-        {
-          phase: 'success',
-          message,
-          detail: text.length > 68 ? `${text.slice(0, 68)}…` : text
-        },
-        SUCCESS_RESET_MS
-      )
+      this.broadcast({ phase: 'success', message, detail: previewOf(text) }, SUCCESS_RESET_MS)
       if (!this.ownsAttempt(attempt)) return
 
       this.deps.playSound('success')
@@ -525,6 +761,9 @@ export class DictationController {
     this.clearDictationTimers()
     this.statusResetTimer = clearTimer(this.statusResetTimer)
     this.setRetryTake(null)
+    // A clipboard still on loan is given back now rather than dropped: after
+    // quitting there is nobody left to return it.
+    this.returnClipboard()
   }
 
   private broadcast(status: WorkflowStatus, resetAfterMs = 0): void {

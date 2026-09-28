@@ -63,6 +63,7 @@ interface StartupHarness {
   quit: () => void
   /** Makes the next settings save report a stored key. */
   keySavedOnNextSave: () => void
+  registeredAccelerators: () => string[]
 }
 
 async function settle(): Promise<void> {
@@ -77,6 +78,8 @@ async function startApp(options: {
   engine?: 'local' | 'cloud'
   apiKeySource?: 'none' | 'stored' | 'session'
   modelState?: StoredModelState
+  /** Another application already owns every system shortcut Murmur asks for. */
+  acceleratorTaken?: boolean
 } = {}): Promise<StartupHarness> {
   vi.resetModules()
 
@@ -112,6 +115,9 @@ async function startApp(options: {
   let quits = 0
   let hookStarted = false
   let shortcutPress: (() => void) | null = null
+  const accelerators = new Set<string>()
+  // Saved settings are remembered, so a save can be seen to take effect.
+  let storedSettings: typeof DEFAULT_SETTINGS = { ...DEFAULT_SETTINGS, historyRetentionDays: 30 }
   const fullyCapable = {
     globalHold: { state: 'available', reason: '', pane: null },
     globalToggle: { state: 'available', reason: '', pane: null },
@@ -225,10 +231,16 @@ async function startApp(options: {
     },
     safeStorage: { isEncryptionAvailable: () => false },
     globalShortcut: {
-      register: vi.fn(() => true),
-      unregister: vi.fn(),
-      isRegistered: vi.fn(() => true),
-      unregisterAll: vi.fn()
+      register: vi.fn((accelerator: string) => {
+        if (options.acceleratorTaken) return false
+        accelerators.add(accelerator)
+        return true
+      }),
+      unregister: vi.fn((accelerator: string) => {
+        accelerators.delete(accelerator)
+      }),
+      isRegistered: vi.fn((accelerator: string) => accelerators.has(accelerator)),
+      unregisterAll: vi.fn(() => accelerators.clear())
     }
   }))
 
@@ -237,11 +249,9 @@ async function startApp(options: {
       constructor() {
         if (options.settingsConstructorError) throw options.settingsConstructorError
       }
-      getInternal = (): typeof DEFAULT_SETTINGS => ({
-        ...DEFAULT_SETTINGS,
-        historyRetentionDays: 30,
-        engine: engineChoice
-      })
+      // Saved settings are remembered, so a save can be seen to take effect;
+      // the engine is the one the test chose.
+      getInternal = (): typeof DEFAULT_SETTINGS => ({ ...storedSettings, engine: engineChoice })
       getPublic = () => ({
         apiKeySource,
         engine: engineChoice,
@@ -250,7 +260,8 @@ async function startApp(options: {
       })
       getApiKey = () => ''
       keyStorage = () => ({ usable: true, reason: '', backend: 'os' })
-      update = vi.fn(() => {
+      update = vi.fn((patch: Partial<typeof DEFAULT_SETTINGS>) => {
+        storedSettings = { ...storedSettings, ...patch }
         if (saveStoresKey) apiKeySource = 'stored'
         return {}
       })
@@ -445,7 +456,8 @@ async function startApp(options: {
     setSaveStatus: (status: HistorySaveStatus) => {
       saveStatus = status
       saveStatusListeners.forEach((listener) => listener(status))
-    }
+    },
+    registeredAccelerators: () => [...accelerators]
   }
 }
 
@@ -612,6 +624,33 @@ describe('platform capabilities over IPC', () => {
     const app = await startApp()
     const info = app.invoke('app:info', true) as { platformStatus: { pasteLabel: string } }
     expect(info.platformStatus.pasteLabel).toBe('Ctrl + V')
+  })
+})
+
+describe('paste last dictation', () => {
+  it('registers Alt + Shift + V on Windows, and reports it only to the main window', async () => {
+    const app = await startApp()
+    expect(app.registeredAccelerators()).toEqual(['Alt+Shift+V'])
+    expect(app.invoke('shortcut:paste-last-status', true)).toEqual({ pasteLastRegistered: true })
+    expect(() => app.invoke('shortcut:paste-last-status', false)).toThrow('Forbidden.')
+  })
+
+  it('reports it as not in force when another app owns the combination', async () => {
+    const app = await startApp({ acceleratorTaken: true })
+    expect(app.registeredAccelerators()).toEqual([])
+    expect(app.invoke('shortcut:paste-last-status', true)).toEqual({ pasteLastRegistered: false })
+  })
+
+  it('releases and registers it again as the setting is saved', async () => {
+    const app = await startApp()
+
+    await app.invoke('settings:save', true, { pasteLastShortcut: false })
+    expect(app.registeredAccelerators()).toEqual([])
+    expect(app.invoke('shortcut:paste-last-status', true)).toEqual({ pasteLastRegistered: false })
+
+    await app.invoke('settings:save', true, { pasteLastShortcut: true })
+    expect(app.registeredAccelerators()).toEqual(['Alt+Shift+V'])
+    expect(app.invoke('shortcut:paste-last-status', true)).toEqual({ pasteLastRegistered: true })
   })
 })
 

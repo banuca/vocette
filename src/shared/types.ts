@@ -124,6 +124,10 @@ export interface PublicSettings {
   recordingMode: RecordingMode
   hotkeyEnabled: boolean
   autoPaste: boolean
+  /** Put back what the user had copied once an automatic paste has landed. */
+  restoreClipboard: boolean
+  /** Alt + Shift + V pastes the newest transcript again. Windows only, for now. */
+  pasteLastShortcut: boolean
   removeFillers: boolean
   /** "Scratch that" and "Tuesday, no sorry, Wednesday". English rules only. */
   spokenCorrections: boolean
@@ -161,6 +165,8 @@ export interface SettingsUpdate {
   recordingMode?: RecordingMode
   hotkeyEnabled?: boolean
   autoPaste?: boolean
+  restoreClipboard?: boolean
+  pasteLastShortcut?: boolean
   removeFillers?: boolean
   spokenCorrections?: boolean
   spokenFormatting?: boolean
@@ -229,4 +235,13 @@ export interface RecorderErrorPayload {
 export interface ShortcutCapture {
   keys: number[]
   done: boolean
+}
+
+/**
+ * Whether Alt + Shift + V is in force. False while the setting is off, on a
+ * desktop it is not offered on, and when the system refused the registration —
+ * usually because another app already owns the combination.
+ */
+export interface PasteLastStatus {
+  pasteLastRegistered: boolean
 }

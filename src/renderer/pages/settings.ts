@@ -21,6 +21,7 @@ import {
   LANGUAGE_OPTIONS,
   TRANSCRIPTION_MODELS,
   dictationIsBusy,
+  type PasteLastStatus,
   type PublicSettings,
   type SettingsUpdate,
   type TranscriptionEngine,
@@ -115,6 +116,16 @@ export function renderSettings(
       : context.platform.platform === 'macos'
         ? 'Open at login'
         : 'Start when I sign in'
+
+  /**
+   * Alt + Shift + V is registered on Windows only, for now. Elsewhere the row
+   * is not drawn at all: a switch for something that cannot happen here would
+   * be a promise the app does not keep.
+   */
+  const pasteLastOffered = context.platform.platform === 'windows'
+  const pasteLastRow = pasteLastOffered
+    ? '<label class="toggle-row" id="row-paste-last"><div><strong>Paste last dictation with Alt + Shift + V</strong><span>Handy when a paste went to the wrong place.</span><small class="capability-note" id="paste-last-note" hidden></small></div><input id="paste-last-shortcut" type="checkbox" /><i></i></label>'
+    : ''
 
   context.content.innerHTML = `
     <div class="settings-stack">
@@ -256,6 +267,8 @@ export function renderSettings(
         <div class="toggle-list">
           <label class="toggle-row" id="row-hotkey"><div><strong>Global shortcut enabled</strong><span>Turn the system-wide shortcut off without quitting the app.</span><small class="capability-note" id="hotkey-note" hidden></small></div><input id="hotkey-enabled" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-auto-paste"><div><strong>Paste automatically</strong><span>Copy the transcript and send ${escapeHtml(context.platform.pasteLabel)} to the app you were using.</span><small class="capability-note" id="auto-paste-note" hidden></small></div><input id="auto-paste" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-restore-clipboard"><div><strong>Put my clipboard back</strong><span>After pasting, Murmur restores what you had copied. Turn off to keep each transcript on the clipboard.</span><small class="capability-note" id="restore-clipboard-note" hidden></small></div><input id="restore-clipboard" type="checkbox" /><i></i></label>
+          ${pasteLastRow}
           <label class="toggle-row"><div><strong>Remove filler words</strong><span>Drops “um”, “uh”, stutters like “I I”, and a filler “like” or “you know” set off by commas. Your own words are never rewritten.</span></div><input id="remove-fillers" type="checkbox" /><i></i></label>
           <label class="toggle-row"><div><strong>Follow spoken corrections</strong><span>Say “scratch that” to drop the last sentence, or fix a word as you go: “Tuesday, no sorry, Wednesday” becomes “Wednesday”. English.</span></div><input id="spoken-corrections" type="checkbox" /><i></i></label>
           <label class="toggle-row"><div><strong>Spoken line breaks</strong><span>Say “new line” or “new paragraph”. English.</span></div><input id="spoken-formatting" type="checkbox" /><i></i></label>
@@ -289,6 +302,8 @@ export function renderSettings(
   const holdDelay = query<HTMLSelectElement>('#hold-delay')
   const hotkeyEnabled = query<HTMLInputElement>('#hotkey-enabled')
   const autoPaste = query<HTMLInputElement>('#auto-paste')
+  const restoreClipboard = query<HTMLInputElement>('#restore-clipboard')
+  const pasteLastShortcut = query<HTMLInputElement>('#paste-last-shortcut')
   const removeFillers = query<HTMLInputElement>('#remove-fillers')
   const spokenCorrections = query<HTMLInputElement>('#spoken-corrections')
   const spokenFormatting = query<HTMLInputElement>('#spoken-formatting')
@@ -459,6 +474,8 @@ export function renderSettings(
     if (holdDelay) holdDelay.value = String(next.holdDelayMs)
     if (hotkeyEnabled) hotkeyEnabled.checked = next.hotkeyEnabled
     if (autoPaste) autoPaste.checked = next.autoPaste
+    if (restoreClipboard) restoreClipboard.checked = next.restoreClipboard
+    if (pasteLastShortcut) pasteLastShortcut.checked = next.pasteLastShortcut
     if (removeFillers) removeFillers.checked = next.removeFillers
     if (spokenCorrections) spokenCorrections.checked = next.spokenCorrections
     if (spokenFormatting) spokenFormatting.checked = next.spokenFormatting
@@ -572,6 +589,15 @@ export function renderSettings(
       pasteNote.textContent = reason ?? ''
       pasteNote.hidden = reason === null
     }
+    // Nothing is borrowed where nothing is pasted, so the clipboard switch has
+    // nothing to do: disabled for the same reason, given in the same words.
+    if (restoreClipboard) restoreClipboard.disabled = !autoPasteSupported(map)
+    const restoreNote = query<HTMLElement>('#restore-clipboard-note')
+    if (restoreNote) {
+      const reason = clipboardOnlyReason(map)
+      restoreNote.textContent = reason ?? ''
+      restoreNote.hidden = reason === null
+    }
 
     if (launchAtLogin) launchAtLogin.disabled = !isAvailable(map.launchAtLogin)
     note(query<HTMLElement>('#launch-note'), map.launchAtLogin)
@@ -622,6 +648,31 @@ export function renderSettings(
     }
   }
 
+  /**
+   * Says so when Alt + Shift + V is switched on but not in force. Asked of the
+   * main process rather than inferred from the setting, because the usual
+   * reason is another app that already owns the combination — and a switch
+   * that shows as on while doing nothing is the failure to avoid.
+   */
+  const paintPasteLastNote = async (): Promise<void> => {
+    const pasteLastNote = query<HTMLElement>('#paste-last-note')
+    if (!pasteLastShortcut || !pasteLastNote) return
+    let status: PasteLastStatus
+    try {
+      status = await window.murmur.getPasteLastStatus()
+    } catch {
+      // Unknown is not the same as refused: say nothing rather than guess.
+      return
+    }
+    if (disposed) return
+    const text =
+      settings.pasteLastShortcut && !status.pasteLastRegistered
+        ? 'Alt + Shift + V is in use by another app.'
+        : ''
+    pasteLastNote.textContent = text
+    pasteLastNote.hidden = text === ''
+  }
+
   // --- Shortcut capture ---------------------------------------------------
 
   const paintChips = (keys: readonly number[]): void => {
@@ -634,8 +685,9 @@ export function renderSettings(
   // button looked fine but did nothing.
   syncControlValues(settings)
   syncCapabilities()
+  void paintPasteLastNote()
 
-  const setFeedback = (text: string, tone: 'muted' | 'warn' | 'error' = 'muted'): void => {
+  const setFeedback =(text: string, tone: 'muted' | 'warn' | 'error' = 'muted'): void => {
     if (!shortcutFeedback) return
     shortcutFeedback.textContent = text
     shortcutFeedback.className = `shortcut-feedback tone-${tone}`
@@ -962,6 +1014,9 @@ export function renderSettings(
       hotkeyEnabled: hotkeyEnabled?.checked ?? true,
       microphoneId: microphoneSelect?.value ?? '',
       autoPaste: autoPaste?.checked ?? true,
+      restoreClipboard: restoreClipboard?.checked ?? true,
+      // Not drawn on other desktops, where the saved choice is kept as it is.
+      pasteLastShortcut: pasteLastShortcut?.checked ?? settings.pasteLastShortcut,
       removeFillers: removeFillers?.checked ?? true,
       spokenCorrections: spokenCorrections?.checked ?? true,
       spokenFormatting: spokenFormatting?.checked ?? true,
@@ -990,6 +1045,8 @@ export function renderSettings(
       // Update in place: a full re-render would drop the view reference the
       // shell holds and orphan the capture listener.
       syncControlValues(next)
+      // Saving is what registers or releases Alt + Shift + V.
+      void paintPasteLastNote()
       if (apiKey) {
         const keyInput = query<HTMLInputElement>('#api-key')
         if (keyInput) {
