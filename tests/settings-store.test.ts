@@ -1041,6 +1041,46 @@ describe('the trial-end notice', () => {
   })
 })
 
+describe('the update check', () => {
+  it('is off on a fresh install and in a file that predates it', () => {
+    expect(DEFAULT_SETTINGS.updateCheck).toBe(false)
+    expect(new SettingsStore(file).getInternal().updateCheck).toBe(false)
+    expect(normaliseSettings({ version: 5 }).updateCheck).toBe(false)
+    expect(normaliseSettings({ version: 5 }).lastUpdateCheckAt).toBeNull()
+  })
+
+  it('is switched on only by a real true, and survives a restart', () => {
+    for (const value of ['true', 1, 'yes', null]) {
+      expect(normaliseSettings({ updateCheck: value }).updateCheck).toBe(false)
+    }
+    const store = new SettingsStore(file)
+    store.setUpdateCheck(true)
+    expect(JSON.parse(readFileSync(file, 'utf8')).updateCheck).toBe(true)
+    expect(new SettingsStore(file).getInternal().updateCheck).toBe(true)
+    store.setUpdateCheck(false)
+    expect(new SettingsStore(file).getInternal().updateCheck).toBe(false)
+  })
+
+  it('remembers when it last ran, and keeps only a readable date', () => {
+    const store = new SettingsStore(file)
+    store.setLastUpdateCheck('2026-09-28T10:00:00.000Z')
+    expect(new SettingsStore(file).getInternal().lastUpdateCheckAt).toBe('2026-09-28T10:00:00.000Z')
+    store.setLastUpdateCheck('not a date')
+    expect(store.getInternal().lastUpdateCheckAt).toBe('2026-09-28T10:00:00.000Z')
+    expect(normaliseSettings({ lastUpdateCheckAt: 'soon' }).lastUpdateCheckAt).toBeNull()
+    expect(normaliseSettings({ lastUpdateCheckAt: 42 }).lastUpdateCheckAt).toBeNull()
+  })
+
+  it('is not changed by an ordinary settings save, and never reaches the window', () => {
+    const store = new SettingsStore(file)
+    store.setUpdateCheck(true)
+    store.update({ vocabulary: 'Kirinde', updateCheck: false } as never)
+    expect(store.getInternal().updateCheck).toBe(true)
+    expect(store.getPublic()).not.toHaveProperty('updateCheck')
+    expect(store.getPublic()).not.toHaveProperty('lastUpdateCheckAt')
+  })
+})
+
 describe('the licence', () => {
   const KEY_TEXT = 'MURMUR-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA'
   const activated = {

@@ -213,6 +213,15 @@ All notable changes to this project are documented here. This project adheres to
   last 50 dictations. Dictations from before this release have no figure and show none. The
   timing stays on this PC: it is kept in History and sent to no provider.
 
+- **An update check you switch on, and can refuse.** About has a new **Updates** section:
+  **Check for updates once a day** (off unless you switch it on) and **Check now**, which
+  works either way. A check is one request to GitHub for the latest version number —
+  nothing about you or your dictation is sent — and it runs at most once a day on its own,
+  a minute after startup at the earliest. It says “You have the latest version (0.4.0).”,
+  “Murmur 0.6.0 is available.” with a **Download** link to the release page, or why it
+  could not check. An update on offer adds one line to the tray menu and a dot beside
+  About; there are no dialogs or notifications, and nothing is downloaded or installed.
+
 ### Fixed
 
 - **The shortcut keeps working after sleep and the lock screen.** Windows can drop the

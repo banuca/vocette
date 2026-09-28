@@ -31,6 +31,13 @@ export const CHECKOUT_URL = ''
 /** Owner: the customer portal, `https://polar.sh/<slug>/portal`. Empty hides "Manage your purchase". */
 export const CUSTOMER_PORTAL_URL = ''
 export const POLAR_API_BASE = 'https://api.polar.sh'
+
+/**
+ * Owner: the GitHub repository whose published releases the update check reads,
+ * as `owner/name`. It must be public, with releases published there, or every
+ * check says no release was found.
+ */
+export const UPDATE_REPOSITORY = 'banuca/murmur'
 /** Owner: Polar → Settings → Organization → Identifier. A public identifier, safe to ship. */
 export const POLAR_ORGANIZATION_ID = ''
 /** Owner: the id of the Licence Keys benefit attached to the Pro product. */

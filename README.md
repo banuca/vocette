@@ -182,7 +182,8 @@ Every window runs with `contextIsolation: true`, `sandbox: true`, `nodeIntegrati
 - The foreground checks read a window handle and an elevation or secure-input flag. No window contents, titles or input are read, and nothing is stored.
 - Before an automatic paste, what is on your clipboard is copied into memory so it can be put back afterwards. It is held only until then, and is never written to disk or sent anywhere.
 - Activating Pro sends your licence key, a device label and the app version to Polar (US), once, when you press **Activate**; **Release this PC** sends the key again to free the slot. Nothing else about Pro is ever sent, and the buyer details Polar returns are discarded.
-- No telemetry, no analytics, no auto-update calls.
+- Checking for updates is off until you switch it on in **About**. Then — and whenever you press **Check now** — Murmur sends one request to GitHub (`api.github.com`) for the latest version number, at most once a day on its own. Nothing about you or your dictation is sent, and nothing is ever downloaded or installed automatically.
+- No telemetry, no analytics, no automatic updates.
 
 ## License
 

@@ -42,6 +42,7 @@ import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform
 import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { rearmPlan } from './rearm-plan'
+import { UpdateChecker } from './update-check'
 import {
   LICENCE_MESSAGES,
   LicenceClient,
@@ -66,7 +67,8 @@ import {
   planVocabulary,
   type Entitlement
 } from '../shared/entitlement'
-import { CHECKOUT_URL, CUSTOMER_PORTAL_URL } from '../shared/product'
+import { CHECKOUT_URL, CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
+import { displayVersion } from '../shared/update'
 import {
   autoPasteSupported,
   effectiveRecordingMode,
@@ -125,6 +127,7 @@ let capabilities!: CapabilityMap
 let modelStore!: ModelStore
 let localEngine!: LocalEngine
 let licenceClient!: LicenceClient
+let updateChecker!: UpdateChecker
 /** An activation or a release is on its way to Polar; a second click waits for it. */
 let licenceRequestInFlight = false
 
@@ -906,6 +909,19 @@ function shortcutHintLabel(): string {
     : `Hold ${shortcutLabel()} to talk`
 }
 
+/** The tray's line for an update on offer; nothing otherwise. */
+function updateTrayItems(): MenuItemConstructorOptions[] {
+  const status = updateChecker?.getStatus()
+  const page = updateChecker?.downloadPage()
+  if (!status || status.state !== 'available' || !status.latest || !page) return []
+  return [
+    {
+      label: `Update available: ${displayVersion(status.latest)} — open download page`,
+      click: () => void shell.openExternal(page)
+    }
+  ]
+}
+
 function rebuildTrayMenu(): void {
   if (!tray || !dictation) return
   const settings = settingsStore.getPublic()
@@ -927,6 +943,8 @@ function rebuildTrayMenu(): void {
     ...(historyStore.getSaveStatus().saveFailed
       ? [{ label: HISTORY_SAVE_FAILED_TRAY_LABEL, enabled: false } as MenuItemConstructorOptions]
       : []),
+    // One quiet line, only once a check the user allowed has found something.
+    ...updateTrayItems(),
     { type: 'separator' },
     // Recording from the tray delivers to the clipboard: whatever has focus
     // when a menu is open is not a target the user chose to dictate into.
@@ -1257,11 +1275,31 @@ function registerIpc(): void {
       'transcription-docs': 'https://developers.openai.com/api/docs/guides/speech-to-text',
       // Empty until the owner fills them in, and then nothing opens.
       checkout: CHECKOUT_URL,
-      'customer-portal': CUSTOMER_PORTAL_URL
+      'customer-portal': CUSTOMER_PORTAL_URL,
+      // Only the release page a check has just validated, and only while an
+      // update is on offer.
+      release: updateChecker.downloadPage() ?? ''
     }
     const url = typeof target === 'string' ? targets[target] : undefined
     if (!url || !url.startsWith('https://')) return
     await shell.openExternal(url)
+  })
+
+  // The update check: off unless switched on, and "Check now" on request.
+  ipcMain.handle('update:status', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return updateChecker.getStatus()
+  })
+  ipcMain.handle('update:check-now', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return updateChecker.checkNow()
+  })
+  ipcMain.handle('update:set-enabled', (event, enabled: unknown) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    if (typeof enabled !== 'boolean') throw new Error('Invalid update setting.')
+    settingsStore.setUpdateCheck(enabled)
+    updateChecker.enabledChanged()
+    return updateChecker.getStatus()
   })
 
   // Pro. The window learns the plan and what it may offer; it never sees a
@@ -1375,6 +1413,18 @@ async function bootstrap(): Promise<void> {
   })
   // The same network stack, for the one activation request a licence needs.
   licenceClient = new LicenceClient({ fetch: (url, init) => net.fetch(url, init) })
+  updateChecker = new UpdateChecker({
+    fetch: (url, init) => net.fetch(url, init),
+    repository: UPDATE_REPOSITORY,
+    currentVersion: app.getVersion(),
+    enabled: () => settingsStore.getInternal().updateCheck,
+    lastCheckedAt: () => settingsStore.getInternal().lastUpdateCheckAt,
+    saveLastCheckedAt: (iso) => settingsStore.setLastUpdateCheck(iso),
+    onStatus: (status) => {
+      mainWindow?.webContents.send('update:status', status)
+      rebuildTrayMenu()
+    }
+  })
   // Nothing starts here: the worker is spawned by the first dictation that
   // needs it, and killed again once it has been idle for a while.
   localEngine = new LocalEngine({
@@ -1447,6 +1497,8 @@ async function bootstrap(): Promise<void> {
   powerMonitor.on('lock-screen', finishTakeBeforeAway)
   powerMonitor.on('resume', rearmShortcut)
   powerMonitor.on('unlock-screen', rearmShortcut)
+  // Sends nothing now: a minute from here, and only if switched on and due.
+  updateChecker.start()
   applyPasteLastShortcut(initial.pasteLastShortcut)
   // Starting may have discovered the shortcut cannot be registered at all.
   refreshCapabilities()
@@ -1535,6 +1587,7 @@ app.on('before-quit', (event) => {
   // A download stopped here resumes from its part files next time.
   modelDownload?.controller.abort()
   localEngine?.dispose()
+  updateChecker?.stop()
   shortcutController?.stop()
   globalShortcut.unregisterAll()
   captureTimeout = clearTimer(captureTimeout)

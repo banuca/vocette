@@ -87,6 +87,10 @@ interface StartupHarness {
   registeredAccelerators: () => string[]
   /** What the main process asked Polar, through the fake `net.fetch`. */
   polarRequests: () => Array<{ url: string; init: RequestInit }>
+  /** What the update check asked GitHub. */
+  githubRequests: () => Array<{ url: string; init: RequestInit }>
+  /** The update switch as the fake store holds it. */
+  storedUpdateCheck: () => boolean
   /** What the store was asked to keep after an activation. */
   savedLicences: () => Array<Record<string, unknown>>
   licenceCleared: () => number
@@ -115,6 +119,8 @@ async function startApp(options: {
   licensed?: boolean
   /** Polar's answer to whatever the main process sends it. */
   polarReply?: (url: string, init: RequestInit) => Response | Promise<Response>
+  /** GitHub's answer to an update check; without one, GitHub cannot be reached. */
+  githubReply?: () => Response
 } = {}): Promise<StartupHarness> {
   vi.resetModules()
 
@@ -177,6 +183,7 @@ async function startApp(options: {
   const savedLicences: Array<Record<string, unknown>> = []
   let licenceClears = 0
   const polarRequests: Array<{ url: string; init: RequestInit }> = []
+  const githubRequests: Array<{ url: string; init: RequestInit }> = []
   const openedExternally: string[] = []
   const fullyCapable = {
     globalHold: { state: 'available', reason: '', pane: null },
@@ -288,6 +295,11 @@ async function startApp(options: {
     // Only the licence client reaches this: the model store is faked below.
     net: {
       fetch: vi.fn(async (url: string, init: RequestInit) => {
+        if (url.startsWith('https://api.github.com/')) {
+          githubRequests.push({ url, init })
+          if (!options.githubReply) throw new TypeError('fetch failed')
+          return options.githubReply()
+        }
         polarRequests.push({ url, init })
         if (!options.polarReply) throw new TypeError('fetch failed')
         return options.polarReply(url, init)
@@ -363,6 +375,12 @@ async function startApp(options: {
         licenceClears += 1
         licence = null
         storedSettings = { ...storedSettings, trialEndNoticeDismissed: true }
+      }
+      setUpdateCheck = (enabled: boolean): void => {
+        storedSettings = { ...storedSettings, updateCheck: enabled }
+      }
+      setLastUpdateCheck = (iso: string): void => {
+        storedSettings = { ...storedSettings, lastUpdateCheckAt: iso }
       }
     }
   }))
@@ -596,6 +614,8 @@ async function startApp(options: {
     },
     registeredAccelerators: () => [...accelerators],
     polarRequests: () => polarRequests,
+    githubRequests: () => githubRequests,
+    storedUpdateCheck: () => storedSettings.updateCheck,
     savedLicences: () => savedLicences,
     licenceCleared: () => licenceClears,
     openedExternally: () => openedExternally
@@ -1756,5 +1776,67 @@ describe('after a sleep or the lock screen', () => {
     app.powerEvent('unlock-screen')
     expect(lastPhase(app)).toBe('cancelled')
     expect(app.hookStarts()).toBe(2)
+  })
+})
+
+describe('the update check', () => {
+  const githubRelease = (): Response =>
+    new Response(
+      JSON.stringify({
+        tag_name: 'v0.6.0',
+        html_url: 'https://github.com/banuca/murmur/releases/tag/v0.6.0'
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
+
+  it('sends nothing at startup, and nothing to GitHub unless asked', async () => {
+    const app = await startApp({ githubReply: githubRelease })
+    await app.settle()
+    expect(app.githubRequests()).toEqual([])
+    expect(app.storedUpdateCheck()).toBe(false)
+  })
+
+  it('answers only the main window, and takes only a real switch position', async () => {
+    const app = await startApp({ githubReply: githubRelease })
+    for (const channel of ['update:status', 'update:check-now', 'update:set-enabled']) {
+      expect(() => app.invoke(channel, false, true)).toThrow('Forbidden.')
+    }
+    expect(() => app.invoke('update:set-enabled', true, 'yes')).toThrow('Invalid update setting.')
+    const status = app.invoke('update:set-enabled', true, true) as { enabled: boolean }
+    expect(status.enabled).toBe(true)
+    expect(app.storedUpdateCheck()).toBe(true)
+    // Switching it on sends nothing there and then.
+    expect(app.githubRequests()).toEqual([])
+  })
+
+  it('checks when asked, then offers the release page in the tray and the window', async () => {
+    const app = await startApp({ githubReply: githubRelease })
+    // Nothing on offer yet, so the release target opens nothing.
+    await app.invoke('app:open-external', true, 'release')
+    expect(app.openedExternally()).toEqual([])
+
+    const status = (await app.invoke('update:check-now', true)) as { state: string; latest: string }
+    expect(status).toMatchObject({ state: 'available', latest: 'v0.6.0' })
+    expect(app.githubRequests()).toHaveLength(1)
+    expect(app.githubRequests()[0]?.url).toBe(
+      'https://api.github.com/repos/banuca/murmur/releases/latest'
+    )
+    expect(
+      app.sentToMain().filter(({ channel }) => channel === 'update:status').at(-1)?.payload
+    ).toMatchObject({ state: 'available' })
+    expect(app.trayLabels()).toContain('Update available: 0.6.0 — open download page')
+
+    await app.invoke('app:open-external', true, 'release')
+    expect(app.openedExternally()).toEqual(['https://github.com/banuca/murmur/releases/tag/v0.6.0'])
+  })
+
+  it('shows no tray line when the check finds nothing newer or fails', async () => {
+    const app = await startApp()
+    const status = (await app.invoke('update:check-now', true)) as { state: string; error: string }
+    expect(status).toMatchObject({
+      state: 'error',
+      error: 'Could not reach GitHub. Check your internet connection and try again.'
+    })
+    expect(app.trayLabels().some((label) => label.startsWith('Update available'))).toBe(false)
   })
 })

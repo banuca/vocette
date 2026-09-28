@@ -63,11 +63,11 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 | 7b | Engine UI: Settings engine card, first-run download, progress | Free | committed | e355adc |
 | 8 | Vocabulary on the local engine + fuzzy vocabulary correction (all engines) | Free | committed | faebde1 |
 | 9 | Start listening at the keypress + engine prewarm | Free | committed | 5f73e73, 486be33 |
-| 10 | Latency shown per dictation | Free | committed | (next) |
+| 10 | Latency shown per dictation | Free | committed | 183d7fb |
 | 11 | Licence, 30-day trial, Account page, Pro gates | Gate | committed | 4f6e46b |
 | 12 | AI polish with styles, time budget, raw fallback | Pro | todo | |
 | 13 | History edit, undo delete, show original | Free | committed | d4702a4, 98ab971 |
-| 14 | Opt-in update check | Free | todo | |
+| 14 | Opt-in update check | Free | committed | (next) |
 | R1 | Silence guard: no text invented from a silent take, no engine call | Free | committed | e1480e5 |
 | R2 | Live microphone level in the overlay ("is it hearing me?") | Free | committed | 5230a6e |
 | R3 | Esc cancels a hands-free (toggle) recording | Free | committed | 06b284d |
@@ -135,6 +135,7 @@ still-pending feature-1 vocabulary steps 2–6 from `operating-plan.md` §6.
 | R3 | 1329 tests; Esc only on its own (modifier = other shortcut), not while capturing/disabled/echo; cancels toggle or window takes while starting/recording, never held or processing | Built app, fake mic: window take shows "Press Stop when you have finished · Esc to cancel" and it fits (230 of 248 px measured); longer chords fall back to "the shortcut"; Settings shows the Esc line under Press to start and stop | a real Esc key press (not injected: it would reach the owner's foreground app) |
 | R5 | 1340 tests; rearmPlan (debounce 3 s, clock set back); hook error listener attached once per start; startup wiring: resume/unlock re-arm once, suspend/lock finish a recording take, a take still recording at wake is cancelled | Built app: F24 injected via SendInput seen by the hook through Change-shortcut capture before and after a genuine powerMonitor 'resume' (native uiohook stop+start, 4 ms); capability stayed available | a real sleep/wake and Win+L cycle |
 | 10 | 1352 tests; wait from stop request (or Retry press, or audio arrival for a take the recorder ended) to text ready; History optional waitMs round-trips and survives Undo; median over newest 50 | Built app, on-device engine, fake mic, 3 takes × 2 runs: app-measured wait equals the outside stop→success time within 5–9 ms (IPC); warm 0.39–0.46 s, first take 0.49 s; overlay readout "0.4s", History "ready in 0.4s", Typical wait card fits beside the four others at 1060 px. Found: a first take shorter than the engine load (mic slow to open → 3 s recorded) waited 3.6 s — prewarm cannot finish; candidate: load the engine at startup when the model is installed (memory trade-off, owner decision) | narrow window (single column below 940 px) |
+| 14 | 1380 tests; semver order incl. v prefix and pre-releases, non-versions never offered; release link must be this repository's release page (else built fallback); 404/403/429/5xx/unreadable/offline/10 s timeout sentences; off = no request ever; 60 s after start then ≤ once per 24 h; Check now single-flight; IPC main-window only; tray line + release target only while available | Built app, real network: Check now → one GET to api.github.com/repos/banuca/murmur/releases/latest, no cookie or Authorization, 389 ms, "You have the latest version (0.4.0)" (repo public, v0.4.0 published); available state pushed to the window: Download link and sidebar dot drawn | no request at startup, watched at runtime (tests only); tray line on screen; a real newer release; the daily timer in real time |
 | 7a | tsc, lint, 701 tests; build has out/main/engine-worker.js | E2E through built app, fake mic: cold stop→text 4.5–4.7 s (spawn + load), warm 0.36 s for a 4–5 s take (3 rounds); model id recorded in History; clipboard delivery; worker smoke by the builder incl. damaged-model recovery, 65 s split, packaged --dir build with native check passing | full 640 MB download; cancel/resume vs real server; idle unload in real time; NSIS installer |
 
 ## 8. Owner actions before the first sale (collected for the end)

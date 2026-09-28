@@ -2008,6 +2008,49 @@ a:focus-visible {
   font-size: 11px;
 }
 
+/* An update is on offer. A dot, not a badge: nothing to count, nothing urgent. */
+.nav-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  vertical-align: middle;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.nav-dot[hidden] {
+  display: none;
+}
+
+.updates-card {
+  margin-top: 14px;
+}
+
+.updates-card .toggle-row {
+  margin-top: 8px;
+  border-bottom: 0;
+}
+
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.update-actions .secondary-button {
+  margin-top: 0;
+}
+
+.notice-card .update-result {
+  margin: 0;
+}
+
+.notice-card .update-result.is-error {
+  color: var(--status-bad);
+}
+
 .pro-plans {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

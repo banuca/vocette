@@ -111,6 +111,10 @@ export interface StoredSettings {
   /** Names this PC in the activation label: the 7F3A of "Murmur on Windows · 7F3A". */
   deviceTag: string
   licence: StoredLicence | null
+  /** The daily update check. Off unless the user switches it on on the About page. */
+  updateCheck: boolean
+  /** When an update check last finished, so a restart cannot make it daily-plus. */
+  lastUpdateCheckAt: string | null
 }
 
 export const DEFAULT_SETTINGS: StoredSettings = {
@@ -145,7 +149,9 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   trialStartedAt: null,
   trialEndNoticeDismissed: false,
   deviceTag: '',
-  licence: null
+  licence: null,
+  updateCheck: false,
+  lastUpdateCheckAt: null
 }
 
 const MAX_API_KEY_LENGTH = 512
@@ -333,7 +339,16 @@ export function normaliseSettings(value: unknown): StoredSettings {
       typeof candidate.deviceTag === 'string' && DEVICE_TAG_PATTERN.test(candidate.deviceTag)
         ? candidate.deviceTag
         : '',
-    licence: normaliseLicence(candidate.licence)
+    licence: normaliseLicence(candidate.licence),
+    // Added within v5: absent means off, as on a fresh install. Only a real
+    // true switches it on, so no damaged file can start sending requests.
+    updateCheck: candidate.updateCheck === true,
+    lastUpdateCheckAt:
+      typeof candidate.lastUpdateCheckAt === 'string' &&
+      candidate.lastUpdateCheckAt.length <= 64 &&
+      !Number.isNaN(Date.parse(candidate.lastUpdateCheckAt))
+        ? candidate.lastUpdateCheckAt
+        : null
   }
 }
 
@@ -550,6 +565,19 @@ export class SettingsStore {
     const next = { ...this.settings, licence }
     this.persistence.writeJsonAtomic(this.filePath, next)
     this.settings = next
+  }
+
+  /** Switches the daily update check on or off. */
+  setUpdateCheck(enabled: boolean): void {
+    this.settings = { ...this.settings, updateCheck: enabled }
+    this.write()
+  }
+
+  /** Records when an update check finished; "Check now" counts as well. */
+  setLastUpdateCheck(iso: string): void {
+    if (Number.isNaN(Date.parse(iso))) return
+    this.settings = { ...this.settings, lastUpdateCheckAt: iso }
+    this.write()
   }
 
   /**

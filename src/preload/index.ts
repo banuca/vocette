@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PlatformStatus, SettingsPane } from '../shared/capabilities'
 import type { EngineStatus } from '../shared/engine'
+import type { UpdateStatus } from '../shared/update'
 import type {
   AppInfo,
   HistoryEntry,
@@ -80,6 +81,10 @@ const api = {
     ipcRenderer.invoke('licence:activate', key),
   releaseLicence: (): Promise<LicenceRelease> => ipcRenderer.invoke('licence:deactivate'),
   removeLicenceLocally: (): Promise<LicenceStatus> => ipcRenderer.invoke('licence:remove-local'),
+  getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
+  checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check-now'),
+  setUpdateCheck: (enabled: boolean): Promise<UpdateStatus> =>
+    ipcRenderer.invoke('update:set-enabled', enabled),
 
   onWorkflowStatus: (callback: (status: WorkflowStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: WorkflowStatus): void => callback(status)
@@ -120,6 +125,11 @@ const api = {
     const listener = (_event: unknown, status: LicenceStatus): void => callback(status)
     ipcRenderer.on('licence:changed', listener)
     return () => ipcRenderer.removeListener('licence:changed', listener)
+  },
+  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: UpdateStatus): void => callback(status)
+    ipcRenderer.on('update:status', listener)
+    return () => ipcRenderer.removeListener('update:status', listener)
   },
   onSettingsChanged: (callback: (settings: PublicSettings) => void): (() => void) => {
     const listener = (_event: unknown, settings: PublicSettings): void => callback(settings)

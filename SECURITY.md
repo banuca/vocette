@@ -130,7 +130,10 @@ window to make a paste succeed.
   never written to disk, never exposed through public settings or diagnostics,
   and gone when the app quits. Unlocking a keyring and saving again is the
   other option, and the app says so.
-- There is no telemetry, no analytics, and no auto-update channel.
+- There is no telemetry, no analytics, and no auto-update channel. The update check
+  (off by default) sends one GET to `https://api.github.com/repos/<repository>/releases/latest`
+  with no cookies or credentials, reads only the tag and the release link, and never
+  downloads anything; the link it opens must be a release page of that repository.
 
 ## Hardening in place
 

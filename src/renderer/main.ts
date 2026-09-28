@@ -7,7 +7,7 @@ import { icon } from './icons'
 import { trialBadge } from './licence-text'
 import { applyTheme, createThemeToggle, type ThemeToggle } from './theme'
 import type { MicrophoneAccess } from './setup-guide'
-import { renderAbout } from './pages/about'
+import { renderAbout, type AboutView } from './pages/about'
 import { renderHistory, type HistoryView } from './pages/history'
 import { renderPro, type ProView } from './pages/pro'
 import { renderSettings, type SettingsView } from './pages/settings'
@@ -15,6 +15,7 @@ import { effectiveRecordingMode, globalShortcutUsable } from '../shared/capabili
 import type { EngineStatus } from '../shared/engine'
 import { chordLabel } from '../shared/keycodes'
 import type { AppInfo, HistoryEntry, LicenceStatus, Page, PublicSettings } from '../shared/types'
+import type { UpdateStatus } from '../shared/update'
 
 const root = document.querySelector<HTMLDivElement>('#app')
 if (!root) throw new Error('Application root was not found.')
@@ -79,6 +80,7 @@ async function mount(): Promise<void> {
   let historyView: HistoryView | null = null
   let settingsView: SettingsView | null = null
   let proView: ProView | null = null
+  let aboutView: AboutView | null = null
 
   appRoot.innerHTML = `
     <div class="app-shell">
@@ -91,7 +93,7 @@ async function mount(): Promise<void> {
           <button class="nav-item active" data-page="history" title="History"><span class="nav-icon">${icon('history')}</span><span>History</span></button>
           <button class="nav-item" data-page="settings" title="Settings"><span class="nav-icon">${icon('settings')}</span><span>Settings</span></button>
           <button class="nav-item" data-page="pro" title="Pro"><span class="nav-icon">${icon('sparkle')}</span><span>Pro<small class="nav-suffix" id="nav-pro-suffix" hidden></small></span></button>
-          <button class="nav-item" data-page="about" title="About"><span class="nav-icon">${icon('info')}</span><span>About</span></button>
+          <button class="nav-item" data-page="about" title="About"><span class="nav-icon">${icon('info')}</span><span>About<i class="nav-dot" id="nav-about-dot" hidden></i></span></button>
         </nav>
         <div class="sidebar-footer">
           <div class="live-status"><span class="status-dot" id="status-dot"></span><span id="sidebar-status">Ready</span></div>
@@ -268,11 +270,12 @@ async function mount(): Promise<void> {
     historyView = null
     proView?.dispose()
     proView = null
+    aboutView = null
     try {
       if (activePage === 'history') historyView = renderHistory(context)
       if (activePage === 'settings') settingsView = renderSettings(context, intent)
       if (activePage === 'pro') proView = renderPro(context)
-      if (activePage === 'about') renderAbout(context)
+      if (activePage === 'about') aboutView = renderAbout(context)
     } catch (error) {
       // A page bug must be visible — once, a render error after the HTML was
       // drawn left the page looking fine but with zero event listeners, so
@@ -335,6 +338,17 @@ async function mount(): Promise<void> {
     context.applyLicence(next)
   })
 
+  // A dot on About while an update is on offer, and the page kept current.
+  const applyUpdate = (status: UpdateStatus): void => {
+    const dot = appRoot.querySelector<HTMLElement>('#nav-about-dot')
+    if (dot) {
+      dot.hidden = status.state !== 'available'
+      dot.title = status.state === 'available' ? 'An update is available' : ''
+    }
+    aboutView?.applyUpdate(status)
+  }
+  window.murmur.onUpdateStatus(applyUpdate)
+
   // The trial ends on its own, perhaps while the window sits behind other
   // work, so coming back to it asks again. Nothing leaves this computer: the
   // answer is worked out in the main process from the clock.
@@ -368,6 +382,10 @@ async function mount(): Promise<void> {
     .then((next) => context.applyEngine(next))
     .catch(() => undefined)
   refreshLicence()
+  void window.murmur
+    .getUpdateStatus()
+    .then(applyUpdate)
+    .catch(() => undefined)
 }
 
 void mount()

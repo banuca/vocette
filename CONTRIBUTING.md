@@ -21,8 +21,10 @@ and trust.
   tomorrow.
 - **No privileged input.** No input daemon, no `uinput` group, no running as
   administrator or root, on any platform.
-- **No telemetry, no analytics, no auto-update calls.** Ever. This is part of
-  the privacy contract in [SECURITY.md](SECURITY.md).
+- **No telemetry, no analytics, no automatic updates.** Ever. The one update
+  request is GitHub's latest-release lookup, and it runs only when the user has
+  switched the check on or pressed Check now. This is part of the privacy
+  contract in [SECURITY.md](SECURITY.md).
 - **Renderers stay sandboxed.** Keep `contextIsolation: true`, `sandbox: true`
   and the restrictive CSP; all network access stays in the main process.
 - **Never write a credential somewhere it is not really protected.** If the OS

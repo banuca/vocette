@@ -3,6 +3,7 @@ import type { AppContext } from '../app-context'
 import { escapeHtml } from '../dom'
 import { LOCAL_MODEL_INFO } from '../../shared/speech-model'
 import type { TranscriptionEngine } from '../../shared/types'
+import { updateResultText, type UpdateStatus } from '../../shared/update'
 
 /** Names the platform, and the display server where that changes what works. */
 function platformName(context: AppContext): string {
@@ -42,6 +43,17 @@ export const PRO_ACTIVATION_NOTICE =
   'Activating Pro sends your licence key and a device label to Polar, the payment provider, ' +
   'once, when you press Activate.'
 
+/** The update check's one request, said with the others. */
+export const UPDATE_CHECK_NOTICE =
+  'Checking for updates, which you switch on below or ask for with Check now, asks GitHub ' +
+  'for the latest version number and sends nothing about you.'
+
+/** Under the switch, where it is turned on. */
+export const UPDATE_CHECK_EXPLANATION =
+  'Sends one request to GitHub (api.github.com) asking for the latest Murmur version. ' +
+  'Nothing about you or your dictation is sent. Murmur never downloads or installs anything ' +
+  'by itself.'
+
 /**
  * What leaves this computer, for the engine actually in use. Telling an
  * on-device user that their audio goes to "the provider you configure" would
@@ -52,18 +64,24 @@ export function privacyNotice(engine: TranscriptionEngine): string {
     return (
       `${INDEPENDENT} Your audio is transcribed on this PC and never leaves it, and ` +
       'neither does the vocabulary you set in Settings. The only thing Murmur downloads is ' +
-      `the speech model, once, from Hugging Face. ${PRO_ACTIVATION_NOTICE}`
+      `the speech model, once, from Hugging Face. ${PRO_ACTIVATION_NOTICE} ` +
+      UPDATE_CHECK_NOTICE
     )
   }
   return (
     `${INDEPENDENT} It sends your audio — and the vocabulary you set in Settings, which is ` +
     'what makes those words come back spelled correctly — only to the transcription provider ' +
-    `you configure, using your own API key. ${PRO_ACTIVATION_NOTICE} Nothing else leaves ` +
-    'this computer.'
+    `you configure, using your own API key. ${PRO_ACTIVATION_NOTICE} ${UPDATE_CHECK_NOTICE} ` +
+    'Nothing else leaves this computer.'
   )
 }
 
-export function renderAbout(context: AppContext): void {
+/** The About page, kept up to date while it is open. */
+export interface AboutView {
+  applyUpdate(status: UpdateStatus): void
+}
+
+export function renderAbout(context: AppContext): AboutView {
   context.setHeading('About', 'A small, inspectable voice tool built for people—not subscriptions.')
   const { engine } = context.settings
 
@@ -90,6 +108,15 @@ export function renderAbout(context: AppContext): void {
           : ''
       }
     </section>
+    <section class="notice-card updates-card" aria-labelledby="updates-heading">
+      <h3 id="updates-heading">Updates</h3>
+      <label class="toggle-row" id="row-update-check"><div><strong>Check for updates once a day</strong><span id="update-check-explanation"></span></div><input id="update-check" type="checkbox" /><i></i></label>
+      <div class="update-actions">
+        <button class="secondary-button" id="check-updates" type="button">Check now</button>
+        <p class="update-result" id="update-result" aria-live="polite"></p>
+        <button class="link-button" id="open-release" type="button" hidden>Download</button>
+      </div>
+    </section>
     <section class="notice-card attributions-card">
       <h3>Attributions</h3>
       <ul class="attribution-list" id="attributions"></ul>
@@ -113,4 +140,49 @@ export function renderAbout(context: AppContext): void {
   context.content.querySelector('#open-transcription-docs')?.addEventListener('click', () => {
     void window.murmur.openExternal('transcription-docs')
   })
+
+  const explanation = context.content.querySelector<HTMLElement>('#update-check-explanation')
+  if (explanation) explanation.textContent = UPDATE_CHECK_EXPLANATION
+  const toggle = context.content.querySelector<HTMLInputElement>('#update-check')
+  const checkNow = context.content.querySelector<HTMLButtonElement>('#check-updates')
+  const result = context.content.querySelector<HTMLElement>('#update-result')
+  const download = context.content.querySelector<HTMLButtonElement>('#open-release')
+
+  const applyUpdate = (status: UpdateStatus): void => {
+    if (toggle) toggle.checked = status.enabled
+    if (checkNow) checkNow.disabled = status.state === 'checking'
+    if (result) {
+      result.textContent = updateResultText(status)
+      result.classList.toggle('is-error', status.state === 'error')
+    }
+    if (download) download.hidden = status.state !== 'available'
+  }
+
+  toggle?.addEventListener('change', () => {
+    const enabled = toggle.checked
+    void window.murmur
+      .setUpdateCheck(enabled)
+      .then(applyUpdate)
+      .catch(() => {
+        // The store refused; show what is really saved.
+        toggle.checked = !enabled
+      })
+  })
+  checkNow?.addEventListener('click', () => {
+    void window.murmur
+      .checkForUpdates()
+      .then(applyUpdate)
+      .catch(() => undefined)
+  })
+  download?.addEventListener('click', () => {
+    void window.murmur.openExternal('release')
+  })
+
+  // Drawn as "not checked yet" until the main process answers.
+  void window.murmur
+    .getUpdateStatus()
+    .then(applyUpdate)
+    .catch(() => undefined)
+
+  return { applyUpdate }
 }

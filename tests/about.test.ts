@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
-import { PRO_ACTIVATION_NOTICE, attributions, privacyNotice } from '../src/renderer/pages/about'
+import {
+  PRO_ACTIVATION_NOTICE,
+  UPDATE_CHECK_EXPLANATION,
+  UPDATE_CHECK_NOTICE,
+  attributions,
+  privacyNotice
+} from '../src/renderer/pages/about'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import { MODEL_NOT_READY_REASON } from '../src/shared/engine'
 import type { PublicSettings, TranscriptionEngine } from '../src/shared/types'
+import type { UpdateStatus } from '../src/shared/update'
 
 /**
  * The About page makes claims about where audio goes. They have to be true
@@ -30,6 +37,16 @@ const PLATFORM: PlatformStatus = {
 class FakeElement {
   innerHTML = ''
   textContent: string | null = ''
+  checked = false
+  disabled = false
+  hidden = false
+  readonly classes = new Set<string>()
+  readonly classList = {
+    toggle: (name: string, on: boolean): void => {
+      if (on) this.classes.add(name)
+      else this.classes.delete(name)
+    }
+  }
   children: FakeElement[] = []
   readonly listeners: Array<() => void> = []
 
@@ -55,7 +72,20 @@ class FakeElement {
   }
 }
 
-function render(engine: TranscriptionEngine) {
+const NOT_CHECKED: UpdateStatus = {
+  enabled: false,
+  state: 'idle',
+  current: '0.4.0',
+  latest: null,
+  checkedAt: null,
+  error: null
+}
+
+async function flush(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve))
+}
+
+function render(engine: TranscriptionEngine, update: UpdateStatus = NOT_CHECKED) {
   const content = new FakeElement(new Map())
   const context: AppContext = {
     content: content as unknown as HTMLElement,
@@ -87,9 +117,14 @@ function render(engine: TranscriptionEngine) {
     reloadHistory: vi.fn(async () => undefined)
   }
   const openExternal = vi.fn(async () => undefined)
-  vi.stubGlobal('window', { murmur: { openExternal } })
+  const getUpdateStatus = vi.fn(async () => update)
+  const checkForUpdates = vi.fn(async (): Promise<UpdateStatus> => ({ ...update, state: 'latest' }))
+  const setUpdateCheck = vi.fn(async (enabled: boolean) => ({ ...update, enabled }))
+  vi.stubGlobal('window', {
+    murmur: { openExternal, getUpdateStatus, checkForUpdates, setUpdateCheck }
+  })
   vi.stubGlobal('document', { createElement: () => new FakeElement() })
-  return { content, context, openExternal }
+  return { content, context, openExternal, getUpdateStatus, checkForUpdates, setUpdateCheck }
 }
 
 afterEach(() => {
@@ -118,6 +153,15 @@ describe('privacyNotice', () => {
     const cloud = privacyNotice('cloud')
     expect(cloud).toContain(PRO_ACTIVATION_NOTICE)
     expect(cloud.indexOf(PRO_ACTIVATION_NOTICE)).toBeLessThan(
+      cloud.indexOf('Nothing else leaves this computer.')
+    )
+  })
+
+  it('says what the update check sends, on either engine, before claiming nothing else leaves', () => {
+    expect(privacyNotice('local')).toContain(UPDATE_CHECK_NOTICE)
+    const cloud = privacyNotice('cloud')
+    expect(cloud).toContain(UPDATE_CHECK_NOTICE)
+    expect(cloud.indexOf(UPDATE_CHECK_NOTICE)).toBeLessThan(
       cloud.indexOf('Nothing else leaves this computer.')
     )
   })
@@ -165,5 +209,88 @@ describe('renderAbout', () => {
     const docs = content.querySelector('#open-transcription-docs')
     docs?.listeners.forEach((listener) => listener())
     expect(openExternal).toHaveBeenCalledWith('transcription-docs')
+  })
+})
+
+describe('the Updates section', () => {
+  it('is off until switched on, and says exactly what a check sends', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context, getUpdateStatus } = render('local')
+    renderAbout(context)
+    await flush()
+    expect(content.innerHTML).toContain('<strong>Check for updates once a day</strong>')
+    expect(content.querySelector('#update-check-explanation')?.textContent).toBe(
+      UPDATE_CHECK_EXPLANATION
+    )
+    expect(UPDATE_CHECK_EXPLANATION).toBe(
+      'Sends one request to GitHub (api.github.com) asking for the latest Murmur version. ' +
+        'Nothing about you or your dictation is sent. Murmur never downloads or installs ' +
+        'anything by itself.'
+    )
+    expect(getUpdateStatus).toHaveBeenCalledTimes(1)
+    expect(content.querySelector('#update-check')?.checked).toBe(false)
+    expect(content.querySelector('#update-result')?.textContent).toBe('')
+    expect(content.querySelector('#open-release')?.hidden).toBe(true)
+  })
+
+  it('saves the switch, and checks when asked whether or not it is on', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context, setUpdateCheck, checkForUpdates } = render('local')
+    renderAbout(context)
+    await flush()
+
+    const toggle = content.querySelector('#update-check')
+    if (toggle) toggle.checked = true
+    toggle?.listeners.forEach((listener) => listener())
+    await flush()
+    expect(setUpdateCheck).toHaveBeenCalledWith(true)
+    expect(toggle?.checked).toBe(true)
+
+    content.querySelector('#check-updates')?.listeners.forEach((listener) => listener())
+    await flush()
+    expect(checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(content.querySelector('#update-result')?.textContent).toBe(
+      'You have the latest version (0.4.0).'
+    )
+  })
+
+  it('offers the release page once a newer version is found, and nothing else', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const available: UpdateStatus = {
+      ...NOT_CHECKED,
+      state: 'available',
+      latest: 'v0.6.0',
+      checkedAt: '2026-09-28T10:00:00.000Z'
+    }
+    const { content, context, openExternal } = render('local', available)
+    renderAbout(context)
+    await flush()
+    expect(content.querySelector('#update-result')?.textContent).toBe('Murmur 0.6.0 is available.')
+    const download = content.querySelector('#open-release')
+    expect(download?.hidden).toBe(false)
+    download?.listeners.forEach((listener) => listener())
+    expect(openExternal).toHaveBeenCalledWith('release')
+  })
+
+  it('shows why a check failed, and follows a status pushed while the page is open', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context } = render('local')
+    const view = renderAbout(context)
+    await flush()
+    view.applyUpdate({ ...NOT_CHECKED, state: 'checking' })
+    expect(content.querySelector('#update-result')?.textContent).toBe('Checking…')
+    expect(content.querySelector('#check-updates')?.disabled).toBe(true)
+
+    view.applyUpdate({
+      ...NOT_CHECKED,
+      state: 'error',
+      error: 'Could not reach GitHub. Check your internet connection and try again.'
+    })
+    const result = content.querySelector('#update-result')
+    expect(result?.textContent).toBe(
+      'Could not reach GitHub. Check your internet connection and try again.'
+    )
+    expect(result?.classes.has('is-error')).toBe(true)
+    expect(content.querySelector('#check-updates')?.disabled).toBe(false)
   })
 })
