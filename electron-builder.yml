@@ -44,6 +44,17 @@ win:
       arch: [x64]
   icon: resources/icon.png
   artifactName: ${name}-${version}-win-${arch}.${ext}
+  # Never asks for administrator rights: Murmur installs per user and runs as
+  # the user, which is also what keeps its keyboard hook out of elevated apps.
+  requestedExecutionLevel: asInvoker
+  # Signing: set WIN_CSC_LINK (or CSC_LINK) and CSC_KEY_PASSWORD to a PFX and
+  # electron-builder signs the installer and the executable. For a new
+  # publisher, Azure Trusted Signing is the better route — see docs/release.md:
+  # azureSignOptions:
+  #   publisherName: <the name on the Trusted Signing certificate profile>
+  #   endpoint: https://<region>.codesigning.azure.net
+  #   certificateProfileName: <profile>
+  #   codeSigningAccountName: <account>
 
 nsis:
   oneClick: false
@@ -52,6 +63,11 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Murmur
+  # Uninstalling keeps settings, history and the speech model: a reinstall
+  # picks up where the user left off. They are removed by hand, and the
+  # website's FAQ says where.
+  deleteAppDataOnUninstall: false
+  license: resources/eula.txt
 
 mac:
   target:

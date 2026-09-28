@@ -4,3 +4,6 @@
 *.png binary
 *.ico binary
 *.node binary
+
+# NSIS shows the installer licence with Windows line endings.
+resources/eula.txt text eol=crlf
