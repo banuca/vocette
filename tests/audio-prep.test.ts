@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { encodeWavPcm16, findSpeechBounds, windowRms } from '../src/renderer/audio-prep'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  encodeWavPcm16,
+  findSpeechBounds,
+  prepareForTranscription,
+  prepareSamples,
+  windowRms
+} from '../src/renderer/audio-prep'
 
 function tone(frequency: number, sampleRate: number, length: number, amplitude = 0.5): Float32Array {
   const samples = new Float32Array(length)
@@ -56,6 +62,60 @@ describe('findSpeechBounds', () => {
     expect(start).toBe(0)
     expect(end).toBeLessThanOrEqual(RATE)
     expect(end).toBeGreaterThan(RATE / 2)
+  })
+})
+
+describe('prepareSamples: whether a take held any speech', () => {
+  const RATE = 16000
+
+  it('reports a silent buffer as holding no speech', () => {
+    const prepared = prepareSamples(new Float32Array(RATE), RATE)
+    expect(prepared.speechDetected).toBe(false)
+  })
+
+  it('reports a quiet sine at 0.01 as speech, because a whisper must still be sent', () => {
+    const prepared = prepareSamples(tone(220, RATE, RATE, 0.01), RATE)
+    expect(prepared.speechDetected).toBe(true)
+    expect(prepared.mimeType).toBe('audio/wav')
+  })
+
+  it('still trims the silence around a take that held speech', () => {
+    // One second of silence either side of a one-second tone.
+    const samples = new Float32Array(RATE * 3)
+    samples.set(tone(440, RATE, RATE, 0.4), RATE)
+    const bounds = findSpeechBounds(samples, RATE) as [number, number]
+
+    const prepared = prepareSamples(samples, RATE)
+    expect(prepared.speechDetected).toBe(true)
+    expect(prepared.buffer.byteLength).toBe(44 + (bounds[1] - bounds[0]) * 2)
+  })
+})
+
+describe('prepareForTranscription', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('sends a take it cannot decode as it is, and never calls it silent', async () => {
+    // A codec quirk: the recording exists, but Web Audio cannot read it.
+    vi.stubGlobal(
+      'OfflineAudioContext',
+      class {
+        decodeAudioData(): Promise<AudioBuffer> {
+          return Promise.reject(new Error('Unable to decode audio data'))
+        }
+      }
+    )
+    const recording = new Uint8Array([26, 69, 223, 163])
+
+    const prepared = await prepareForTranscription(
+      new Blob([recording], { type: 'audio/webm' }),
+      'audio/webm'
+    )
+
+    expect(prepared.speechDetected).toBe(true)
+    expect(prepared.mimeType).toBe('audio/webm')
+    expect([...new Uint8Array(prepared.buffer)]).toEqual([...recording])
   })
 })
 

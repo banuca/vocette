@@ -720,18 +720,22 @@ function wavBytes(frames: number, sampleRate = 16000): Uint8Array {
   return new Uint8Array(buffer)
 }
 
-/** Records one take from the window's Record button and hands over `audio`. */
+/**
+ * Records one take from the window's Record button and hands over `audio`,
+ * with anything else in `extra` that the recorder window adds to its reply.
+ */
 async function dictateFromWindow(
   app: StartupHarness,
   audio: Uint8Array,
-  mimeType = 'audio/wav'
+  mimeType = 'audio/wav',
+  extra: Record<string, unknown> = {}
 ): Promise<void> {
   app.invoke('dictation:start', true)
   const start = app.sentToRecorder().find((message) => message.channel === 'recorder:start')
   const { requestId } = start?.payload as { requestId: string }
   app.emitFromRecorder('recorder:started', { requestId })
   app.invoke('dictation:stop', true)
-  app.emitFromRecorder('recorder:audio', { requestId, audio, mimeType, durationMs: 100 })
+  app.emitFromRecorder('recorder:audio', { requestId, audio, mimeType, durationMs: 100, ...extra })
   await app.settle()
 }
 
@@ -1026,5 +1030,42 @@ describe('listening from the keypress', () => {
     app.invoke('dictation:start', true)
     expect(recorderIds(app, 'recorder:start')).toHaveLength(1)
     expect(app.engine.prewarm).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a take the recorder heard no speech in', () => {
+  const lastWorkflowStatus = (app: StartupHarness): unknown =>
+    app
+      .sentToMain()
+      .filter((message) => message.channel === 'workflow:status')
+      .map((message) => message.payload)
+      .at(-1)
+
+  it('reaches neither engine, and ends on the neutral note', async () => {
+    const onDevice = await startApp({ engine: 'local', modelState: 'installed' })
+    await dictateFromWindow(onDevice, wavBytes(1600), 'audio/wav', { speechDetected: false })
+    expect(onDevice.engine.transcribe).not.toHaveBeenCalled()
+    expect(onDevice.historyAdds()).toEqual([])
+    expect(workflowErrors(onDevice)).toEqual([])
+    expect(lastWorkflowStatus(onDevice)).toEqual({
+      phase: 'cancelled',
+      message: 'No speech heard — nothing was sent.',
+      canRetry: false
+    })
+
+    // Had it reached the cloud service, the missing key would have failed it.
+    const cloud = await startApp({ engine: 'cloud', apiKeySource: 'stored' })
+    await dictateFromWindow(cloud, wavBytes(1600), 'audio/wav', { speechDetected: false })
+    expect(workflowErrors(cloud)).toEqual([])
+    expect(lastWorkflowStatus(cloud)).toMatchObject({ phase: 'cancelled' })
+  })
+
+  it('ignores a flag that is not a real boolean, and transcribes the take as before', async () => {
+    for (const speechDetected of ['false', 0, null]) {
+      const app = await startApp({ engine: 'local', modelState: 'installed' })
+      await dictateFromWindow(app, wavBytes(1600), 'audio/wav', { speechDetected })
+      expect(app.engine.transcribe).toHaveBeenCalledTimes(1)
+      expect(app.historyAdds()).toHaveLength(1)
+    }
   })
 })

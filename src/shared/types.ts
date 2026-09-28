@@ -238,6 +238,12 @@ export interface RecorderAudioPayload {
   audio: Uint8Array
   mimeType: string
   durationMs: number
+  /**
+   * False when the recorder found no speech anywhere in the take, which is
+   * then dismissed without being transcribed. Only an explicit false does
+   * that: a take without the flag is transcribed as it always was.
+   */
+  speechDetected?: boolean
 }
 
 export interface RecorderErrorPayload {

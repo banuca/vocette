@@ -30,6 +30,12 @@ const SUCCESS_RESET_MS = 1600
 const ERROR_RESET_MS = 4500
 /** Cancellation is an acknowledgement, not news; it clears quickly. */
 const CANCELLED_RESET_MS = 1200
+/**
+ * A take with no speech in it is dismissed the same neutral way, but shown a
+ * little longer: the user did not ask for it, so they need a moment to read
+ * why nothing happened.
+ */
+const NO_SPEECH_RESET_MS = 1600
 /** Small settle delay before the synthetic Ctrl+V, so clipboard writes propagate. */
 const PASTE_DELAY_MS = 80
 /**
@@ -625,6 +631,13 @@ export class DictationController {
     }
     this.clearDictationTimers()
 
+    // Only an explicit false counts, so a take whose flag is missing is sent
+    // for transcription as it always was.
+    if (payload.speechDetected === false) {
+      this.dismissSilentTake(payload.audio)
+      return
+    }
+
     // The payload arrives over IPC as a structured clone: this process is the
     // sole owner, so it is safe (and thriftier) to use it directly and zero
     // it in place once the take settles.
@@ -637,6 +650,33 @@ export class DictationController {
     }
     const attempt = this.beginProcessingAttempt(take, true)
     await this.processTake(attempt, 'Your audio is being converted to text', false)
+  }
+
+  /**
+   * Ends a take the recorder heard no speech in, without transcribing it. On
+   * either engine nothing is sent: a cloud provider bills nothing, and Whisper
+   * is given no silence to turn into "Thank you." Nothing reaches History or
+   * the clipboard, and nothing is kept for Retry: there is nothing to retry.
+   *
+   * The bar is deliberately low. `findSpeechBounds` finds no speech only when
+   * every 30 ms window is below max(4 % of the take's peak, 0.0015 RMS ≈
+   * −56 dBFS), so a whisper still passes and only a take that is silence
+   * throughout ends here.
+   */
+  private dismissSilentTake(audio: Uint8Array): void {
+    // Whatever attempt was still active gives way, exactly as it would to a
+    // take being transcribed.
+    this.cancelActiveAttempt()
+    audio.fill(0)
+    this.currentRequestId = ''
+    this.releaseRequested = false
+    this.stopRequested = false
+    this.clipboardOnly = false
+    // Neutral, like a cancellation: nothing went wrong, so it is not an error.
+    this.broadcast(
+      { phase: 'cancelled', message: 'No speech heard — nothing was sent.' },
+      NO_SPEECH_RESET_MS
+    )
   }
 
   onRecorderError(payload: RecorderErrorPayload): void {

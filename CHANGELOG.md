@@ -142,6 +142,15 @@ All notable changes to this project are documented here. This project adheres to
   ellipsis instead of collapsing it to a full stop.
 - German “um 10 Uhr” and Portuguese “um carro” keep their “um”, and a measurement in
   `mm` is not a hesitation.
+- **Silence stays silent.** Pressing and releasing the shortcut without saying anything
+  used to send the recording anyway: a cloud provider billed for the silence, Whisper
+  could paste “Thank you.” into your document, and an empty result came back as a failed
+  dictation with a Retry. Now a take with no speech in it is not transcribed by either
+  engine. The overlay says “No speech heard — nothing was sent.” for a moment, as a
+  neutral note rather than an error, and nothing is pasted, kept in History or offered
+  for Retry. The bar is low on purpose — a take counts as silent only when every 30 ms of
+  it stays below about −56 dBFS — so a whisper still goes through, and a recording Murmur
+  cannot decode is still sent as before.
 
 ## [0.4.0] — 2026-09-11
 

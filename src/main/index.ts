@@ -1062,7 +1062,13 @@ function registerIpc(): void {
   })
   ipcMain.on('recorder:audio', (event, payload: RecorderAudioPayload) => {
     if (!fromRecorder(event)) return
-    if (payload && typeof payload.requestId === 'string') void dictation.onRecorderAudio(payload)
+    if (!payload || typeof payload.requestId !== 'string') return
+    // The flag decides whether a take is transcribed at all, so it is taken
+    // only as a real boolean. Anything else is ignored, and the take is sent
+    // for transcription as it was before the recorder could tell.
+    const speechDetected =
+      typeof payload.speechDetected === 'boolean' ? payload.speechDetected : undefined
+    void dictation.onRecorderAudio({ ...payload, speechDetected })
   })
   ipcMain.on('recorder:error', (event, payload: RecorderErrorPayload) => {
     if (!fromRecorder(event)) return

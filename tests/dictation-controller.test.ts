@@ -2561,3 +2561,106 @@ describe('your words, corrected after recognition', () => {
     )
   })
 })
+
+describe('silence stays silent', () => {
+  /** A shortcut take the recorder found no speech in, handed over. */
+  async function silentTake(
+    harness: ReturnType<typeof makeHarness>,
+    audio = new Uint8Array([1, 2, 3, 4])
+  ): Promise<string> {
+    const requestId = harness.beginRecording()
+    harness.controller.onShortcutReleased()
+    await harness.controller.onRecorderAudio({
+      requestId,
+      audio,
+      mimeType: 'audio/wav',
+      durationMs: 1400,
+      speechDetected: false
+    })
+    return requestId
+  }
+
+  it.each(['cloud', 'local'] as const)(
+    'sends a silent take to neither engine, and keeps or delivers nothing (%s)',
+    async (engine) => {
+      const harness = makeHarness({ settings: { engine } })
+      const { controller, deps } = harness
+      deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+      const audio = new Uint8Array([1, 2, 3, 4])
+      await silentTake(harness, audio)
+
+      expect(deps.transcribe).not.toHaveBeenCalled()
+      expect(deps.recordHistory).not.toHaveBeenCalled()
+      expect(deps.snapshotClipboard).not.toHaveBeenCalled()
+      expect(deps.writeClipboard).not.toHaveBeenCalled()
+      expect(deps.paste).not.toHaveBeenCalled()
+      expect(controller.canRetry()).toBe(false)
+      expect(deps.onRetryChanged).not.toHaveBeenCalled()
+      // Only the start cue: no error sound, and no success sound either.
+      expect(deps.playSound.mock.calls).toEqual([['start']])
+      expect([...audio]).toEqual([0, 0, 0, 0])
+      expect(deps.broadcastStatus).toHaveBeenLastCalledWith({
+        phase: 'cancelled',
+        message: 'No speech heard — nothing was sent.',
+        canRetry: false
+      })
+      // Straight from listening to the note: nothing was ever "Transcribing…".
+      expect(deps.broadcastStatus).not.toHaveBeenCalledWith(
+        expect.objectContaining({ phase: 'processing' })
+      )
+    }
+  )
+
+  it('shows the note for about 1.6 s, and nothing fires after it', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    await silentTake(harness)
+
+    vi.advanceTimersByTime(1599)
+    expect(controller.getStatus().phase).toBe('cancelled')
+    vi.advanceTimersByTime(1)
+    expect(controller.getStatus().phase).toBe('idle')
+
+    // The stop watchdog and the five-minute cap went with the take, and the
+    // recorder, which has already finished it, is told nothing more.
+    vi.advanceTimersByTime(5 * 60 * 1000)
+    expect(deps.broadcastStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'error' })
+    )
+    expect(deps.sendToRecorder).not.toHaveBeenCalledWith('recorder:cancel', expect.anything())
+    expect(deps.transcribe).not.toHaveBeenCalled()
+  })
+
+  it('lets the next press start at once, while the note is still showing', async () => {
+    const harness = makeHarness()
+    const { controller } = harness
+    const silent = await silentTake(harness)
+
+    const next = harness.beginRecording()
+    expect(next).not.toBe(silent)
+    expect(controller.getStatus().phase).toBe('recording')
+    // The note's own timer must not reset the new take underneath it.
+    vi.advanceTimersByTime(1600)
+    expect(controller.getStatus().phase).toBe('recording')
+  })
+
+  it('still transcribes a take that held speech, or that carries no flag at all', async () => {
+    for (const speechDetected of [true, undefined]) {
+      const { controller, deps, beginRecording } = makeHarness()
+      const requestId = beginRecording()
+      controller.onShortcutReleased()
+      const promise = controller.onRecorderAudio({
+        requestId,
+        audio: new Uint8Array([1, 2]),
+        mimeType: 'audio/wav',
+        durationMs: 900,
+        speechDetected
+      })
+      await vi.advanceTimersByTimeAsync(80)
+      await promise
+
+      expect(deps.transcribe).toHaveBeenCalledTimes(1)
+      expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 900, 'gpt-transcribe')
+    }
+  })
+})

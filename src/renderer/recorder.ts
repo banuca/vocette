@@ -188,7 +188,10 @@ async function start(request: RecorderStartRequest): Promise<void> {
                 requestId: take.requestId,
                 audio,
                 mimeType: prepared.mimeType,
-                durationMs
+                durationMs,
+                // Main decides what a silent take means; the recorder only
+                // says what it measured.
+                speechDetected: prepared.speechDetected
               })
             } finally {
               audio.fill(0)

@@ -26,9 +26,16 @@ function makeStream() {
   return { stream, track }
 }
 
+/** What the mocked audio preparation resolves with. */
+interface Preparation {
+  buffer: ArrayBuffer
+  mimeType: string
+  speechDetected?: boolean
+}
+
 async function makeRecorderHarness() {
   const opens: Array<ReturnType<typeof deferred<MediaStream>>> = []
-  const preparations: Array<Promise<{ buffer: ArrayBuffer; mimeType: string }>> = []
+  const preparations: Array<Promise<Preparation>> = []
   const queuedTasks: Array<() => void> = []
   const getUserMedia = vi.fn(() => {
     const open = opens.shift()
@@ -138,7 +145,7 @@ async function makeRecorderHarness() {
       opens.push(open)
       return open
     },
-    queuePreparation: (preparation: Promise<{ buffer: ArrayBuffer; mimeType: string }>) => {
+    queuePreparation: (preparation: Promise<Preparation>) => {
       preparations.push(preparation)
     },
     runNextTask: async () => {
@@ -290,7 +297,7 @@ describe('recorder take ownership', () => {
     const next = makeStream()
     const preparedAudio = new Uint8Array([9, 8, 7])
     harness.queuePreparation(
-      Promise.resolve({ buffer: preparedAudio.buffer, mimeType: 'audio/wav' })
+      Promise.resolve({ buffer: preparedAudio.buffer, mimeType: 'audio/wav', speechDetected: true })
     )
     vi.spyOn(Date, 'now').mockReturnValueOnce(1_000).mockReturnValueOnce(1_450)
 
@@ -312,7 +319,8 @@ describe('recorder take ownership', () => {
       requestId: 'successful-take',
       audio: new Uint8Array([9, 8, 7]),
       mimeType: 'audio/wav',
-      durationMs: 450
+      durationMs: 450,
+      speechDetected: true
     }])
     expect(first.track.stop).toHaveBeenCalledTimes(1)
     expect(harness.bridge.sendError).not.toHaveBeenCalled()
@@ -365,5 +373,36 @@ describe('recorder take ownership', () => {
 
     harness.onCancel({ requestId: 'newer-take' })
     expect(newer.track.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells main when the prepared take held no speech, and still settles it', async () => {
+    const harness = await makeRecorderHarness()
+    const open = harness.queueOpen()
+    const microphone = makeStream()
+    harness.queuePreparation(
+      Promise.resolve({
+        buffer: new Uint8Array([0, 0]).buffer,
+        mimeType: 'audio/wav',
+        speechDetected: false
+      })
+    )
+
+    harness.onStart({ requestId: 'silent-take', microphoneId: '' })
+    open.resolve(microphone.stream)
+    await flushAsyncStart()
+    harness.recorders.at(-1)?.setFinalData(
+      new Blob([new Uint8Array([1])], { type: 'audio/webm' })
+    )
+    harness.onStop({ requestId: 'silent-take' })
+    await harness.runNextTask()
+
+    // Main decides what silence means; the recorder reports it once, as audio,
+    // never as an error.
+    expect(harness.bridge.sendAudio).toHaveBeenCalledTimes(1)
+    expect(harness.audioReplies[0]).toEqual(
+      expect.objectContaining({ requestId: 'silent-take', speechDetected: false })
+    )
+    expect(harness.bridge.sendError).not.toHaveBeenCalled()
+    expect(microphone.track.stop).toHaveBeenCalledTimes(1)
   })
 })
