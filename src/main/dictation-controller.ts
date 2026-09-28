@@ -691,6 +691,21 @@ export class DictationController {
     this.fail(payload.message)
   }
 
+  /**
+   * True only while this request is the take being recorded right now: not
+   * while its microphone is still opening, not once its audio has been handed
+   * over, and never after it was cancelled, failed or replaced. The overlay's
+   * level meter is fed through this, so a stray reading from any other take
+   * cannot move it.
+   */
+  isRecordingRequest(requestId: string): boolean {
+    return (
+      requestId !== '' &&
+      requestId === this.currentRequestId &&
+      this.currentStatus.phase === 'recording'
+    )
+  }
+
   /** Shows a dictation error from outside the workflow (e.g. a hook fault). */
   reportError(message: string): void {
     this.fail(message)

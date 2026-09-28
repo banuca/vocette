@@ -67,6 +67,7 @@ import {
   type PasteLastStatus,
   type RecorderAudioPayload,
   type RecorderErrorPayload,
+  type RecorderLevelPayload,
   type RecorderStartedPayload,
   type SettingsUpdate,
   type WorkflowStatus
@@ -1075,6 +1076,16 @@ function registerIpc(): void {
     if (payload && typeof payload.requestId === 'string' && typeof payload.message === 'string') {
       dictation.onRecorderError(payload)
     }
+  })
+  // The live level exists only to move the overlay's meter. It is passed on
+  // for the take being recorded right now and at no other time, to the
+  // overlay and no other window, and is never kept or logged.
+  ipcMain.on('recorder:level', (event, payload: RecorderLevelPayload) => {
+    if (!fromRecorder(event)) return
+    if (!payload || typeof payload.requestId !== 'string') return
+    if (typeof payload.level !== 'number' || !Number.isFinite(payload.level)) return
+    if (!dictation.isRecordingRequest(payload.requestId)) return
+    overlayWindow?.webContents.send('workflow:level', Math.min(1, Math.max(0, payload.level)))
   })
 }
 

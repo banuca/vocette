@@ -64,6 +64,16 @@ const api = {
     ipcRenderer.on('workflow:status', listener)
     return () => ipcRenderer.removeListener('workflow:status', listener)
   },
+  /**
+   * The microphone level, 0–1, while a take is recording. This preload is
+   * shared, but the main process sends the level to the overlay alone, so in
+   * the main window this listener never hears anything.
+   */
+  onLevel: (callback: (level: number) => void): (() => void) => {
+    const listener = (_event: unknown, level: number): void => callback(level)
+    ipcRenderer.on('workflow:level', listener)
+    return () => ipcRenderer.removeListener('workflow:level', listener)
+  },
   onPlatformStatus: (callback: (status: PlatformStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: PlatformStatus): void => callback(status)
     ipcRenderer.on('platform:status', listener)

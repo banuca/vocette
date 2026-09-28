@@ -251,6 +251,16 @@ export interface RecorderErrorPayload {
   message: string
 }
 
+/**
+ * How loud the microphone is right now: the peak of the last reading, 0–1,
+ * rounded to two decimals. It exists only to move the overlay's meter, so the
+ * main process forwards it there and nowhere else, and nothing keeps it.
+ */
+export interface RecorderLevelPayload {
+  requestId: string
+  level: number
+}
+
 /** Live chord being captured by the "Change shortcut" button. */
 export interface ShortcutCapture {
   keys: number[]

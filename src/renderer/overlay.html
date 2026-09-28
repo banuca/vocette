@@ -45,7 +45,22 @@
         <div class="message" id="message">Ready</div>
         <div class="detail" id="detail"></div>
       </div>
-      <div class="timer" id="timer"></div>
+      <div class="readout">
+        <!--
+          The live level while recording: five bars, or one dot that brightens
+          where motion is reduced. Hidden from assistive technology, which is
+          already told what is happening by the message.
+        -->
+        <span class="level" id="level" aria-hidden="true">
+          <i class="level-bar"></i>
+          <i class="level-bar"></i>
+          <i class="level-bar"></i>
+          <i class="level-bar"></i>
+          <i class="level-bar"></i>
+          <i class="level-dot" id="level-dot"></i>
+        </span>
+        <div class="timer" id="timer"></div>
+      </div>
     </div>
   </body>
 </html>

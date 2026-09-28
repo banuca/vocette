@@ -33,10 +33,75 @@ interface Preparation {
   speechDetected?: boolean
 }
 
+type FakeContextState = 'suspended' | 'running' | 'closed'
+
+/** How the next level meter's audio context behaves, set by each test. */
+interface AudioBehaviour {
+  /** The state a new context starts in. */
+  startState: FakeContextState
+  /** Whether `resume()` gets a suspended context running. */
+  resumes: boolean
+  /** Thrown by the constructor, as when there is no audio device at all. */
+  constructorError: Error | null
+  /** Thrown when the microphone is connected to the context. */
+  sourceError: Error | null
+  /** What every analyser reading sees. */
+  samples: number[]
+}
+
 async function makeRecorderHarness() {
   const opens: Array<ReturnType<typeof deferred<MediaStream>>> = []
   const preparations: Array<Promise<Preparation>> = []
   const queuedTasks: Array<() => void> = []
+  // The level meter's timer is driven by hand, one reading per `tickLevels`.
+  const intervals = new Map<number, { callback: () => void; delay: number }>()
+  let nextInterval = 1
+  const audio: AudioBehaviour = {
+    startState: 'running',
+    resumes: true,
+    constructorError: null,
+    sourceError: null,
+    samples: [0]
+  }
+  const contexts: FakeAudioContext[] = []
+
+  class FakeAnalyser {
+    fftSize = 2048
+    getFloatTimeDomainData(target: Float32Array): void {
+      target.fill(0)
+      audio.samples.forEach((sample, index) => {
+        if (index < target.length) target[index] = sample
+      })
+    }
+  }
+
+  class FakeAudioContext {
+    state: FakeContextState
+    readonly sources: MediaStream[] = []
+    readonly close = vi.fn(async () => {
+      if (this.state === 'closed') throw new DOMException('Already closed', 'InvalidStateError')
+      this.state = 'closed'
+    })
+    readonly resume = vi.fn(async () => {
+      if (audio.resumes && this.state === 'suspended') this.state = 'running'
+    })
+
+    constructor() {
+      if (audio.constructorError) throw audio.constructorError
+      this.state = audio.startState
+      contexts.push(this)
+    }
+
+    createAnalyser(): FakeAnalyser {
+      return new FakeAnalyser()
+    }
+
+    createMediaStreamSource(stream: MediaStream) {
+      if (audio.sourceError) throw audio.sourceError
+      this.sources.push(stream)
+      return { connect: vi.fn() }
+    }
+  }
   const getUserMedia = vi.fn(() => {
     const open = opens.shift()
     if (!open) throw new Error('No microphone open was queued for this test.')
@@ -69,7 +134,8 @@ async function makeRecorderHarness() {
     sendAudio: vi.fn((payload: RecorderAudioPayload) => {
       audioReplies.push({ ...payload, audio: payload.audio.slice() })
     }),
-    sendError: vi.fn()
+    sendError: vi.fn(),
+    sendLevel: vi.fn()
   }
 
   const recorders: FakeMediaRecorder[] = []
@@ -119,15 +185,30 @@ async function makeRecorderHarness() {
     setFinalData(data: Blob): void {
       this.finalData = data
     }
+
+    /** The device failing mid-take, as a real recorder reports it. */
+    fail(): void {
+      this.listeners.get('error')?.forEach((listener) => listener())
+    }
   }
 
   vi.stubGlobal('window', {
     recorder: bridge,
     setTimeout: globalThis.setTimeout,
-    clearTimeout: globalThis.clearTimeout
+    clearTimeout: globalThis.clearTimeout,
+    setInterval: (callback: () => void, delay: number): number => {
+      const id = nextInterval
+      nextInterval += 1
+      intervals.set(id, { callback, delay })
+      return id
+    },
+    clearInterval: (id: number): void => {
+      intervals.delete(id)
+    }
   })
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
   vi.stubGlobal('MediaRecorder', FakeMediaRecorder)
+  vi.stubGlobal('AudioContext', FakeAudioContext)
 
   await import('../src/renderer/recorder')
 
@@ -140,6 +221,17 @@ async function makeRecorderHarness() {
     onCancel,
     prepareForTranscription,
     recorders,
+    audio,
+    contexts,
+    /** Every level timer still running, by its period in milliseconds. */
+    levelTimerPeriods: () => [...intervals.values()].map((interval) => interval.delay),
+    /** One reading from every level timer still running. */
+    tickLevels: () => {
+      for (const interval of [...intervals.values()]) interval.callback()
+    },
+    /** True once every audio context any take opened has been closed. */
+    allContextsClosed: () =>
+      contexts.every((context) => context.state === 'closed' && context.close.mock.calls.length === 1),
     queueOpen: () => {
       const open = deferred<MediaStream>()
       opens.push(open)
@@ -211,6 +303,11 @@ describe('recorder take ownership', () => {
     expect(harness.bridge.sendError).not.toHaveBeenCalledWith(
       expect.objectContaining({ requestId: 'take-c' })
     )
+    // The late failure leaves the newer take's level meter reading, and only
+    // under the newer take's own id.
+    harness.audio.samples = [0.25]
+    harness.tickLevels()
+    expect(harness.bridge.sendLevel).toHaveBeenLastCalledWith({ requestId: 'take-d', level: 0.25 })
 
     // Audio preparation also belongs to its take. Cancelling it allows a new
     // recording, and its late result must not be emitted into that recording.
@@ -235,6 +332,12 @@ describe('recorder take ownership', () => {
 
     harness.onCancel({ requestId: 'take-e' })
     expect(newest.track.stop).toHaveBeenCalledTimes(1)
+
+    // Takes b, d and e each had a meter, and each closed it once; the opens
+    // that were cancelled before a stream arrived never made one.
+    expect(harness.contexts).toHaveLength(3)
+    expect(harness.allContextsClosed()).toBe(true)
+    expect(harness.levelTimerPeriods()).toEqual([])
   })
 
   it('closes a stream that arrives after a cancel sent while the device was still opening', async () => {
@@ -332,6 +435,10 @@ describe('recorder take ownership', () => {
 
     harness.onCancel({ requestId: 'next-take' })
     expect(next.track.stop).toHaveBeenCalledTimes(1)
+
+    expect(harness.contexts).toHaveLength(2)
+    expect(harness.allContextsClosed()).toBe(true)
+    expect(harness.levelTimerPeriods()).toEqual([])
   })
 
   it('suppresses queued completion after cancellation without disturbing a newer take', async () => {
@@ -370,9 +477,256 @@ describe('recorder take ownership', () => {
     expect(harness.bridge.sendStarted).toHaveBeenLastCalledWith({ requestId: 'newer-take' })
     expect(newerRecorder?.state).toBe('recording')
     expect(newer.track.stop).not.toHaveBeenCalled()
+    // Nor its level meter: the abandoned take closed only its own context.
+    expect(harness.contexts[0]?.state).toBe('closed')
+    expect(harness.contexts[1]?.state).toBe('running')
+    harness.audio.samples = [-0.3]
+    harness.tickLevels()
+    expect(harness.bridge.sendLevel).toHaveBeenLastCalledWith({ requestId: 'newer-take', level: 0.3 })
 
     harness.onCancel({ requestId: 'newer-take' })
     expect(newer.track.stop).toHaveBeenCalledTimes(1)
+    expect(harness.allContextsClosed()).toBe(true)
+    expect(harness.levelTimerPeriods()).toEqual([])
+  })
+})
+
+type Harness = Awaited<ReturnType<typeof makeRecorderHarness>>
+type RecordingTake = Awaited<ReturnType<typeof recordingTake>>
+
+/** Opens a take and lets it reach recording, with its level meter running. */
+async function recordingTake(harness: Harness, requestId = 'take') {
+  const open = harness.queueOpen()
+  const microphone = makeStream()
+  harness.onStart({ requestId, microphoneId: '' })
+  open.resolve(microphone.stream)
+  await flushAsyncStart()
+  return { microphone, recorder: harness.recorders.at(-1) }
+}
+
+describe('the live level meter', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.doUnmock('../src/renderer/audio-prep')
+    vi.unstubAllGlobals()
+  })
+
+  it('reads its own take about 14 times a second while recording, and closes once the audio is sent', async () => {
+    const harness = await makeRecorderHarness()
+    const open = harness.queueOpen()
+    const microphone = makeStream()
+
+    harness.onStart({ requestId: 'take', microphoneId: '' })
+    // Nothing to read while the microphone is still opening.
+    expect(harness.contexts).toHaveLength(0)
+    open.resolve(microphone.stream)
+    await flushAsyncStart()
+
+    expect(harness.contexts).toHaveLength(1)
+    expect(harness.contexts[0]?.sources).toEqual([microphone.stream])
+    expect(harness.levelTimerPeriods()).toEqual([70])
+
+    harness.audio.samples = [0.1, -0.4213, 0.3]
+    harness.tickLevels()
+    harness.audio.samples = [0]
+    harness.tickLevels()
+    expect(harness.bridge.sendLevel.mock.calls).toEqual([
+      [{ requestId: 'take', level: 0.42 }],
+      [{ requestId: 'take', level: 0 }]
+    ])
+
+    harness.recorders.at(-1)?.setFinalData(new Blob([new Uint8Array([1, 2])], { type: 'audio/webm' }))
+    harness.onStop({ requestId: 'take' })
+    await harness.runNextTask()
+
+    expect(harness.bridge.sendAudio).toHaveBeenCalledTimes(1)
+    expect(harness.allContextsClosed()).toBe(true)
+    expect(harness.levelTimerPeriods()).toEqual([])
+    harness.tickLevels()
+    expect(harness.bridge.sendLevel).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads the loudest sample either side of zero, to two decimals, and never above 1', async () => {
+    const harness = await makeRecorderHarness()
+    await recordingTake(harness)
+    const readings: Array<[number[], number]> = [
+      [[0.004, -0.006], 0.01],
+      [[0.125], 0.13],
+      [[0.004, -0.0049], 0],
+      [[0], 0],
+      [[1.7, -2], 1],
+      [[Number.POSITIVE_INFINITY], 1],
+      [[Number.NaN, 0.2], 0.2]
+    ]
+
+    for (const [samples, level] of readings) {
+      harness.audio.samples = samples
+      harness.tickLevels()
+      expect(harness.bridge.sendLevel).toHaveBeenLastCalledWith({ requestId: 'take', level })
+    }
+
+    harness.onCancel({ requestId: 'take' })
+  })
+
+  // Every way a recording take can end, each of which must let the meter go.
+  const endings: Array<[string, (harness: Harness, take: RecordingTake) => Promise<void>]> = [
+    ['it is cancelled while recording', async (harness) => {
+      harness.onCancel({ requestId: 'take' })
+    }],
+    ['the microphone fails mid-take', async (harness, take) => {
+      take.recorder?.fail()
+      expect(harness.bridge.sendError).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'take' })
+      )
+    }],
+    ['it stops with no audio captured', async (harness) => {
+      harness.onStop({ requestId: 'take' })
+      await harness.runNextTask()
+      expect(harness.bridge.sendError).toHaveBeenCalledWith({
+        requestId: 'take',
+        message: 'No microphone audio was captured.'
+      })
+    }],
+    ['its recorder had already stopped when asked to stop', async (harness, take) => {
+      if (take.recorder) take.recorder.state = 'inactive'
+      harness.onStop({ requestId: 'take' })
+      expect(harness.bridge.sendError).toHaveBeenCalledWith({
+        requestId: 'take',
+        message: 'The recording had already stopped.'
+      })
+    }],
+    ['it is cancelled between the stop and the final audio', async (harness, take) => {
+      take.recorder?.setFinalData(new Blob([new Uint8Array([1])], { type: 'audio/webm' }))
+      harness.onStop({ requestId: 'take' })
+      harness.onCancel({ requestId: 'take' })
+      await harness.runNextTask()
+    }],
+    ['it is cancelled while its audio is prepared', async (harness, take) => {
+      const preparation = deferred<{ buffer: ArrayBuffer; mimeType: string }>()
+      harness.queuePreparation(preparation.promise)
+      take.recorder?.setFinalData(new Blob([new Uint8Array([1])], { type: 'audio/webm' }))
+      harness.onStop({ requestId: 'take' })
+      await harness.runNextTask()
+      harness.onCancel({ requestId: 'take' })
+      preparation.resolve({ buffer: new Uint8Array([9]).buffer, mimeType: 'audio/wav' })
+      await flushAsyncStart()
+      expect(harness.bridge.sendAudio).not.toHaveBeenCalled()
+    }],
+    ['its audio cannot be read', async (harness, take) => {
+      const preparation = deferred<{ buffer: ArrayBuffer; mimeType: string }>()
+      harness.queuePreparation(preparation.promise)
+      take.recorder?.setFinalData(new Blob([new Uint8Array([1])], { type: 'audio/webm' }))
+      harness.onStop({ requestId: 'take' })
+      await harness.runNextTask()
+      preparation.reject(new Error('undecodable'))
+      await flushAsyncStart()
+      expect(harness.bridge.sendError).toHaveBeenCalledWith({
+        requestId: 'take',
+        message: 'The captured microphone audio could not be read.'
+      })
+    }]
+  ]
+
+  it.each(endings)('closes its context once when %s', async (_ending, end) => {
+    const harness = await makeRecorderHarness()
+    const take = await recordingTake(harness)
+    expect(harness.contexts).toHaveLength(1)
+    expect(harness.contexts[0]?.state).toBe('running')
+
+    await end(harness, take)
+
+    expect(harness.allContextsClosed()).toBe(true)
+    expect(harness.levelTimerPeriods()).toEqual([])
+    expect(take.microphone.track.stop).toHaveBeenCalled()
+    harness.tickLevels()
+    expect(harness.bridge.sendLevel).not.toHaveBeenCalled()
+  })
+
+  it('never makes a context for a take whose microphone never opened for it', async () => {
+    const harness = await makeRecorderHarness()
+    const lateOpen = harness.queueOpen()
+    const refusedOpen = harness.queueOpen()
+    const late = makeStream()
+
+    // Cancelled while opening; the stream turns up afterwards.
+    harness.onStart({ requestId: 'late-take', microphoneId: '' })
+    harness.onCancel({ requestId: 'late-take' })
+    lateOpen.resolve(late.stream)
+    await flushAsyncStart()
+    expect(late.track.stop).toHaveBeenCalledTimes(1)
+
+    // Refused outright.
+    harness.onStart({ requestId: 'refused-take', microphoneId: '' })
+    refusedOpen.reject(new DOMException('Permission denied', 'NotAllowedError'))
+    await flushAsyncStart()
+    expect(harness.bridge.sendError).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: 'refused-take' })
+    )
+
+    expect(harness.contexts).toEqual([])
+    expect(harness.levelTimerPeriods()).toEqual([])
+    expect(harness.bridge.sendLevel).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing from a context the window will not start, and still closes it', async () => {
+    const harness = await makeRecorderHarness()
+    harness.audio.startState = 'suspended'
+    harness.audio.resumes = false
+    harness.audio.samples = [0.5]
+    await recordingTake(harness)
+
+    const [context] = harness.contexts
+    expect(context?.resume).toHaveBeenCalledTimes(1)
+    harness.tickLevels()
+    harness.tickLevels()
+    expect(harness.bridge.sendLevel).not.toHaveBeenCalled()
+    // The recording itself is untouched.
+    expect(harness.bridge.sendStarted).toHaveBeenCalledWith({ requestId: 'take' })
+    expect(harness.bridge.sendError).not.toHaveBeenCalled()
+
+    harness.onCancel({ requestId: 'take' })
+    expect(harness.allContextsClosed()).toBe(true)
+  })
+
+  it('starts reading once a suspended context is allowed to run', async () => {
+    const harness = await makeRecorderHarness()
+    harness.audio.startState = 'suspended'
+    harness.audio.samples = [0.5]
+    await recordingTake(harness)
+
+    expect(harness.contexts[0]?.state).toBe('running')
+    harness.tickLevels()
+    expect(harness.bridge.sendLevel).toHaveBeenCalledWith({ requestId: 'take', level: 0.5 })
+
+    harness.onCancel({ requestId: 'take' })
+    expect(harness.allContextsClosed()).toBe(true)
+  })
+
+  const faults: Array<[string, 'constructorError' | 'sourceError']> = [
+    ['no context can be made at all', 'constructorError'],
+    ['the microphone cannot be connected to it', 'sourceError']
+  ]
+
+  it.each(faults)('records as normal when %s', async (_case, fault) => {
+    const harness = await makeRecorderHarness()
+    harness.audio[fault] = new DOMException('No audio device', 'NotSupportedError')
+    const take = await recordingTake(harness)
+
+    expect(harness.bridge.sendStarted).toHaveBeenCalledWith({ requestId: 'take' })
+    // A context made before the fault is closed straight away.
+    expect(harness.allContextsClosed()).toBe(true)
+    expect(harness.levelTimerPeriods()).toEqual([])
+
+    take.recorder?.setFinalData(new Blob([new Uint8Array([1, 2])], { type: 'audio/webm' }))
+    harness.onStop({ requestId: 'take' })
+    await harness.runNextTask()
+    expect(harness.bridge.sendAudio).toHaveBeenCalledTimes(1)
+    expect(harness.bridge.sendError).not.toHaveBeenCalled()
+    expect(harness.bridge.sendLevel).not.toHaveBeenCalled()
   })
 
   it('tells main when the prepared take held no speech, and still settles it', async () => {

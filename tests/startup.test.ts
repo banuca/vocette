@@ -48,7 +48,10 @@ interface StartupHarness {
   invoke: (channel: string, fromMainWindow: boolean, ...args: unknown[]) => unknown
   /** Delivers a message from the hidden recorder window. */
   emitFromRecorder: (channel: string, payload: unknown) => void
+  /** Delivers a message on a recorder channel, but from the main window. */
+  emitFromMainWindow: (channel: string, payload: unknown) => void
   sentToRecorder: () => Array<{ channel: string; payload: unknown }>
+  sentToOverlay: () => Array<{ channel: string; payload: unknown }>
   pressShortcut: () => void
   /** The chord has been held on its own for a moment, inside its hold delay. */
   armShortcut: () => void
@@ -404,6 +407,7 @@ async function startApp(options: {
 
   const mainWindow = windows[0]
   const recorderWindow = windows[1]
+  const overlayWindow = windows[2]
 
   return {
     emitFromRecorder: (channel: string, payload: unknown): void => {
@@ -411,8 +415,18 @@ async function startApp(options: {
       if (!listener) throw new Error(`No listener registered for ${channel}.`)
       listener({ sender: recorderWindow?.webContents }, payload)
     },
+    emitFromMainWindow: (channel: string, payload: unknown): void => {
+      const listener = ipcListeners.get(channel)
+      if (!listener) throw new Error(`No listener registered for ${channel}.`)
+      listener({ sender: mainWindow?.webContents }, payload)
+    },
     sentToRecorder: () =>
       (recorderWindow?.webContents.send.mock.calls ?? []).map(([channel, payload]) => ({
+        channel,
+        payload
+      })),
+    sentToOverlay: () =>
+      (overlayWindow?.webContents.send.mock.calls ?? []).map(([channel, payload]) => ({
         channel,
         payload
       })),
@@ -691,6 +705,72 @@ describe('the tray keeps up with the workflow', () => {
 
     app.invoke('dictation:cancel', true)
     expect(app.trayLabels()).toContain('Start recording')
+  })
+})
+
+describe('the live level meter', () => {
+  /** Starts a take from the window and returns the id the recorder was given. */
+  const startTake = (app: StartupHarness): string => {
+    app.invoke('dictation:start', true)
+    const start = app
+      .sentToRecorder()
+      .filter((message) => message.channel === 'recorder:start')
+      .at(-1)
+    return (start?.payload as { requestId: string }).requestId
+  }
+
+  const levelsShown = (app: StartupHarness): unknown[] =>
+    app
+      .sentToOverlay()
+      .filter((message) => message.channel === 'workflow:level')
+      .map((message) => message.payload)
+
+  it('shows the level of the take being recorded, in the overlay and nowhere else', async () => {
+    const app = await startApp()
+    const requestId = startTake(app)
+
+    // The microphone is still opening: there is nothing being recorded yet.
+    app.emitFromRecorder('recorder:level', { requestId, level: 0.3 })
+    expect(levelsShown(app)).toEqual([])
+
+    app.emitFromRecorder('recorder:started', { requestId })
+    app.emitFromRecorder('recorder:level', { requestId, level: 0.42 })
+    app.emitFromRecorder('recorder:level', { requestId, level: 0 })
+    app.emitFromRecorder('recorder:level', { requestId, level: 3 })
+    expect(levelsShown(app)).toEqual([0.42, 0, 1])
+
+    // The main window shares the overlay's preload, so it must not be sent it.
+    expect(app.sentToMain().filter((message) => message.channel === 'workflow:level')).toEqual([])
+    expect(
+      app.sentToRecorder().filter((message) => message.channel === 'workflow:level')
+    ).toEqual([])
+  })
+
+  it('drops a reading from another take, another window, or of the wrong shape', async () => {
+    const app = await startApp()
+    const requestId = startTake(app)
+    app.emitFromRecorder('recorder:started', { requestId })
+
+    app.emitFromRecorder('recorder:level', { requestId: 'an-older-take', level: 0.9 })
+    app.emitFromRecorder('recorder:level', { requestId, level: Number.NaN })
+    app.emitFromRecorder('recorder:level', { requestId, level: '0.5' })
+    app.emitFromRecorder('recorder:level', { level: 0.5 })
+    app.emitFromRecorder('recorder:level', null)
+    app.emitFromMainWindow('recorder:level', { requestId, level: 0.5 })
+
+    expect(levelsShown(app)).toEqual([])
+  })
+
+  it('stops the moment the take is no longer recording', async () => {
+    const app = await startApp()
+    const requestId = startTake(app)
+    app.emitFromRecorder('recorder:started', { requestId })
+    app.emitFromRecorder('recorder:level', { requestId, level: 0.2 })
+
+    app.invoke('dictation:cancel', true)
+    app.emitFromRecorder('recorder:level', { requestId, level: 0.6 })
+
+    expect(levelsShown(app)).toEqual([0.2])
   })
 })
 

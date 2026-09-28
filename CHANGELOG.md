@@ -134,6 +134,11 @@ All notable changes to this project are documented here. This project adheres to
   held** (Settings → Recording, on by default) turns it off. It needs a keyboard Murmur
   can watch, so on Wayland, or wherever the keyboard hook cannot start, the switch is
   disabled and says why.
+- **Is it hearing me? A live level in the overlay.** While you record, five small bars
+  beside the timer move with your voice, and rest as dots when nothing is heard — so a
+  muted or wrong microphone shows while you speak, not after an empty transcript. Where
+  the system is set to reduce motion, one still dot brightens instead. The level goes
+  from the recorder to the overlay and nowhere else, and is never stored or logged.
 
 ### Fixed
 

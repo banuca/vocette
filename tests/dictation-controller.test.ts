@@ -1571,6 +1571,49 @@ describe('status lifecycle', () => {
   })
 })
 
+describe('the live level meter', () => {
+  it('admits a reading only from the take being recorded right now', async () => {
+    const { controller, lastRequestId } = makeHarness()
+    expect(controller.isRecordingRequest('')).toBe(false)
+
+    controller.onShortcutPressed()
+    const requestId = lastRequestId()
+    // Still opening the microphone: nothing is being recorded yet.
+    expect(controller.isRecordingRequest(requestId)).toBe(false)
+
+    controller.onRecorderStarted({ requestId })
+    expect(controller.isRecordingRequest(requestId)).toBe(true)
+    expect(controller.isRecordingRequest('an-older-take')).toBe(false)
+    expect(controller.isRecordingRequest('')).toBe(false)
+
+    // Released, but recording until the recorder hands the audio over.
+    controller.onShortcutReleased()
+    expect(controller.isRecordingRequest(requestId)).toBe(true)
+
+    const promise = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array(4),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+    expect(controller.isRecordingRequest(requestId)).toBe(false)
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+    expect(controller.isRecordingRequest(requestId)).toBe(false)
+  })
+
+  it('admits nothing from a take that was cancelled or failed', () => {
+    const { controller, beginRecording } = makeHarness()
+    const cancelled = beginRecording()
+    controller.cancelDictation()
+    expect(controller.isRecordingRequest(cancelled)).toBe(false)
+
+    const failed = beginRecording()
+    controller.onRecorderError({ requestId: failed, message: 'The microphone stopped unexpectedly.' })
+    expect(controller.isRecordingRequest(failed)).toBe(false)
+  })
+})
+
 describe('recording modes and window controls', () => {
   /** Runs a take to completion from whichever entry point started it. */
   const finish = async (
