@@ -4,6 +4,7 @@ import { applyReplacements, type ReplacementRule } from '../shared/replacements'
 import { correctVocabulary, type CommonWordTest } from '../shared/vocabulary-correction'
 import type { RecordingMode } from '../shared/capabilities'
 import type {
+  HistoryEntry,
   Page,
   RecorderAudioPayload,
   RecorderErrorPayload,
@@ -123,6 +124,13 @@ export interface ForegroundState {
   blockedReason?: string
 }
 
+/**
+ * What History keeps about a take beyond its text, duration and model. One
+ * object rather than more positional parameters, so a later field — how long
+ * the wait after release was, say — joins without touching every caller.
+ */
+export type HistoryExtras = Pick<HistoryEntry, 'heardText'>
+
 export interface TranscriptionPayload {
   /**
    * Taken from the same settings read as everything else in this take, so a
@@ -170,7 +178,7 @@ export interface DictationDeps {
   /** Shows the overlay/main window status. Reset timing is owned here. */
   broadcastStatus(status: WorkflowStatus): void
   showMain(page: Page): void
-  recordHistory(text: string, durationMs: number, model: string): void
+  recordHistory(text: string, durationMs: number, model: string, extras: HistoryExtras): void
   /** Remembers which window has focus, for the paste-target check. */
   captureForeground(): void
   /** Forgets any captured target, so nothing can be pasted into it. */
@@ -1040,7 +1048,17 @@ export class DictationController {
       if (!text) throw new Error('Only filler words or silence were detected.')
       if (!this.ownsAttempt(attempt)) return
 
-      this.deps.recordHistory(text, attempt.take.durationMs, settings.model)
+      // History keeps the recogniser's own words beside the delivered text
+      // whenever the steps above changed them, so a rule that misfires can
+      // never cost the user what they said. Outer whitespace carries no words,
+      // and on its own is not a change worth keeping.
+      const heard = rawText.trim()
+      this.deps.recordHistory(
+        text,
+        attempt.take.durationMs,
+        settings.model,
+        heard !== text ? { heardText: heard } : {}
+      )
       if (!this.ownsAttempt(attempt)) return
 
       const message = await this.pasteOrExplain({

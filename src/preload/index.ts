@@ -47,6 +47,11 @@ const api = {
   getHistorySaveStatus: (): Promise<HistorySaveStatus> => ipcRenderer.invoke('history:save-status'),
   deleteHistoryEntry: (id: string): Promise<HistoryEntry[]> =>
     ipcRenderer.invoke('history:delete', id),
+  updateHistoryEntry: (id: string, text: string): Promise<HistoryEntry[]> =>
+    ipcRenderer.invoke('history:update', id, text),
+  /** Undo after a delete: puts back the copy of the entry the window kept. */
+  restoreHistoryEntry: (entry: HistoryEntry): Promise<HistoryEntry[]> =>
+    ipcRenderer.invoke('history:restore', entry),
   clearHistory: (): Promise<void> => ipcRenderer.invoke('history:clear'),
   exportHistory: (format: 'json' | 'txt'): Promise<{ saved: boolean; path: string | null }> =>
     ipcRenderer.invoke('history:export', format),

@@ -7,7 +7,13 @@ import {
   removeJsonRecoveryCopiesAsync,
   writeJsonAtomicAsync
 } from '../src/main/atomic-json'
-import { HistoryStore } from '../src/main/history-store'
+import { HistoryStore, isRestorableEntry } from '../src/main/history-store'
+import {
+  EMPTY_EDIT_REFUSAL,
+  MAX_HISTORY_TEXT_CHARS,
+  originalTextOf,
+  type HistoryEntry
+} from '../src/shared/types'
 
 let file: string
 
@@ -447,5 +453,313 @@ describe('HistoryStore', () => {
     const first = list[0]
     if (first) first.text = 'tampered'
     expect(store.list()[0]?.text).toBe('original')
+  })
+})
+
+/** An entry as a build from before edits and heard text existed saved it. */
+function savedEntry(id: string, createdAt: string): HistoryEntry {
+  return { id, text: id, createdAt, durationMs: 1000, model: 'gpt-transcribe' }
+}
+
+/** The texts in the file on disk, newest first. */
+function textsOnDisk(path = file): string[] {
+  return (JSON.parse(readFileSync(path, 'utf8')) as HistoryEntry[]).map((entry) => entry.text)
+}
+
+describe('HistoryStore: what was heard, edits and undo', () => {
+  it('loads entries saved before the optional fields existed, beside ones that have them', () => {
+    const current: HistoryEntry = {
+      id: 'current',
+      text: 'Meet on Wednesday.',
+      createdAt: '2026-09-28T10:00:00.000Z',
+      durationMs: 900,
+      model: 'm',
+      heardText: 'um meet on tuesday',
+      editedAt: '2026-09-28T10:05:00.000Z',
+      uneditedText: 'Meet on Tuesday.'
+    }
+    const old = savedEntry('saved by an older build', '2026-09-01T10:00:00.000Z')
+    writeFileSync(file, JSON.stringify([current, old]))
+
+    // The load filter is all or nothing: had it demanded any new field, the
+    // old entry would be gone here, silently.
+    expect(new HistoryStore(file).list()).toEqual([current, old])
+  })
+
+  it('keeps what was heard when a dictation arrives with it', async () => {
+    const store = new HistoryStore(file)
+    store.add({ text: 'Send it to ITU.', durationMs: 1, model: 'm', heardText: 'send it to itu' })
+    await store.flush()
+    expect(JSON.parse(readFileSync(file, 'utf8'))[0]).toMatchObject({
+      text: 'Send it to ITU.',
+      heardText: 'send it to itu'
+    })
+  })
+
+  it('saves an edit to disk, marked as edited, with the date, duration, model and heard text untouched', async () => {
+    const store = new HistoryStore(file)
+    const entry = store.add({
+      text: 'Meet on Tuesday.',
+      durationMs: 1500,
+      model: 'gpt-transcribe',
+      heardText: 'um meet on tuesday'
+    })
+    await store.flush()
+
+    const [edited] = await store.update(entry.id, 'Meet on Wednesday.')
+    expect(edited).toMatchObject({
+      id: entry.id,
+      text: 'Meet on Wednesday.',
+      createdAt: entry.createdAt,
+      durationMs: 1500,
+      model: 'gpt-transcribe',
+      heardText: 'um meet on tuesday',
+      uneditedText: 'Meet on Tuesday.'
+    })
+    expect(Number.isNaN(Date.parse(edited?.editedAt ?? ''))).toBe(false)
+    // Written by the time the call resolves, not merely queued.
+    expect(JSON.parse(readFileSync(file, 'utf8'))[0]).toEqual(edited)
+  })
+
+  it('refreshes the recovery copies after an edit, as a delete does', async () => {
+    const store = new HistoryStore(file)
+    const entry = store.add({ text: 'before the edit', durationMs: 1, model: 'm' })
+    store.add({ text: 'another', durationMs: 1, model: 'm' })
+    await store.flush()
+    writeFileSync(`${file}.tmp`, 'stale temporary copy')
+    writeFileSync(`${file}.corrupt`, 'stale corrupt copy')
+
+    await store.update(entry.id, 'after the edit')
+    // Otherwise the backup would still hold the version the edit replaced.
+    expect(textsOnDisk(`${file}.bak`)).toEqual(['another', 'after the edit'])
+    expect(existsSync(`${file}.tmp`)).toBe(false)
+    expect(existsSync(`${file}.corrupt`)).toBe(false)
+  })
+
+  it('keeps the text from before the first edit across a second one', async () => {
+    const store = new HistoryStore(file)
+    const entry = store.add({ text: 'first draft', durationMs: 1, model: 'm' })
+
+    const [once] = await store.update(entry.id, 'second draft')
+    const [twice] = await store.update(entry.id, 'third draft')
+    expect(once).toMatchObject({ text: 'second draft', uneditedText: 'first draft' })
+    expect(twice).toMatchObject({ text: 'third draft', uneditedText: 'first draft' })
+    expect(Date.parse(twice?.editedAt ?? '')).toBeGreaterThanOrEqual(Date.parse(once?.editedAt ?? ''))
+  })
+
+  it('refuses to edit an entry it does not have, and writes nothing', async () => {
+    const store = new HistoryStore(file)
+    store.add({ text: 'keep me', durationMs: 1, model: 'm' })
+    await store.flush()
+    const before = readFileSync(file, 'utf8')
+
+    await expect(store.update('no-such-id', 'anything')).rejects.toThrow(
+      'That dictation is no longer in your history.'
+    )
+    expect(store.list().map((entry) => entry.text)).toEqual(['keep me'])
+    expect(readFileSync(file, 'utf8')).toBe(before)
+  })
+
+  it('refuses an edit that leaves nothing, or only whitespace', async () => {
+    const store = new HistoryStore(file)
+    const entry = store.add({ text: 'keep me', durationMs: 1, model: 'm' })
+
+    await expect(store.update(entry.id, '')).rejects.toThrow(EMPTY_EDIT_REFUSAL)
+    await expect(store.update(entry.id, ' \n\t ')).rejects.toThrow(EMPTY_EDIT_REFUSAL)
+    expect(store.list()[0]).toMatchObject({ text: 'keep me' })
+    expect(store.list()[0]).not.toHaveProperty('editedAt')
+  })
+
+  it('marks nothing as edited when the text is saved unchanged', async () => {
+    const store = new HistoryStore(file)
+    const entry = store.add({ text: 'as it was', durationMs: 1, model: 'm' })
+
+    const [unchanged] = await store.update(entry.id, 'as it was')
+    expect(unchanged).not.toHaveProperty('editedAt')
+    expect(unchanged).not.toHaveProperty('uneditedText')
+  })
+
+  it('clamps an edit to the longest text History keeps', async () => {
+    const store = new HistoryStore(file)
+    const entry = store.add({ text: 'short', durationMs: 1, model: 'm' })
+
+    const [edited] = await store.update(entry.id, 'x'.repeat(MAX_HISTORY_TEXT_CHARS + 10))
+    expect(edited?.text).toHaveLength(MAX_HISTORY_TEXT_CHARS)
+  })
+
+  it('puts a deleted entry back where it was among the rest by date', async () => {
+    writeFileSync(
+      file,
+      JSON.stringify([
+        savedEntry('newest', '2026-09-28T12:00:00.000Z'),
+        savedEntry('middle', '2026-09-27T12:00:00.000Z'),
+        savedEntry('oldest', '2026-09-26T12:00:00.000Z')
+      ])
+    )
+    const store = new HistoryStore(file)
+    const [newest, middle, oldest] = store.list() as [HistoryEntry, HistoryEntry, HistoryEntry]
+
+    await store.delete('middle')
+    expect((await store.restore(middle)).map((entry) => entry.id)).toEqual([
+      'newest',
+      'middle',
+      'oldest'
+    ])
+
+    // And at either end of the list.
+    await store.delete('newest')
+    await store.delete('oldest')
+    await store.restore(oldest)
+    expect((await store.restore(newest)).map((entry) => entry.id)).toEqual([
+      'newest',
+      'middle',
+      'oldest'
+    ])
+    expect(textsOnDisk()).toEqual(['newest', 'middle', 'oldest'])
+  })
+
+  it('refuses to put back an entry that is still there', async () => {
+    const store = new HistoryStore(file)
+    const entry = store.add({ text: 'still here', durationMs: 1, model: 'm' })
+
+    await expect(store.restore(entry)).rejects.toThrow('That dictation is already in your history.')
+    expect(store.list()).toHaveLength(1)
+  })
+
+  it('puts back only the fields History knows, each text clamped like an edit', async () => {
+    const store = new HistoryStore(file)
+    const handedBack = {
+      ...savedEntry('restored', '2026-09-28T12:00:00.000Z'),
+      text: 't'.repeat(MAX_HISTORY_TEXT_CHARS + 1),
+      heardText: 'h'.repeat(MAX_HISTORY_TEXT_CHARS + 1),
+      editedAt: '2026-09-28T12:30:00.000Z',
+      uneditedText: 'before the edit',
+      somethingElse: 'not a history field'
+    }
+
+    const [restored] = await store.restore(handedBack)
+    expect(restored).not.toHaveProperty('somethingElse')
+    expect(restored?.text).toHaveLength(MAX_HISTORY_TEXT_CHARS)
+    expect(restored?.heardText).toHaveLength(MAX_HISTORY_TEXT_CHARS)
+    expect(restored).toMatchObject({
+      editedAt: '2026-09-28T12:30:00.000Z',
+      uneditedText: 'before the edit'
+    })
+  })
+
+  it('writes an undo like a new dictation, leaving the recovery copies alone', async () => {
+    const removeCopies = vi.fn(removeJsonRecoveryCopiesAsync)
+    const store = new HistoryStore(file, {
+      writeJsonAtomicAsync,
+      removeJsonRecoveryCopiesAsync: removeCopies,
+      refreshJsonRecoveryBackupAsync
+    })
+    const entry = store.add({ text: 'deleted, then undone', durationMs: 1, model: 'm' })
+    await store.delete(entry.id)
+    expect(removeCopies).toHaveBeenCalledTimes(1)
+
+    await store.restore(entry)
+    expect(removeCopies).toHaveBeenCalledTimes(1)
+    expect(textsOnDisk()).toEqual(['deleted, then undone'])
+  })
+
+  it('queues edits and undos behind an in-flight write, losing nothing added meanwhile', async () => {
+    // Dated long ago, so the dictations added below are newer on any clock.
+    writeFileSync(
+      file,
+      JSON.stringify([
+        savedEntry('b', '2000-01-02T00:00:00.000Z'),
+        savedEntry('a', '2000-01-01T00:00:00.000Z')
+      ])
+    )
+    const firstWriteStarted = deferred<void>()
+    const releaseFirstWrite = deferred<void>()
+    const snapshots: string[][] = []
+    let firstWrite = true
+    const store = new HistoryStore(file, {
+      writeJsonAtomicAsync: async (path, value) => {
+        const entries = Array.isArray(value) ? (value as HistoryEntry[]) : []
+        snapshots.push(entries.map((entry) => entry.text))
+        if (firstWrite) {
+          firstWrite = false
+          firstWriteStarted.resolve()
+          await releaseFirstWrite.promise
+        }
+        await writeJsonAtomicAsync(path, value)
+      },
+      removeJsonRecoveryCopiesAsync,
+      refreshJsonRecoveryBackupAsync
+    })
+    const b = store.list().find((entry) => entry.id === 'b') as HistoryEntry
+
+    store.add({ text: 'c', durationMs: 1, model: 'm' })
+    await firstWriteStarted.promise
+    const edit = store.update('a', 'a, edited')
+    const removal = store.delete('b')
+    const undo = store.restore(b)
+    store.add({ text: 'd', durationMs: 1, model: 'm' })
+    releaseFirstWrite.resolve()
+
+    await Promise.all([edit, removal, undo])
+    await store.flush()
+
+    // One snapshot per change, in the order the changes were made.
+    expect(snapshots).toEqual([
+      ['c', 'b', 'a'],
+      ['c', 'b', 'a, edited'],
+      ['c', 'a, edited'],
+      ['c', 'b', 'a, edited'],
+      ['d', 'c', 'b', 'a, edited']
+    ])
+    expect(new HistoryStore(file).list().map((entry) => entry.text)).toEqual([
+      'd',
+      'c',
+      'b',
+      'a, edited'
+    ])
+  })
+})
+
+describe('isRestorableEntry', () => {
+  const entry = savedEntry('a', '2026-09-28T10:00:00.000Z')
+
+  it('accepts an entry with or without the optional fields', () => {
+    expect(isRestorableEntry(entry)).toBe(true)
+    expect(
+      isRestorableEntry({ ...entry, heardText: 'h', editedAt: '2026-09-28T11:00:00.000Z', uneditedText: 'u' })
+    ).toBe(true)
+  })
+
+  it('refuses anything short of an entry, or with an optional field of the wrong type', () => {
+    const { text: _text, ...withoutText } = entry
+    for (const value of [
+      null,
+      'an entry',
+      withoutText,
+      { ...entry, durationMs: '1000' },
+      { ...entry, heardText: 42 },
+      { ...entry, editedAt: {} },
+      { ...entry, uneditedText: null }
+    ]) {
+      expect(isRestorableEntry(value)).toBe(false)
+    }
+  })
+})
+
+describe('originalTextOf', () => {
+  it('offers what was heard first, then the text from before the first edit', () => {
+    expect(
+      originalTextOf({ text: 'Delivered.', heardText: 'delivered', uneditedText: 'Before.' })
+    ).toBe('delivered')
+    expect(originalTextOf({ text: 'Edited.', uneditedText: 'Delivered.' })).toBe('Delivered.')
+  })
+
+  it('offers nothing when there is nothing different to show', () => {
+    expect(originalTextOf({ text: 'Same.' })).toBeNull()
+    expect(originalTextOf({ text: 'Same.', uneditedText: 'Same.' })).toBeNull()
+    // Edited back to exactly what was heard.
+    expect(
+      originalTextOf({ text: 'as heard', heardText: 'as heard', uneditedText: 'Delivered.' })
+    ).toBeNull()
   })
 })

@@ -122,7 +122,7 @@ The tray menu also has **Start / Stop recording**, **Cancel dictation**, **Reset
 
 ![Light theme](docs/screenshots/history-light.png)
 
-History is grouped by day, searchable (with match highlighting), exportable as `.txt` or `.json`, and rendered incrementally so thousands of entries stay smooth. If a save fails, a persistent banner says so without interrupting the dictation you just finished.
+History is grouped by day, searchable (with match highlighting), exportable as `.txt` or `.json`, and rendered incrementally so thousands of entries stay smooth. **Edit** corrects an entry in place (Ctrl + Enter saves — Command + Enter on a Mac — and Esc cancels) and marks it “Edited”; **Delete** acts at once, with **Undo** at the foot of the page for 8 seconds. Whenever cleanup, your words or a replacement changed what the recogniser heard, **Show original** switches the entry to its raw text and **Copy original** copies it. An edit keeps the text it replaced the same way, so to remove words for good, delete the dictation. If a save fails, a persistent banner says so without interrupting the dictation you just finished.
 
 ## Build from source
 

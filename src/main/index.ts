@@ -23,6 +23,7 @@ import {
 import {
   DictationController,
   type DictationSource,
+  type HistoryExtras,
   type SoundKind,
   type TranscriptionPayload,
   type WorkflowSettings
@@ -34,7 +35,7 @@ import { LOCAL_MODEL } from './engine/models'
 import { restoreSnapshot, takeSnapshot, type ClipboardSnapshot } from './clipboard-custody'
 import { recordHistoryWithRetention } from './history-retention'
 import { migrateLegacyProfile } from './legacy-profile'
-import { HistoryStore } from './history-store'
+import { HistoryStore, isRestorableEntry } from './history-store'
 import { createPlatformAdapter } from './platform'
 import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform/types'
 import { createModifierProbe } from './platform/key-state'
@@ -521,7 +522,12 @@ function playSound(kind: SoundKind): void {
   for (let index = 0; index < beeps; index += 1) shell.beep()
 }
 
-function recordHistory(text: string, durationMs: number, model: string): void {
+function recordHistory(
+  text: string,
+  durationMs: number,
+  model: string,
+  extras: HistoryExtras
+): void {
   recordHistoryWithRetention(
     {
       historyStore,
@@ -529,7 +535,7 @@ function recordHistory(text: string, durationMs: number, model: string): void {
       onHistoryChanged: () => mainWindow?.webContents.send('history:changed'),
       onRetentionFailure: reportHistoryRetentionFailure
     },
-    { text, durationMs, model }
+    { text, durationMs, model, ...extras }
   )
 }
 
@@ -1120,6 +1126,22 @@ function registerIpc(): void {
     if (!fromMain(event)) throw new Error('Forbidden.')
     if (typeof id !== 'string' || id.length > 128) throw new Error('Invalid history entry.')
     return await historyStore.delete(id)
+  })
+  // An edit from the History page. The store refuses an unknown id or an
+  // empty text, and clamps a long one, so only the types are checked here.
+  ipcMain.handle('history:update', async (event, id: unknown, text: unknown) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    if (typeof id !== 'string' || id.length > 128) throw new Error('Invalid history entry.')
+    if (typeof text !== 'string') throw new Error('Invalid dictation text.')
+    return await historyStore.update(id, text)
+  })
+  // Undo after a delete: the window hands back its own copy of the entry.
+  ipcMain.handle('history:restore', async (event, entry: unknown) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    if (!isRestorableEntry(entry) || entry.id.length > 128) {
+      throw new Error('Invalid history entry.')
+    }
+    return await historyStore.restore(entry)
   })
   ipcMain.handle('history:clear', async (event) => {
     if (!fromMain(event)) throw new Error('Forbidden.')

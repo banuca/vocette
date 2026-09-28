@@ -44,7 +44,7 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
   const playSound = vi.fn<(kind: SoundKind) => void>()
   const broadcastStatus = vi.fn<(status: WorkflowStatus) => void>()
   const showMain = vi.fn<(page: Page) => void>()
-  const recordHistory = vi.fn<(text: string, durationMs: number, model: string) => void>()
+  const recordHistory = vi.fn<DictationDeps['recordHistory']>()
   const captureForeground = vi.fn<() => void>()
   const clearForeground = vi.fn<() => void>()
   const getForegroundState = vi.fn<() => ForegroundState | null>(() => null)
@@ -140,7 +140,7 @@ describe('hold → recording → release', () => {
       expect.any(AbortSignal)
     )
     expect(deps.writeClipboard).toHaveBeenCalledWith('Hello world.')
-    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 2100, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 2100, 'gpt-transcribe', {})
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success' })
@@ -757,7 +757,9 @@ describe('language-aware cleanup', () => {
 
     // No space is inserted after the comma any more: that rule is what
     // turned "example.com" into "example. com".
-    expect(deps.recordHistory).toHaveBeenCalledWith('Hello,world!', 100, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenCalledWith('Hello,world!', 100, 'gpt-transcribe', {
+      heardText: 'um hello,world!'
+    })
   })
 
   it('removes fillers under Automatic, which the old English-only gate skipped', async () => {
@@ -777,7 +779,8 @@ describe('language-aware cleanup', () => {
     expect(deps.recordHistory).toHaveBeenCalledWith(
       'So I think we should ship it',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'um, so I I think we should, uh, ship it' }
     )
   })
 
@@ -794,7 +797,9 @@ describe('language-aware cleanup', () => {
     })
 
     // Only the capital is new: the repairs now run in every language.
-    expect(deps.recordHistory).toHaveBeenCalledWith('Um ist ein Wort', 100, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenCalledWith('Um ist ein Wort', 100, 'gpt-transcribe', {
+      heardText: 'um ist ein Wort'
+    })
   })
 
   it('cleans automatic-language Retry text the same way as the first attempt', async () => {
@@ -815,7 +820,8 @@ describe('language-aware cleanup', () => {
     expect(deps.recordHistory).toHaveBeenLastCalledWith(
       'So I think it works',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'um, so I think it works' }
     )
   })
 
@@ -833,7 +839,8 @@ describe('language-aware cleanup', () => {
       durationMs: 100
     })
 
-    expect(deps.recordHistory).toHaveBeenCalledWith('um hello,world!', 100, 'gpt-transcribe')
+    // Only the outer whitespace went, which is not a change worth keeping.
+    expect(deps.recordHistory).toHaveBeenCalledWith('um hello,world!', 100, 'gpt-transcribe', {})
   })
 
   it('passes the spoken-correction and line-break switches through to the cleanup', async () => {
@@ -854,7 +861,8 @@ describe('language-aware cleanup', () => {
     expect(deps.recordHistory).toHaveBeenCalledWith(
       'Send it to John, I mean Sarah.\nThanks.',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'Send it to John, I mean Sarah. New line. Thanks.' }
     )
   })
 
@@ -876,7 +884,9 @@ describe('language-aware cleanup', () => {
 
     // A line break is something the user asked for, not silence.
     expect(deps.writeClipboard).toHaveBeenCalledWith('\n')
-    expect(deps.recordHistory).toHaveBeenCalledWith('\n', 100, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenCalledWith('\n', 100, 'gpt-transcribe', {
+      heardText: 'New line.'
+    })
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success', message: 'Pasted' })
@@ -927,7 +937,9 @@ describe('replacements and snippets', () => {
 
     // Cleanup took the "um" out; the rule then wrote the capitals it wanted.
     expect(deps.writeClipboard).toHaveBeenCalledWith('ITU rocks')
-    expect(deps.recordHistory).toHaveBeenCalledWith('ITU rocks', 100, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenCalledWith('ITU rocks', 100, 'gpt-transcribe', {
+      heardText: 'um itu rocks'
+    })
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success', detail: 'ITU rocks' })
@@ -954,8 +966,50 @@ describe('replacements and snippets', () => {
     expect(deps.recordHistory).toHaveBeenCalledWith(
       'console.log() is broken',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'um console log is broken' }
     )
+  })
+})
+
+describe('what History keeps of what was heard', () => {
+  async function dictate(
+    harness: ReturnType<typeof makeHarness>,
+    rawText: string
+  ): Promise<void> {
+    harness.deps.transcribe.mockResolvedValue(rawText)
+    const requestId = harness.beginRecording()
+    await harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+  }
+
+  it("keeps the recogniser's own words when a rule changed them", async () => {
+    // Cleanup leaves this sentence alone; only the user's rule changes it.
+    const harness = makeHarness({
+      settings: { replacements: [{ spoken: 'itu', written: 'ITU' }] }
+    })
+    await dictate(harness, 'Send it to itu.')
+
+    expect(harness.deps.recordHistory).toHaveBeenCalledWith(
+      'Send it to ITU.',
+      100,
+      'gpt-transcribe',
+      { heardText: 'Send it to itu.' }
+    )
+  })
+
+  it('keeps nothing extra when what was delivered is what was heard', async () => {
+    const harness = makeHarness()
+    await dictate(harness, 'Hello world.')
+
+    const extras = harness.deps.recordHistory.mock.calls[0]?.[3]
+    // Not even as undefined: History stores the raw text only when it differs.
+    expect(extras).toEqual({})
+    expect(extras).not.toHaveProperty('heardText')
   })
 })
 
@@ -1461,7 +1515,7 @@ describe('errors and retry', () => {
       'The service was busy — trying once more'
     ])
     // The retry was the service's own business: the take still lands.
-    expect(deps.recordHistory).toHaveBeenCalledWith('Landed after all.', 700, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenCalledWith('Landed after all.', 700, 'gpt-transcribe', {})
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success' })
     )
@@ -1864,7 +1918,8 @@ describe('recording modes and window controls', () => {
     expect(deps.recordHistory).toHaveBeenCalledWith(
       'Hello world.',
       1200,
-      'parakeet-tdt-0.6b-v3-int8'
+      'parakeet-tdt-0.6b-v3-int8',
+      {}
     )
   })
 })
@@ -1985,7 +2040,7 @@ describe('instant capture: listening from the keypress', () => {
     await processing
 
     expect(deps.transcribe).toHaveBeenCalledTimes(1)
-    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 1800, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 1800, 'gpt-transcribe', {})
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success', message: 'Pasted' })
@@ -2129,7 +2184,7 @@ describe('instant capture: listening from the keypress', () => {
     await vi.advanceTimersByTimeAsync(80)
     await processing
     expect(deps.recordHistory).toHaveBeenCalledTimes(1)
-    expect(deps.recordHistory).toHaveBeenCalledWith('Done.', 500, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenCalledWith('Done.', 500, 'gpt-transcribe', {})
   })
 
   it('does nothing with the setting off, and the press starts as it always did', () => {
@@ -2411,7 +2466,12 @@ describe('instant capture: listening from the keypress', () => {
     expect(sent(harness, 'recorder:cancel').slice(earlier)).toEqual([{ requestId: provisional }])
     await vi.advanceTimersByTimeAsync(80)
     await retry
-    expect(deps.recordHistory).toHaveBeenLastCalledWith('On the second try.', 400, 'gpt-transcribe')
+    expect(deps.recordHistory).toHaveBeenLastCalledWith(
+      'On the second try.',
+      400,
+      'gpt-transcribe',
+      {}
+    )
     // Its arm ending afterwards has nothing left to cancel.
     controller.abandonPreparation()
     expect(sent(harness, 'recorder:cancel')).toHaveLength(earlier + 1)
@@ -2553,7 +2613,8 @@ describe('your words, corrected after recognition', () => {
     expect(harness.deps.recordHistory).toHaveBeenCalledWith(
       'The ITU-T draft',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'um the ITUT draft' }
     )
   })
 
@@ -2569,7 +2630,8 @@ describe('your words, corrected after recognition', () => {
     expect(harness.deps.recordHistory).toHaveBeenCalledWith(
       'Send it to Sarah.',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'Send it to kirinda, I mean Sarah.' }
     )
   })
 
@@ -2587,7 +2649,8 @@ describe('your words, corrected after recognition', () => {
     expect(withTerms.deps.recordHistory).toHaveBeenCalledWith(
       'Send it to Kirinde.',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'Send it to kirinda.' }
     )
   })
 
@@ -2604,7 +2667,8 @@ describe('your words, corrected after recognition', () => {
     expect(harness.deps.recordHistory).toHaveBeenCalledWith(
       'Send the ITU-T draft to kirinda',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'send the ITUT draft to kirinda' }
     )
     expect(harness.deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success' })
@@ -2710,7 +2774,7 @@ describe('silence stays silent', () => {
       await promise
 
       expect(deps.transcribe).toHaveBeenCalledTimes(1)
-      expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 900, 'gpt-transcribe')
+      expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 900, 'gpt-transcribe', {})
     }
   })
 })
@@ -2757,10 +2821,12 @@ describe('the plan limits, as a take uses them', () => {
 
     expect(sentTerms(harness)).toHaveLength(50)
     expect(sentTerms(harness)).not.toContain('Dataverse')
+    // Nothing changed what was heard, so no heard text is kept beside it.
     expect(harness.deps.recordHistory).toHaveBeenCalledWith(
       'Open data verse now.',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      {}
     )
   })
 
@@ -2773,17 +2839,22 @@ describe('the plan limits, as a take uses them', () => {
     expect(harness.deps.recordHistory).toHaveBeenCalledWith(
       'Open Dataverse now.',
       100,
-      'gpt-transcribe'
+      'gpt-transcribe',
+      { heardText: 'Open data verse now.' }
     )
   })
 
   it('applies the first 20 rules on Free, and the 21st only with Pro', async () => {
     const free = makeHarness({ settings: settingsFor('', RULES, false) })
     await dictate(free, 'Say word0 and word20.')
-    expect(free.deps.recordHistory).toHaveBeenCalledWith('Say W0 and word20.', 100, 'gpt-transcribe')
+    expect(free.deps.recordHistory).toHaveBeenCalledWith('Say W0 and word20.', 100, 'gpt-transcribe', {
+      heardText: 'Say word0 and word20.'
+    })
 
     const pro = makeHarness({ settings: settingsFor('', RULES, true) })
     await dictate(pro, 'Say word0 and word20.')
-    expect(pro.deps.recordHistory).toHaveBeenCalledWith('Say W0 and W20.', 100, 'gpt-transcribe')
+    expect(pro.deps.recordHistory).toHaveBeenCalledWith('Say W0 and W20.', 100, 'gpt-transcribe', {
+      heardText: 'Say word0 and word20.'
+    })
   })
 })

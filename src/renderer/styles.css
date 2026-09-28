@@ -1000,6 +1000,111 @@ a:focus-visible {
   color: var(--status-bad);
 }
 
+/* Held still while another row is open for editing, so they must not light up
+   as though a click would do something. */
+.history-actions button:disabled:hover {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+/* The row open for editing keeps its hover surface, so it is plain which one. */
+.history-card.is-editing {
+  background: var(--surface-card);
+}
+
+/* A row switched to its original text reads as the quieter of the two. */
+.history-text.is-original {
+  color: var(--text-muted);
+}
+
+/* The editor takes the text's place in the same face, size and measure, and
+   grows with what is typed, so the row barely moves when it opens. The shared
+   control rule leaves text areas out, hence the font here. */
+.history-edit {
+  display: block;
+  width: 100%;
+  max-width: 82ch;
+  min-height: calc(1.7em + 10px);
+  max-height: 60vh;
+  margin: 5px 0 0;
+  padding: 4px 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  resize: none;
+  field-sizing: content;
+}
+
+.history-edit:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.history-edit-problem {
+  margin: 6px 0 0;
+  color: var(--status-bad);
+  font-size: 12px;
+}
+
+.history-save {
+  color: var(--text-on-accent);
+  font-weight: 600;
+  background: var(--accent);
+}
+
+.history-save:hover:not(:disabled) {
+  color: var(--text-on-accent);
+  background: var(--accent-hover);
+}
+
+.history-edit-hint {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Undo after a delete. Sticky at the foot of the page, so it stays in view
+   however far the list is scrolled; the slot takes no room while it is empty. */
+.undo-slot {
+  position: sticky;
+  bottom: 16px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.undo-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 6px 6px 6px 16px;
+  color: var(--text);
+  font-size: 13px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-md);
+  pointer-events: auto;
+}
+
+.undo-button {
+  color: var(--accent);
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+}
+
+.undo-button:hover {
+  color: var(--accent-hover);
+  background: var(--accent-quiet);
+}
+
 .show-more {
   margin: 10px auto;
   display: block;

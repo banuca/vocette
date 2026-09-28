@@ -40,12 +40,55 @@ export interface HistorySaveStatus {
   saveFailed: boolean
 }
 
+/**
+ * One dictation as History keeps it.
+ *
+ * Every field after the first five is optional, and must stay so: the store
+ * loads the file through an all-or-nothing filter, so a new required field
+ * would silently drop every entry saved before it existed.
+ */
 export interface HistoryEntry {
   id: string
+  /** What was delivered, or what the user has since corrected it to. */
   text: string
   createdAt: string
   durationMs: number
   model: string
+  /**
+   * The recogniser's own words, before vocabulary correction, cleanup and
+   * replacements. Kept only when they differ from the delivered text, so a
+   * rule that misfires can never cost the user what they said.
+   *
+   * AI polish, when it is added, keeps the text it started from in a field of
+   * its own, `originalText`; this one stays the recogniser's raw output.
+   */
+  heardText?: string
+  /** When the text was last corrected by hand. Never changes the date, duration or model. */
+  editedAt?: string
+  /** The text as it was before the first hand edit; later edits leave it alone. */
+  uneditedText?: string
+}
+
+/**
+ * The longest text History stores for one entry, edited or restored. The same
+ * ceiling the clipboard handler puts on a copy, so anything kept can be copied.
+ */
+export const MAX_HISTORY_TEXT_CHARS = 250_000
+
+/** Why an edit that leaves nothing behind is refused, in the window and the main process alike. */
+export const EMPTY_EDIT_REFUSAL = 'A dictation cannot be empty — delete it instead.'
+
+/**
+ * What "Show original" shows for an entry, or null when there is nothing
+ * different to show. What the recogniser heard comes first; an entry without
+ * it — nothing changed it on the way in, or it predates it — falls back to its
+ * text before the first edit.
+ */
+export function originalTextOf(
+  entry: Pick<HistoryEntry, 'text' | 'heardText' | 'uneditedText'>
+): string | null {
+  const original = entry.heardText ?? entry.uneditedText
+  return original !== undefined && original !== entry.text ? original : null
 }
 
 export const TRANSCRIPTION_MODELS = [

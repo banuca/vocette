@@ -147,6 +147,19 @@ All notable changes to this project are documented here. This project adheres to
   before Save and is worked out again on refresh. It is a guess from the device's name —
   “Headset”, “Hands-Free”, “AirPods”, “Buds”, “Bluetooth”, “BT”, Sony's WH- and WF- models
   — so a wired headset can get the note too; with no name to read, nothing is shown.
+- **Correct a dictation in History, and undo a delete.** **Edit** turns an entry's text
+  into a box of the same size and type, with **Save** and **Cancel** (Ctrl + Enter saves —
+  Command + Enter on a Mac — and Esc cancels); the entry then says “Edited” beside its
+  time, and keeps its date, length and model. An empty text is refused — delete the
+  dictation instead. **Delete** no longer asks first: the entry goes at once, on disk too,
+  and a bar at the foot of the page offers **Undo** for 8 seconds, or until the next
+  delete, putting it back exactly where it was. Deleting all history in Settings still
+  asks, because that cannot be undone. Whenever cleanup, your words or a replacement
+  changed what the recogniser heard, its own words are now kept beside the text: **Show
+  original** switches the entry to them and **Copy original** copies them, so a rule that
+  misfires never costs you what you said. Dictations saved before this version were stored
+  without them. An edit keeps the text it replaced in the same way, so to remove words for
+  good, delete the dictation. The `.json` export includes both.
 
 - **Pro, with a 30-day trial — and a Free version that stays complete.** Everyone gets
   Pro for their first 30 days (an existing user from their first launch of this
