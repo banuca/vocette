@@ -56,19 +56,19 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 | 1 | Product name centralised + rename script | — | folded into 11 (product.ts) and 16 (rename script) | |
 | 2 | Cleanup that actually runs, and smarter (fillers, repeats, spoken corrections, new line) | Free | committed | 979cb47 |
 | 3 | Snippets / replacements (`spoken => written`) | Free (cap later) | committed | 96bb8bc |
-| 4 | Clipboard custody (restore) + honest delivery + "paste last" | Free | building (lane B) | |
-| 5 | Silent retry (cloud) + Retry in window | Free | todo | |
+| 4 | Clipboard custody (restore) + honest delivery + "paste last" | Free | committed | f067a4e |
+| 5 | Silent retry (cloud) + Retry in window | Free | committed | a319fea |
 | 6 | Key-free custom endpoints + `transcriptionReady` gate | Free | todo | |
 | 7a | On-device engine runtime (utility process, model store, router) | Free | committed | 1767354 |
-| 7b | Engine UI: Settings engine card, first-run download, progress | Free | todo | |
-| 8 | Vocabulary on the local engine + fuzzy vocabulary correction (all engines) | Free | todo | |
-| 9 | Start listening at the keypress + engine prewarm | Free | todo | |
+| 7b | Engine UI: Settings engine card, first-run download, progress | Free | committed | e355adc |
+| 8 | Vocabulary on the local engine + fuzzy vocabulary correction (all engines) | Free | building (lane C) |  |
+| 9 | Start listening at the keypress + engine prewarm | Free | building (lane A) |  |
 | 10 | Latency shown per dictation | Free | todo | |
 | 11 | Licence, 30-day trial, Account page, Pro gates | Gate | todo | |
 | 12 | AI polish with styles, time budget, raw fallback | Pro | todo | |
 | 13 | History edit, undo delete, show original | Free | todo | |
 | 14 | Opt-in update check | Free | todo | |
-| R1 | Silence guard: no text invented from a silent take, no engine call | Free | todo | |
+| R1 | Silence guard: no text invented from a silent take, no engine call | Free | building (lane B) |  |
 | R2 | Live microphone level in the overlay ("is it hearing me?") | Free | todo | |
 | R3 | Esc cancels a hands-free (toggle) recording | Free | todo | |
 | R4 | Bluetooth headset hint beside the microphone picker | Free | todo | |
@@ -122,6 +122,9 @@ still-pending feature-1 vocabulary steps 2–6 from `operating-plan.md` §6.
 | # | Automated | Runtime (Claude) | Not verified |
 |---|---|---|---|
 | 0 | tsc, 437 tests | Built app launched with MURMUR_PROFILE_DIR; settings written to the scratch profile; dev server CSP shows style-src 'unsafe-inline' | — |
+| 7b | tsc, lint, 812 tests | Real first run in the built app: fresh profile + empty models folder → setup card "Download the speech model" → Download clicked → 670 MB fetched through Electron net in 20 s on the corporate network → hashes verified, verified.json written → installed → fake-mic dictation succeeded with the downloaded model. Screenshots: missing, downloading (124 of 670 MB), installed, Settings "Ready". Copy fixes after review: reason "Download the speech model first."; sidebar "Not set up yet". | cancel/resume against the real server; failed state on screen |
+| 4 | 671 tests (lane B) → 857 after merge; paste now waits up to 1.5 s for Ctrl/Shift/Alt/Win release (GetAsyncKeyState) | pending: idle-gated real-keystroke test in its own test window (hold Ctrl+Shift, paste, sentinel clipboard restored, Alt+Shift+V) against frozen worktree e2e-clipboard | image/rich clipboard round trip |
+| 5 | 832 (lane B) → 889 after merge; fetch counts asserted per case; retry now always clipboard-only (window/tray Retry would have pasted into Murmur itself) | — | a real 429/5xx from a provider |
 | 2 | tsc, lint, 572 tests; probe of 25 realistic sentences incl. real engine output | E2E: fake-mic c-disfluent.wav through the built app → "So I think we should. Move the meeting to Wednesday." (fillers and spoken correction applied; the recogniser's own full stop kept) | Settings rows by hand |
 | 3 | tsc, lint, 626 tests (lane B); 755 after merge | — (no runtime surface beyond settings) | Settings box on screen; {date} locale in packaged app |
 | 7a | tsc, lint, 701 tests; build has out/main/engine-worker.js | E2E through built app, fake mic: cold stop→text 4.5–4.7 s (spawn + load), warm 0.36 s for a 4–5 s take (3 rounds); model id recorded in History; clipboard delivery; worker smoke by the builder incl. damaged-model recovery, 65 s split, packaged --dir build with native check passing | full 640 MB download; cancel/resume vs real server; idle unload in real time; NSIS installer |
