@@ -4,8 +4,10 @@
  *
  *   node scripts/rename-product.mjs "<New Name>" <new.app.id> [--dry-run]
  *
- * Replaces the whole word "Murmur" in the source, the tests, the packaging
- * configuration and the user-facing documents, and sets the new `appId`. Every
+ * Replaces the whole word of the current name — `PRODUCT_NAME` in
+ * src/shared/product.ts, so the script works again after a rename — in the
+ * source, the tests, the packaging configuration and the user-facing
+ * documents, and sets the new `appId`. Every
  * change is printed. Without --dry-run it refuses to run on a working tree
  * with uncommitted changes, so the rename is one reviewable commit.
  *
@@ -24,9 +26,18 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-export const CURRENT_NAME = 'Murmur'
+/** The name in use now, as `src/shared/product.ts` declares it. */
+export function currentName(root) {
+  const source = readFileSync(join(root, 'src', 'shared', 'product.ts'), 'utf8')
+  const match = /export const PRODUCT_NAME = '([^']+)'/u.exec(source)
+  if (!match?.[1]) throw new Error('PRODUCT_NAME was not found in src/shared/product.ts.')
+  return match[1]
+}
 
-/** Lines that name folders on disk; they keep the current name. */
+/**
+ * Lines that name folders on disk; they keep the name the folders were
+ * created with, whatever the product is called now.
+ */
 export const PROTECTED_LINES = [
   /app\.setName\(/u,
   /LEGACY_PROFILE_NAMES/u,
@@ -73,7 +84,9 @@ export function planRename({ root, name, appId }) {
   if (!APP_ID_PATTERN.test(appId)) {
     throw new Error('The app id must be reverse-DNS in lower case, like app.vocette or com.example.vocette.')
   }
-  const word = new RegExp(`\\b${CURRENT_NAME}\\b`, 'gu')
+  const current = currentName(root)
+  if (name === current) throw new Error(`The product is already called ${current}.`)
+  const word = new RegExp(`\\b${current}\\b`, 'gu')
   const changes = []
   for (const path of candidates(root)) {
     const file = relative(root, path).split('\\').join('/')

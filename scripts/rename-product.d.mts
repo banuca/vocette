@@ -1,4 +1,4 @@
-export const CURRENT_NAME: string
+export function currentName(root: string): string
 export const PROTECTED_LINES: readonly RegExp[]
 
 export interface RenameChange {
