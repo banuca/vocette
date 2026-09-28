@@ -1224,7 +1224,8 @@ a:focus-visible {
   font-weight: 600;
 }
 
-.field > span em {
+.field > span em,
+.field-label em {
   color: var(--text-muted);
   font-style: normal;
   font-weight: 400;
@@ -1326,9 +1327,21 @@ a:focus-visible {
 }
 
 .password-row input,
-.inline-control select {
+.inline-control select,
+.inline-control input {
   flex: 1;
   min-width: 0;
+}
+
+/* Test connection's answer, under the endpoint: green once the server has
+   answered, red when it has not, and muted while it waits — for the answer,
+   or for unsaved changes to be saved. */
+.field .connection-result.is-connected {
+  color: var(--status-good);
+}
+
+.field .connection-result.is-failed {
+  color: var(--status-bad);
 }
 
 .model-custom-input {

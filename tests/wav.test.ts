@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { encodeWavPcm16 } from '../src/renderer/audio-prep'
-import { decodeWav } from '../src/main/wav'
+import { decodeWav, encodeWavPcm16 as encodeInMain, silentWav } from '../src/main/wav'
 
 /**
  * The on-device engine hears only what this parser hands it, so every case
@@ -195,5 +195,33 @@ describe('decodeWav', () => {
       chunk('fmt ', new Uint8Array(16), 400)
     ])
     expect(decodeWav(truncated)).toBeNull()
+  })
+})
+
+/**
+ * The main process writes a WAV of its own for Test connection. It is a copy
+ * of the recorder's encoder, so the test request is shaped like a real one —
+ * and these hold the copy to the original.
+ */
+describe('encodeWavPcm16 in the main process', () => {
+  it('writes the very bytes the recorder’s encoder writes', () => {
+    // Including values past full scale, which both clamp.
+    const samples = new Float32Array([0, 0.5, -0.5, 0.25, -1, 1, 1.5, -1.5, 0.0001, -0.0001])
+    for (const sampleRate of [16_000, 48_000]) {
+      expect(new Uint8Array(encodeInMain(samples, sampleRate))).toEqual(
+        new Uint8Array(encodeWavPcm16(samples, sampleRate))
+      )
+    }
+  })
+})
+
+describe('silentWav', () => {
+  it('is a second of 16 kHz mono silence that reads back as exactly that', () => {
+    const wav = silentWav(1)
+    expect(wav.byteLength).toBe(44 + 16_000 * 2)
+    const decoded = decodeWav(wav)
+    expect(decoded?.sampleRate).toBe(16_000)
+    expect(decoded?.samples.length).toBe(16_000)
+    expect(decoded?.samples.every((sample) => sample === 0)).toBe(true)
   })
 })

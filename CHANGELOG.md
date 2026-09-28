@@ -179,6 +179,23 @@ All notable changes to this project are documented here. This project adheres to
   trial and nothing otherwise; when it ends, History shows one notice, dismissed for
   good. A cloud request still carries at most 100 keywords. Purchases stay closed (“Pro
   purchases open soon”) until the Polar values in `src/shared/product.ts` are filled in.
+- **A server of your own needs no key.** whisper.cpp's server, Speaches or a corporate
+  Whisper deployment often has no key to give, yet Murmur refused to record without one.
+  Now, with an **API endpoint** set in Settings → Transcription, the key is optional: the
+  badge reads “No key needed for this server”, Record works, and the request goes out
+  with no `Authorization` header at all, rather than an empty one. OpenAI itself, used
+  when the endpoint is empty, still asks for a key before anything is sent. When a server
+  refuses (HTTP 401 or 403), the message names it — “The server at localhost:8080 refused
+  the request (HTTP 401). If it needs a key, add one in Settings.” — or, when a key was
+  sent, says to check it, instead of blaming an OpenAI key. A server on this computer that
+  cannot be reached is asked about rather than your internet connection: “Could not reach
+  the transcription server at localhost:8080. Is it running?” **Test connection**, beside the
+  endpoint, sends one second of silence as a WAV to the saved endpoint, once, with no
+  retry and a 10-second limit, and says “Connected — the server answered in 180 ms” or
+  why not. An empty transcript of the silence counts as connected; a web page served at
+  the wrong address does not. It uses saved settings only — your saved key never goes to
+  an address you have not saved — so while the endpoint, model or key fields hold unsaved
+  changes it waits for **Save settings**, and says so.
 
 ### Fixed
 

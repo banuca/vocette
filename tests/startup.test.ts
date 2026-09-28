@@ -5,7 +5,8 @@ import type {
   HistorySaveStatus,
   LicenceActivation,
   LicenceRelease,
-  LicenceStatus
+  LicenceStatus,
+  TranscriptionTestResult
 } from '../src/shared/types'
 
 /**
@@ -96,6 +97,8 @@ async function startApp(options: {
   settingsConstructorError?: Error
   engine?: 'local' | 'cloud'
   apiKeySource?: 'none' | 'stored' | 'session'
+  /** The saved API endpoint; empty, as by default, is OpenAI. */
+  apiEndpoint?: string
   modelState?: StoredModelState
   /** Another application already owns every system shortcut Murmur asks for. */
   acceleratorTaken?: boolean
@@ -149,7 +152,8 @@ async function startApp(options: {
     ...DEFAULT_SETTINGS,
     historyRetentionDays: 30,
     trialStartedAt: options.trialStartedAt ?? null,
-    deviceTag: '7F3A'
+    deviceTag: '7F3A',
+    apiEndpoint: options.apiEndpoint ?? DEFAULT_SETTINGS.apiEndpoint
   }
   let licence: Record<string, string> | null = options.licensed
     ? {
@@ -313,6 +317,8 @@ async function startApp(options: {
       getInternal = (): typeof DEFAULT_SETTINGS => ({ ...storedSettings, engine: engineChoice })
       getPublic = () => ({
         apiKeySource,
+        // Readiness reads it: an endpoint of the user's own may need no key.
+        apiEndpoint: storedSettings.apiEndpoint,
         engine: engineChoice,
         launchAtLogin: false,
         recordingMode: 'hold'
@@ -570,6 +576,8 @@ afterEach(() => {
   vi.resetModules()
   vi.unstubAllEnvs()
   vi.useRealTimers()
+  // The cloud cases stand in for the network with a fake fetch.
+  vi.unstubAllGlobals()
 })
 
 describe('bootstrap', () => {
@@ -1472,5 +1480,149 @@ describe('Pro over IPC', () => {
     expect(app.historyAdds()).toHaveLength(2)
     expect(app.historyAdds().at(-1)?.text).toBe('Open data verse now.')
     expect(app.invoke('licence:status', true)).toMatchObject({ plan: 'free', trialEndNoticeDue: true })
+  })
+})
+
+/**
+ * A server of the user's own — whisper.cpp, Speaches, a corporate deployment
+ * — may need no key, so a saved endpoint alone makes the cloud ready: the
+ * first-run page, the tray and Record all follow it. Test connection asks the
+ * saved endpoint, once, and the stubbed store hands the service no key.
+ */
+describe('a server of the user’s own, with no key', () => {
+  const LOCAL_SERVER = 'http://localhost:8080/v1'
+  type FetchFn = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+
+  /** Stands in for the server, answering every request with a fresh `reply`. */
+  const stubServer = (reply: () => Response): Mock<FetchFn> => {
+    const fetchMock = vi.fn<FetchFn>(async () => reply())
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  const answer =
+    (status: number, payload: unknown) =>
+    (): Response =>
+      new Response(JSON.stringify(payload), {
+        status,
+        headers: { 'content-type': 'application/json' }
+      })
+
+  it('is ready with no key: History on a first run, and Start recording in the tray', async () => {
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none', apiEndpoint: LOCAL_SERVER })
+    expect(app.invoke('engine:get-status', true)).toMatchObject({
+      engine: 'cloud',
+      ready: true,
+      notReadyReason: null
+    })
+    app.invoke('app:ready', true)
+    expect(app.sentToMain()).toContainEqual({ channel: 'app:navigate', payload: 'history' })
+    expect(app.trayItem('Start recording')?.enabled).toBe(true)
+    expect(app.trayLabels()[0]).toBe('Hold Left Ctrl + Left Shift to talk')
+  })
+
+  it('tells the window the cloud is ready once an endpoint is saved', async () => {
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none' })
+    expect(app.invoke('engine:get-status', true)).toMatchObject({ ready: false })
+    await app.invoke('settings:save', true, { apiEndpoint: LOCAL_SERVER })
+    expect(lastEngineBroadcast(app)).toMatchObject({
+      engine: 'cloud',
+      ready: true,
+      notReadyReason: null
+    })
+  })
+
+  it('sends a take to it with no Authorization header at all', async () => {
+    const server = stubServer(answer(200, { text: 'Hello from my own server.' }))
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none', apiEndpoint: LOCAL_SERVER })
+
+    await dictateFromWindow(app, wavBytes(1600))
+
+    expect(server).toHaveBeenCalledTimes(1)
+    const [url, init] = server.mock.calls[0] ?? []
+    expect(url).toBe('http://localhost:8080/v1/audio/transcriptions')
+    expect(new Headers(init?.headers).has('authorization')).toBe(false)
+    expect(workflowErrors(app)).toEqual([])
+    expect(app.historyAdds()).toMatchObject([{ text: 'Hello from my own server.' }])
+  })
+
+  it('tests the saved endpoint with one second of silence, for the main window only', async () => {
+    const server = stubServer(answer(200, { text: '' }))
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none', apiEndpoint: LOCAL_SERVER })
+
+    await expect(
+      Promise.resolve().then(() => app.invoke('transcription:test', false))
+    ).rejects.toThrow('Forbidden.')
+    expect(server).not.toHaveBeenCalled()
+
+    // An empty transcript of silence is the answer a working server gives.
+    const result = (await app.invoke('transcription:test', true)) as TranscriptionTestResult
+    expect(result).toEqual({ ok: true, ms: expect.any(Number), error: null })
+    expect(server).toHaveBeenCalledTimes(1)
+    const [url, init] = server.mock.calls[0] ?? []
+    expect(url).toBe('http://localhost:8080/v1/audio/transcriptions')
+    expect(new Headers(init?.headers).has('authorization')).toBe(false)
+    const file = (init?.body as FormData).get('file') as unknown as File
+    expect(file.name).toBe('dictation.wav')
+    // 16,000 samples of 16-bit mono after a 44-byte header.
+    expect(file.size).toBe(32_044)
+  })
+
+  it('reports a busy server at once, without the quiet retry a dictation gets', async () => {
+    const server = stubServer(answer(503, { error: { message: 'busy' } }))
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none', apiEndpoint: LOCAL_SERVER })
+    await expect(app.invoke('transcription:test', true)).resolves.toEqual({
+      ok: false,
+      ms: null,
+      error: 'The transcription service is temporarily unavailable.'
+    })
+    expect(server).toHaveBeenCalledTimes(1)
+  })
+
+  it('names the server when it wants a key after all', async () => {
+    stubServer(answer(401, { error: { message: 'Unauthorized' } }))
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none', apiEndpoint: LOCAL_SERVER })
+    await expect(app.invoke('transcription:test', true)).resolves.toEqual({
+      ok: false,
+      ms: null,
+      error:
+        'The server at localhost:8080 refused the request (HTTP 401). If it needs a key, add one in Settings.'
+    })
+  })
+
+  it('sends OpenAI nothing without a key, and says what is missing', async () => {
+    const server = stubServer(answer(200, { text: 'never sent' }))
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'none' })
+    await expect(app.invoke('transcription:test', true)).resolves.toEqual({
+      ok: false,
+      ms: null,
+      error: 'Add an API key in Settings before recording.'
+    })
+    expect(server).not.toHaveBeenCalled()
+  })
+
+  it('asks whether a local server is running when nothing answers, and blames the network elsewhere', async () => {
+    // Nothing is listening: every connection is refused.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchFn>(() => Promise.reject(new TypeError('fetch failed')))
+    )
+    const local = await startApp({ engine: 'cloud', apiKeySource: 'none', apiEndpoint: LOCAL_SERVER })
+    await expect(local.invoke('transcription:test', true)).resolves.toEqual({
+      ok: false,
+      ms: null,
+      error: 'Could not reach the transcription server at localhost:8080. Is it running?'
+    })
+
+    const remote = await startApp({
+      engine: 'cloud',
+      apiKeySource: 'none',
+      apiEndpoint: 'https://transcribe.example.com/v1'
+    })
+    await expect(remote.invoke('transcription:test', true)).resolves.toEqual({
+      ok: false,
+      ms: null,
+      error: 'Could not reach the transcription service. Check your internet connection.'
+    })
   })
 })

@@ -1,5 +1,6 @@
 /**
- * Reads the WAV the recorder produces, for the on-device engine.
+ * Reads the WAV the recorder produces, for the on-device engine, and writes
+ * one of the same shape for Test connection.
  *
  * The speech addon ships WAV readers of its own, but inside Electron they
  * throw "External buffers are not allowed" (the V8 memory cage), so Murmur
@@ -21,6 +22,8 @@ const WAVE_FORMAT_PCM = 0x0001
 /** WAVE_FORMAT_EXTENSIBLE: the real format is the first two bytes of its sub-format GUID. */
 const WAVE_FORMAT_EXTENSIBLE = 0xfffe
 const MAX_SAMPLE_RATE = 384_000
+/** The rate the recorder prepares every take at. */
+const RECORDER_SAMPLE_RATE = 16_000
 
 function fourCc(view: DataView, offset: number): string {
   return String.fromCharCode(
@@ -109,4 +112,53 @@ export function decodeWav(bytes: Uint8Array): DecodedWav | null {
     }
   }
   return { samples, sampleRate: format.sampleRate }
+}
+
+/**
+ * Encodes mono float samples as a 16-bit PCM WAV file.
+ *
+ * A copy of `encodeWavPcm16` in the renderer's audio preparation, which the
+ * main process cannot import. A test holds the two to the same bytes, so a
+ * test request is shaped exactly like a real dictation.
+ */
+export function encodeWavPcm16(samples: Float32Array, sampleRate: number): ArrayBuffer {
+  const byteCount = samples.length * 2
+  const buffer = new ArrayBuffer(44 + byteCount)
+  const view = new DataView(buffer)
+  const writeAscii = (offset: number, text: string): void => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index))
+    }
+  }
+
+  writeAscii(0, 'RIFF')
+  view.setUint32(4, 36 + byteCount, true)
+  writeAscii(8, 'WAVE')
+  writeAscii(12, 'fmt ')
+  view.setUint32(16, 16, true) // fmt chunk size
+  view.setUint16(20, 1, true) // PCM
+  view.setUint16(22, 1, true) // mono
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true) // byte rate
+  view.setUint16(32, 2, true) // block align
+  view.setUint16(34, 16, true) // bits per sample
+  writeAscii(36, 'data')
+  view.setUint32(40, byteCount, true)
+
+  let offset = 44
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index] ?? 0))
+    view.setInt16(offset, Math.round(sample < 0 ? sample * 0x8000 : sample * 0x7fff), true)
+    offset += 2
+  }
+  return buffer
+}
+
+/**
+ * `seconds` of silence as the recorder would send it: 16 kHz mono PCM16.
+ * What Test connection sends — a real request, with nothing of the user in it.
+ */
+export function silentWav(seconds: number): Uint8Array {
+  const frames = Math.round(seconds * RECORDER_SAMPLE_RATE)
+  return new Uint8Array(encodeWavPcm16(new Float32Array(frames), RECORDER_SAMPLE_RATE))
 }

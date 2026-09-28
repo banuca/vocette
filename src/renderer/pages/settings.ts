@@ -76,6 +76,24 @@ const CLOUD_SUMMARY =
   'Where your speech becomes text. Your key is encrypted by the operating system and never ' +
   'displayed again.'
 
+/** Test connection's line while its one request is out. */
+const TEST_SENDING = 'Sending one second of silence…'
+/** Why Test connection waits while the cloud fields hold unsaved changes. */
+const TEST_NEEDS_SAVE = 'Save settings first — the test uses the saved endpoint, model and key.'
+
+/**
+ * The badge over the card, from saved settings: a key in use, wherever it is
+ * held — or, without one, whether the saved endpoint is OpenAI, which always
+ * needs a key, or a server of the user's own, which may need none.
+ */
+function keyBadgeState(next: PublicSettings): { text: string; configured: boolean } {
+  if (next.apiKeySource === 'stored') return { text: 'Key saved', configured: true }
+  if (next.apiKeySource === 'session') return { text: 'Key for this session', configured: true }
+  return next.apiEndpoint.trim() !== ''
+    ? { text: 'No key needed for this server', configured: true }
+    : { text: 'Key required', configured: false }
+}
+
 function holdDelayLabel(ms: number): string {
   return ms === 0 ? 'Instantly' : `${ms} ms`
 }
@@ -125,8 +143,7 @@ export function renderSettings(
   /** Secure storage unfit for a credential means the key stays in memory. */
   const storageUnusable = (): boolean => !isAvailable(capabilities().secureKeyStorage)
 
-  const keyBadgeText = (source: PublicSettings['apiKeySource']): string =>
-    source === 'stored' ? 'Key saved' : source === 'session' ? 'Key for this session' : 'Key required'
+  const initialBadge = keyBadgeState(settings)
 
   const launchLabel =
     context.platform.platform === 'windows'
@@ -150,7 +167,7 @@ export function renderSettings(
       <section class="settings-card">
         <div class="settings-heading">
           <div><h2>Transcription</h2><p id="transcription-summary"></p></div>
-          <span class="configured-badge ${settings.apiKeySource !== 'none' ? 'is-configured' : ''}" id="key-badge">${keyBadgeText(settings.apiKeySource)}</span>
+          <span class="configured-badge ${initialBadge.configured ? 'is-configured' : ''}" id="key-badge">${initialBadge.text}</span>
         </div>
 
         <div class="mode-choice engine-choice" role="radiogroup" aria-label="Where transcription runs">
@@ -183,10 +200,15 @@ export function renderSettings(
               </label>
               <small id="key-scope-note"></small>
             </div>
-            <label class="field field-wide"><span>API endpoint <em>(optional)</em></span>
-              <input id="api-endpoint" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.openai.com/v1" value="${escapeHtml(settings.apiEndpoint)}" />
-              <small>Leave empty for OpenAI. For another OpenAI-compatible provider, paste its base URL — for example <code>https://api.groq.com/openai/v1</code>, or <code>http://localhost:8080/v1</code> for a local transcription server.</small>
-            </label>
+            <div class="field field-wide">
+              <label class="field-label" for="api-endpoint">API endpoint <em>(optional)</em></label>
+              <div class="inline-control">
+                <input id="api-endpoint" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.openai.com/v1" value="${escapeHtml(settings.apiEndpoint)}" aria-describedby="api-endpoint-help" />
+                <button class="secondary-button" id="test-connection" type="button" aria-describedby="connection-result">Test connection</button>
+              </div>
+              <small class="connection-result" id="connection-result" aria-live="polite" hidden></small>
+              <small id="api-endpoint-help">Leave empty for OpenAI. For another OpenAI-compatible provider, paste its base URL — for example <code>https://api.groq.com/openai/v1</code>, or <code>http://localhost:8080/v1</code> for a local transcription server. With an endpoint here the key is optional: a server of your own may not need one.</small>
+            </div>
             <label class="field"><span>Model</span>
               <select id="model">
                 ${TRANSCRIPTION_MODELS.map(
@@ -336,6 +358,9 @@ export function renderSettings(
   const modelCustom = query<HTMLInputElement>('#model-custom')
   const languageSelect = query<HTMLSelectElement>('#language')
   const endpointInput = query<HTMLInputElement>('#api-endpoint')
+  const apiKeyInput = query<HTMLInputElement>('#api-key')
+  const testButton = query<HTMLButtonElement>('#test-connection')
+  const testLine = query<HTMLElement>('#connection-result')
   const keyBadge = query<HTMLElement>('#key-badge')
   const chips = query<HTMLSpanElement>('#shortcut-chips')
   const shortcutButton = query<HTMLButtonElement>('#shortcut-capture')
@@ -526,6 +551,59 @@ export function renderSettings(
     if (replacementsNote.textContent !== text) replacementsNote.textContent = text
   }
 
+  /** True while Test connection's one request is out. */
+  let testing = false
+  /**
+   * The last answer, and the saved connection it was about. It stays on show
+   * through repaints and other saves, until that connection changes.
+   */
+  let testAnswer: { text: string; ok: boolean; about: string } | null = null
+
+  /** What an answer is about: where the request goes, which model, and whether a key goes too. */
+  const savedConnection = (): string =>
+    JSON.stringify([settings.apiEndpoint, settings.model, settings.apiKeySource])
+
+  /** The model the controls name, as Save would store it. */
+  const modelFromControls = (): string => {
+    const selected = modelSelect?.value ?? settings.model
+    return selected === CUSTOM_MODEL_OPTION ? modelCustom?.value.trim() ?? '' : selected
+  }
+
+  /**
+   * True while the endpoint, model or key fields hold something unsaved. The
+   * test sends only saved settings — the saved key goes nowhere but the saved
+   * endpoint — so rather than test something other than what is on screen, it
+   * waits for Save and says so.
+   */
+  const connectionUnsaved = (): boolean =>
+    (endpointInput?.value.trim() ?? settings.apiEndpoint) !== settings.apiEndpoint ||
+    modelFromControls() !== settings.model ||
+    (apiKeyInput?.value.trim() ?? '') !== ''
+
+  /** The button and the line under the endpoint, from where the test stands. */
+  const paintConnectionTest = (): void => {
+    if (testAnswer && testAnswer.about !== savedConnection()) testAnswer = null
+    const unsaved = connectionUnsaved()
+    if (testButton) {
+      testButton.disabled = testing || unsaved
+      testButton.textContent = testing ? 'Testing…' : 'Test connection'
+    }
+    if (!testLine) return
+    const line = testing
+      ? { text: TEST_SENDING, tone: '' }
+      : unsaved
+        ? { text: TEST_NEEDS_SAVE, tone: '' }
+        : testAnswer
+          ? { text: testAnswer.text, tone: testAnswer.ok ? ' is-connected' : ' is-failed' }
+          : null
+    const text = line?.text ?? ''
+    // Written only when it changes: the line is a live region, and every
+    // keystroke in the endpoint repaints it.
+    if (testLine.textContent !== text) testLine.textContent = text
+    testLine.hidden = line === null
+    testLine.className = `connection-result${line?.tone ?? ''}`
+  }
+
   const syncControlValues = (next: PublicSettings): void => {
     settings = next
     if (holdDelay) holdDelay.value = String(next.holdDelayMs)
@@ -543,8 +621,9 @@ export function renderSettings(
     if (languageSelect) languageSelect.value = next.language
     if (endpointInput) endpointInput.value = next.apiEndpoint
     if (keyBadge) {
-      keyBadge.textContent = keyBadgeText(next.apiKeySource)
-      keyBadge.className = `configured-badge ${next.apiKeySource !== 'none' ? 'is-configured' : ''}`
+      const badge = keyBadgeState(next)
+      keyBadge.textContent = badge.text
+      keyBadge.className = `configured-badge ${badge.configured ? 'is-configured' : ''}`
     }
     if (modeHold) modeHold.checked = next.recordingMode === 'hold'
     if (modeToggle) modeToggle.checked = next.recordingMode === 'toggle'
@@ -577,6 +656,9 @@ export function renderSettings(
     if (chosenEngine === next.engine) engineDirty = false
     if (!engineDirty) chosenEngine = next.engine
     syncEngineChoice()
+    // What is saved decides whether the last answer still applies, and the
+    // fields just repainted from it decide whether the test must wait.
+    paintConnectionTest()
   }
 
   // --- Capability-driven state --------------------------------------------
@@ -895,6 +977,38 @@ export function renderSettings(
     paintReplacementsNote()
   })
 
+  // --- Test connection ----------------------------------------------------
+
+  // Each of these can make the fields differ from what is saved, which is
+  // all the test will send.
+  endpointInput?.addEventListener('input', paintConnectionTest)
+  apiKeyInput?.addEventListener('input', paintConnectionTest)
+  modelSelect?.addEventListener('change', paintConnectionTest)
+  modelCustom?.addEventListener('input', paintConnectionTest)
+
+  testButton?.addEventListener('click', async () => {
+    if (testing || connectionUnsaved()) return
+    testing = true
+    const about = savedConnection()
+    paintConnectionTest()
+    let answer: { text: string; ok: boolean }
+    try {
+      const result = await window.murmur.testTranscription()
+      answer = result.ok
+        ? {
+            ok: true,
+            text: `Connected — the server answered in ${result.ms.toLocaleString('en-GB')} ms`
+          }
+        : { ok: false, text: result.error }
+    } catch (error) {
+      answer = { ok: false, text: friendlyError(error) }
+    }
+    testing = false
+    if (disposed) return
+    testAnswer = { ...answer, about }
+    paintConnectionTest()
+  })
+
   // --- Microphones --------------------------------------------------------
 
   /**
@@ -1165,6 +1279,8 @@ export function renderSettings(
           keyInput.placeholder = 'Enter a new key to replace the current key'
         }
       }
+      // The key box has just been emptied, so the test need not wait for it.
+      paintConnectionTest()
       if (feedback) {
         feedback.textContent = 'Settings saved.'
         window.setTimeout(() => {

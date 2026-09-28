@@ -210,7 +210,10 @@ export interface PublicSettings {
    * the vocabulary, they never leave this computer.
    */
   replacements: string
-  /** Empty = api.openai.com. Otherwise an OpenAI-compatible transcription endpoint. */
+  /**
+   * Empty = api.openai.com. Otherwise an OpenAI-compatible transcription
+   * endpoint — one of the user's own, which may need no key at all.
+   */
   apiEndpoint: string
   apiKeySource: ApiKeySource
 }
@@ -248,10 +251,25 @@ export interface SettingsUpdate {
   trialEndNoticeDismissed?: boolean
 }
 
-/** True when a key is available for transcription, wherever it is held. */
-export function hasApiKey(settings: Pick<PublicSettings, 'apiKeySource'>): boolean {
-  return settings.apiKeySource !== 'none'
-}
+/**
+ * What Test connection found: whether the saved cloud settings reached a
+ * server that answered like a transcription service, and how long it took.
+ * Carries no key and nothing the server sent back beyond, on failure, the
+ * sentence a dictation would have shown.
+ */
+export type TranscriptionTestResult =
+  | {
+      ok: true
+      /** Until the answer arrived, to the nearest millisecond. */
+      ms: number
+      error: null
+    }
+  | {
+      ok: false
+      ms: null
+      /** Why not, in words the page can show as they are. */
+      error: string
+    }
 
 export interface AppInfo {
   version: string

@@ -109,7 +109,7 @@ On Wayland the shortcut is registered with the desktop portal rather than observ
 | Start with Windows / Open at login / Start when I sign in | Launches minimised to the tray. |
 | Microphone | System default, or a specific device. A saved device that is unplugged stays selected. **Test** shows a live level meter so you can check a device before dictating. |
 | Keep transcripts | Forever, 30 days, 90 days, or 1 year. |
-| API endpoint | Optional. Leave empty for OpenAI, or enter any OpenAI-compatible base URL — `https://api.groq.com/openai/v1`, Azure OpenAI, or `http://localhost:8080/v1` for a locally hosted transcription server. |
+| API endpoint | Optional. Leave empty for OpenAI, or enter any OpenAI-compatible base URL — `https://api.groq.com/openai/v1`, Azure OpenAI, or `http://localhost:8080/v1` for a locally hosted transcription server. With an endpoint set, the API key is optional too: a server of your own (whisper.cpp's server, Speaches, a corporate deployment) may need none, and without a key the request carries no `Authorization` header. OpenAI, with the field empty, always needs a key. **Test connection** sends one second of silence to the saved endpoint, once, and reports how long the server took to answer, or why it failed; it uses saved settings only, so save any changes first. |
 | Model | `gpt-transcribe` (default), `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `whisper-1` — or any custom model name when a custom endpoint is configured. |
 | Language | Automatic or a specific ISO-639-1 language; the transcription prompt adapts to it. |
 | Theme | Modern Dark (default) or light, after Visual Studio Code's Light Modern. Switched from the foot of the sidebar, saved with everything else, and followed by the overlay. |

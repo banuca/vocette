@@ -49,6 +49,7 @@ import {
   purchasesConfigured
 } from './licence'
 import { SettingsStore } from './settings-store'
+import { runConnectionTest } from './connection-test'
 import { TranscriptionService } from './transcription-service'
 import { decodeWav } from './wav'
 import {
@@ -75,7 +76,6 @@ import {
 import { formatDuration } from '../shared/format'
 import { chordLabel } from '../shared/keycodes'
 import {
-  hasApiKey,
   type HistorySaveStatus,
   type LicenceActivation,
   type LicenceRelease,
@@ -87,6 +87,7 @@ import {
   type RecorderLevelPayload,
   type RecorderStartedPayload,
   type SettingsUpdate,
+  type TranscriptionTestResult,
   type WorkflowStatus
 } from '../shared/types'
 
@@ -1040,6 +1041,23 @@ function registerIpc(): void {
     return result
   })
 
+  // Test connection. It takes nothing from the window: the endpoint, model and
+  // key are the saved ones, so the stored key never goes anywhere the user has
+  // not saved, and a window cannot aim a request of its own. One request, with
+  // no retry, and a short timeout.
+  ipcMain.handle('transcription:test', (event): Promise<TranscriptionTestResult> => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    const settings = settingsStore.getInternal()
+    return runConnectionTest({
+      endpoint: settings.apiEndpoint,
+      model: settings.model,
+      language: settings.language,
+      apiKey: () => settingsStore.getApiKey(),
+      send: (input, timeoutMs) => transcriber.testConnection(input, timeoutMs),
+      now: () => performance.now()
+    })
+  })
+
   ipcMain.handle('engine:get-status', (event) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
     return engineStatus()
@@ -1393,9 +1411,10 @@ async function bootstrap(): Promise<void> {
   const startsInBackground = process.argv.includes('--background')
   if (!startsInBackground) {
     // History carries the setup guidance, so that is where a first run lands.
-    // Only a cloud user with no key has nothing to do but open Settings.
-    const settings = settingsStore.getPublic()
-    showMain(settings.engine === 'cloud' && !hasApiKey(settings) ? 'settings' : 'history')
+    // Only a cloud user who cannot dictate yet — no key, and no server of
+    // their own that might need none — has nothing to do but open Settings.
+    const readiness = engineStatus()
+    showMain(readiness.engine === 'cloud' && !readiness.ready ? 'settings' : 'history')
   }
 
   // A recovered or damaged data file is worth telling the user about — the old

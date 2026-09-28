@@ -64,8 +64,10 @@ export function setupSteps(input: SetupInput): SetupStep[] {
       blocking: true
     })
   } else if (!engine.ready) {
-    // A cloud user without a key. The reason names what is missing, so the
-    // step never guesses.
+    // A cloud user with no key and no endpoint of their own: OpenAI always
+    // needs a key, while a server of the user's own may need none, so an
+    // endpoint alone makes the cloud ready. The reason names what is missing,
+    // so the step never guesses.
     steps.push({
       id: 'transcription',
       title: 'Set up transcription',
@@ -113,9 +115,10 @@ export function setupSteps(input: SetupInput): SetupStep[] {
     })
   }
 
-  // Only a cloud key needs storing, and only while none is in use: with a key
-  // in use the user has seen and answered this. The on-device engine has no
-  // key at all, so this would be noise there.
+  // Only a cloud key needs storing, and only while the cloud cannot dictate:
+  // with a key in use the user has seen and answered this, and a server of
+  // their own that may need no key leaves nothing to store. The on-device
+  // engine has no key at all, so this would be noise there.
   if (
     engine.engine === 'cloud' &&
     input.capabilities.secureKeyStorage.state !== 'available' &&

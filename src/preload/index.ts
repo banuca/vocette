@@ -14,6 +14,7 @@ import type {
   SettingsUpdate,
   ShortcutCapture,
   Theme,
+  TranscriptionTestResult,
   WorkflowStatus
 } from '../shared/types'
 
@@ -24,6 +25,10 @@ const api = {
   clearApiKey: (): Promise<PublicSettings> => ipcRenderer.invoke('settings:clear-api-key'),
   clearSessionApiKey: (): Promise<PublicSettings> =>
     ipcRenderer.invoke('settings:clear-session-key'),
+  // One second of silence to the saved cloud endpoint, with the saved key and
+  // model. It takes no arguments on purpose: nothing typed but unsaved is sent.
+  testTranscription: (): Promise<TranscriptionTestResult> =>
+    ipcRenderer.invoke('transcription:test'),
 
   getPlatformStatus: (): Promise<PlatformStatus> => ipcRenderer.invoke('platform:status'),
   openPlatformSettings: (pane: SettingsPane): Promise<void> =>

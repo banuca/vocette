@@ -39,6 +39,7 @@ export interface EngineStatus {
 }
 
 export const MODEL_NOT_READY_REASON = 'Download the speech model first.'
+/** The cloud engine's reason, which only arises with no endpoint set: OpenAI's. */
 export const KEY_NOT_READY_REASON = 'Add your API key in Settings before recording.'
 
 /**
@@ -55,13 +56,18 @@ export interface Readiness {
 
 /**
  * Whether the chosen engine has what it needs. The on-device engine needs its
- * model on disk and verified; the cloud engine needs a key, wherever it is
- * held. Nothing else is checked here — a microphone or a permission is a
- * separate matter, and a network the cloud engine may not reach is only known
- * when it is tried.
+ * model on disk and verified. The cloud engine needs a key, wherever it is
+ * held — or an endpoint of the user's own: whisper.cpp, Speaches or a
+ * corporate deployment may need no key at all, and only the server can say
+ * whether it does. OpenAI itself, reached when no endpoint is set, always
+ * needs one, so there the reason still asks for it.
+ *
+ * Nothing else is checked here — a microphone or a permission is a separate
+ * matter, and a network or server the cloud engine may not reach is only
+ * known when it is tried.
  */
 export function engineReady(
-  settings: Pick<PublicSettings, 'engine' | 'apiKeySource'>,
+  settings: Pick<PublicSettings, 'engine' | 'apiKeySource' | 'apiEndpoint'>,
   modelState: ModelState
 ): Readiness {
   if (settings.engine === 'local') {
@@ -69,7 +75,7 @@ export function engineReady(
       ? { ready: true, notReadyReason: null }
       : { ready: false, notReadyReason: MODEL_NOT_READY_REASON }
   }
-  return settings.apiKeySource !== 'none'
+  return settings.apiKeySource !== 'none' || settings.apiEndpoint.trim() !== ''
     ? { ready: true, notReadyReason: null }
     : { ready: false, notReadyReason: KEY_NOT_READY_REASON }
 }

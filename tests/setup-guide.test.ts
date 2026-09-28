@@ -14,9 +14,11 @@ import {
 import {
   KEY_NOT_READY_REASON,
   MODEL_NOT_READY_REASON,
+  engineReady,
   type EngineStatus,
   type ModelState
 } from '../src/shared/engine'
+import type { ApiKeySource } from '../src/shared/types'
 
 /**
  * The guidance is only useful if it clears itself. Every case here is about
@@ -66,6 +68,21 @@ function inTheCloud(
     notReadyReason: reason
   }
 }
+
+/**
+ * A cloud user as the main process reports them, from what they have saved:
+ * readiness is worked out by the same rule, so the guide is tested against
+ * the status it will really be given.
+ */
+function cloudWith(saved: { apiKeySource: ApiKeySource; apiEndpoint: string }): EngineStatus {
+  return {
+    engine: 'cloud',
+    model: onThisPc('missing').model,
+    ...engineReady({ engine: 'cloud', ...saved }, 'missing')
+  }
+}
+
+const LOCAL_SERVER = 'http://localhost:8080/v1'
 
 const input = (overrides: Partial<SetupInput> = {}): SetupInput => ({
   engine: onThisPc('installed'),
@@ -125,6 +142,36 @@ describe('setupSteps', () => {
     })
     // The cloud has no use for the model, however it stands on disk.
     expect(steps.map((step) => step.id)).not.toContain('model')
+  })
+
+  it('asks for a key only with neither a key nor an endpoint of the user’s own', () => {
+    const openAiWithoutKey = cloudWith({ apiKeySource: 'none', apiEndpoint: '' })
+    expect(ids(input({ engine: openAiWithoutKey }))).toEqual(['transcription'])
+    expect(setupSteps(input({ engine: openAiWithoutKey }))[0]?.detail).toBe(KEY_NOT_READY_REASON)
+
+    expect(ids(input({ engine: cloudWith({ apiKeySource: 'stored', apiEndpoint: '' }) }))).toEqual(
+      []
+    )
+    expect(
+      ids(input({ engine: cloudWith({ apiKeySource: 'session', apiEndpoint: LOCAL_SERVER }) }))
+    ).toEqual([])
+  })
+
+  it('asks nothing of a cloud user whose own server may need no key', () => {
+    // whisper.cpp, Speaches or a corporate server: only the server can say
+    // whether it wants a key, and Record will find out on the first take.
+    const keyless = cloudWith({ apiKeySource: 'none', apiEndpoint: LOCAL_SERVER })
+    expect(setupSteps(input({ engine: keyless }))).toEqual([])
+    // With no key needed there is nothing to store, so a keyring that cannot
+    // hold one is not raised either.
+    expect(
+      ids(
+        input({
+          engine: keyless,
+          capabilities: capabilities({ secureKeyStorage: unavailable('No keyring here.') })
+        })
+      )
+    ).toEqual([])
   })
 
   it('still explains itself if not-ready arrives without a reason', () => {

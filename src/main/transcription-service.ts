@@ -16,6 +16,10 @@ const MAX_RETRY_DELAY_MS = 5000
 export interface TranscribeInput {
   audio: Uint8Array
   mimeType: string
+  /**
+   * Empty = none. OpenAI always needs one; a custom endpoint is sent the
+   * request without any, because a server of the user's own may need none.
+   */
   apiKey: string
   model: string
   language: string
@@ -32,9 +36,34 @@ export interface TranscribeInput {
   onRetry?: () => void
 }
 
+/**
+ * What Test connection sends: a request shaped like a dictation's, without
+ * the user's words, a caller to cancel it, or anyone to tell about a retry.
+ */
+export type ConnectionTestInput = Pick<
+  TranscribeInput,
+  'audio' | 'mimeType' | 'apiKey' | 'model' | 'language' | 'endpoint'
+>
+
+/** How one request is shaped, and how long it may take. */
+interface RequestShape {
+  terms: readonly string[]
+  useKeywords: boolean
+  /** The second attempt, which changes how a rate limit is reported. */
+  isRetry: boolean
+  timeoutMs: number
+}
+
 /** One request's outcome. */
 type Attempt =
-  | { ok: true; text: string }
+  | {
+      ok: true
+      /**
+       * The text the service sent back, untrimmed and possibly empty; null
+       * when its answer had no text in it at all.
+       */
+      text: string | null
+    }
   | {
       ok: false
       /** The HTTP status, or 0 when the service could not be reached at all. */
@@ -96,12 +125,67 @@ function filenameForMimeType(mimeType: string): string {
   return 'dictation.webm'
 }
 
-/** `retried`: this is the answer to the second attempt, and a rate limit says so. */
-function humanApiError(status: number, apiMessage: string, retried: boolean): string {
+/** What a failure's wording depends on, besides its status. */
+interface FailureContext {
+  /** The endpoint as configured; empty for OpenAI. */
+  endpoint: string
+  /** Whether the request carried a key. */
+  keySent: boolean
+  /** This is the answer to the second attempt, and a rate limit says so. */
+  retried: boolean
+}
+
+/**
+ * The server a custom endpoint names, as the user would recognise it — with
+ * its port, so two local servers can be told apart. Null for OpenAI.
+ */
+function customHost(endpoint: string): string | null {
+  const trimmed = endpoint.trim()
+  if (!trimmed) return null
+  try {
+    return new URL(trimmed).host
+  } catch {
+    return trimmed
+  }
+}
+
+/** The names a server on this computer is reached by. */
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+/**
+ * Why a request never reached its server. One on this computer did not fail
+ * for want of an internet connection — it is most likely not running — so it
+ * is named, as `host:port`, rather than sending the user to check their
+ * network. Anywhere else, the network is the likelier culprit.
+ */
+function unreachableMessage(endpoint: string): string {
+  let url: URL | null = null
+  try {
+    url = new URL(endpoint.trim())
+  } catch {
+    // Empty, which is OpenAI, or not an address at all: not this computer.
+  }
+  return url && LOOPBACK_HOSTNAMES.has(url.hostname)
+    ? `Could not reach the transcription server at ${url.host}. Is it running?`
+    : 'Could not reach the transcription service. Check your internet connection.'
+}
+
+function humanApiError(status: number, apiMessage: string, context: FailureContext): string {
+  // A server of the user's own may need no key at all, so its refusal is
+  // reported as that server's, by name — not as a rejected OpenAI key, which
+  // would send someone to find a key they may not need. The advice follows
+  // whether a key went with the request.
+  const host = customHost(context.endpoint)
+  if (host && (status === 401 || status === 403)) {
+    const advice = context.keySent
+      ? 'Check the API key in Settings.'
+      : 'If it needs a key, add one in Settings.'
+    return `The server at ${host} refused the request (HTTP ${status}). ${advice}`
+  }
   if (status === 401) return 'The API key was rejected. Open Settings and add a valid key.'
   if (status === 413) return 'That recording was too large to transcribe.'
   if (status === 429) {
-    return retried
+    return context.retried
       ? 'The API rate limit or spending limit was reached — the request was retried once.'
       : 'The API rate limit or account spending limit was reached.'
   }
@@ -166,16 +250,33 @@ function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
   })
 }
 
+/**
+ * Where a request goes: the endpoint's `/audio/transcriptions`, or OpenAI's.
+ * Throws instead, before anything is sent, for a request that cannot succeed.
+ */
+function requestUrl(input: ConnectionTestInput): string {
+  const custom = input.endpoint.trim()
+  // OpenAI always needs a key, so without one nothing is sent there. A server
+  // of the user's own — whisper.cpp, Speaches, a corporate deployment — may
+  // need none, so it is asked; if it does need one, its refusal says so.
+  if (!input.apiKey && !custom) throw new Error('Add an API key in Settings before recording.')
+  if (input.audio.byteLength === 0) throw new Error('The microphone returned an empty recording.')
+  if (input.audio.byteLength > MAX_AUDIO_BYTES) {
+    throw new Error('The recording exceeded the 25 MB transcription limit.')
+  }
+  return `${(custom || DEFAULT_ENDPOINT).replace(/\/+$/u, '')}/audio/transcriptions`
+}
+
+/** The transcript in an answer, or the error for an answer with no speech in it. */
+function transcriptOf(text: string | null): string {
+  const transcript = text?.trim() ?? ''
+  if (!transcript) throw new Error('The transcription service returned no speech.')
+  return transcript
+}
+
 export class TranscriptionService {
   async transcribe(input: TranscribeInput): Promise<string> {
-    if (!input.apiKey) throw new Error('Add an API key in Settings before recording.')
-    if (input.audio.byteLength === 0) throw new Error('The microphone returned an empty recording.')
-    if (input.audio.byteLength > MAX_AUDIO_BYTES) {
-      throw new Error('The recording exceeded the 25 MB transcription limit.')
-    }
-
-    const base = (input.endpoint || DEFAULT_ENDPOINT).replace(/\/+$/u, '')
-    const endpoint = `${base}/audio/transcriptions`
+    const endpoint = requestUrl(input)
     const terms = input.terms ?? []
 
     // Where the request may carry a dedicated keyword list, the terms go there
@@ -192,7 +293,8 @@ export class TranscriptionService {
     // However the failures fall, one recording costs at most three requests.
     let retried = false
     const request = async (keywords: boolean): Promise<Attempt> => {
-      const attempt = await this.send(endpoint, input, terms, keywords, false)
+      const shape = { terms, useKeywords: keywords, timeoutMs: REQUEST_TIMEOUT_MS }
+      const attempt = await this.send(endpoint, input, { ...shape, isRetry: false })
       // A cancelled dictation is finished with: nothing more is sent for it.
       if (attempt.ok || retried || !isTransient(attempt.status) || input.signal?.aborted) {
         return attempt
@@ -202,11 +304,11 @@ export class TranscriptionService {
       // part the user would otherwise sit through unexplained.
       input.onRetry?.()
       await pause(retryDelayMs(attempt.retryAfter), input.signal)
-      return this.send(endpoint, input, terms, keywords, true)
+      return this.send(endpoint, input, { ...shape, isRetry: true })
     }
 
     const attempt = await request(useKeywords)
-    if (attempt.ok) return attempt.text
+    if (attempt.ok) return transcriptOf(attempt.text)
 
     // A rejected request that carried keywords is retried once without them,
     // the terms folded into the prompt instead. `keywords` is documented but
@@ -215,24 +317,48 @@ export class TranscriptionService {
     // break every dictation the user attempts.
     if (useKeywords && attempt.status === 400) {
       const fallback = await request(false)
-      if (fallback.ok) return fallback.text
+      if (fallback.ok) return transcriptOf(fallback.text)
       throw fallback.error
     }
     throw attempt.error
   }
 
   /**
+   * Test connection: one request, made as a dictation would make it but with
+   * no retry, no keyword list and a short wait — the user is watching a
+   * button. Resolves once the server has answered like a transcription
+   * service; rejects with the sentence to show otherwise.
+   *
+   * An answer with no speech in it counts, since what is sent is silence. An
+   * answer with no text at all does not: a web page served at the wrong
+   * address would otherwise pass for a working server.
+   */
+  async testConnection(input: ConnectionTestInput, timeoutMs: number): Promise<void> {
+    const endpoint = requestUrl(input)
+    const attempt = await this.send(endpoint, input, {
+      terms: [],
+      useKeywords: false,
+      isRetry: false,
+      timeoutMs
+    })
+    if (!attempt.ok) throw attempt.error
+    if (attempt.text === null) {
+      throw new Error(
+        `The server at ${customHost(input.endpoint) ?? 'api.openai.com'} answered, but not ` +
+          'with a transcription. Check the API endpoint.'
+      )
+    }
+  }
+
+  /**
    * One request. A rejection — an error status, or no answer at all — is
    * returned rather than thrown, so the caller can decide whether it is worth
-   * another try: in another shape, or simply again. `isRetry` marks the
-   * second attempt, which changes how a rate limit is reported.
+   * another try: in another shape, or simply again.
    */
   private async send(
     endpoint: string,
-    input: TranscribeInput,
-    terms: readonly string[],
-    useKeywords: boolean,
-    isRetry: boolean
+    input: ConnectionTestInput & Pick<TranscribeInput, 'signal'>,
+    shape: RequestShape
   ): Promise<Attempt> {
     const audioCopy = input.audio.slice()
     const body = new FormData()
@@ -243,11 +369,11 @@ export class TranscriptionService {
     )
     body.append('model', input.model)
 
-    if (useKeywords) {
+    if (shape.useKeywords) {
       // The first terms, in the user's order: a Pro list can hold several
       // hundred, but one request carries no more than it always did. Every
       // term still corrects near-misses after recognition.
-      for (const term of terms.slice(0, MAX_KEYWORD_TERMS)) body.append('keywords[]', term)
+      for (const term of shape.terms.slice(0, MAX_KEYWORD_TERMS)) body.append('keywords[]', term)
     }
 
     // A language-appropriate quality hint. Confirmed supported for every model
@@ -256,7 +382,7 @@ export class TranscriptionService {
     // long vocabulary would evict the language sentence it is appended to.
     body.append(
       'prompt',
-      buildPrompt(input.language, useKeywords ? [] : budgetPromptTerms(terms))
+      buildPrompt(input.language, shape.useKeywords ? [] : budgetPromptTerms(shape.terms))
     )
 
     if (input.language !== 'auto') {
@@ -269,19 +395,21 @@ export class TranscriptionService {
       }
     }
 
+    // No key, no header — never an empty `Bearer `, which a server that needs
+    // no key could still refuse as malformed.
+    const keySent = input.apiKey !== ''
+    const headers: Record<string, string> = keySent
+      ? { Authorization: `Bearer ${input.apiKey}` }
+      : {}
+
     try {
       let response: Response
       try {
-        const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+        const timeoutSignal = AbortSignal.timeout(shape.timeoutMs)
         const signal = input.signal
           ? AbortSignal.any([input.signal, timeoutSignal])
           : timeoutSignal
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${input.apiKey}` },
-          body,
-          signal
-        })
+        response = await fetch(endpoint, { method: 'POST', headers, body, signal })
       } catch (error) {
         if (error instanceof DOMException && error.name === 'TimeoutError') {
           throw new Error(
@@ -293,10 +421,7 @@ export class TranscriptionService {
         return {
           ok: false,
           status: 0,
-          error: new Error(
-            'Could not reach the transcription service. Check your internet connection.',
-            { cause: error }
-          ),
+          error: new Error(unreachableMessage(input.endpoint), { cause: error }),
           retryAfter: null
         }
       }
@@ -311,14 +436,17 @@ export class TranscriptionService {
         return {
           ok: false,
           status: response.status,
-          error: new Error(humanApiError(response.status, apiMessage, isRetry)),
+          error: new Error(
+            humanApiError(response.status, apiMessage, {
+              endpoint: input.endpoint,
+              keySent,
+              retried: shape.isRetry
+            })
+          ),
           retryAfter: response.headers.get('retry-after')
         }
       }
-      if (typeof payload.text !== 'string' || !payload.text.trim()) {
-        throw new Error('The transcription service returned no speech.')
-      }
-      return { ok: true, text: payload.text.trim() }
+      return { ok: true, text: typeof payload.text === 'string' ? payload.text : null }
     } finally {
       // Only safe once the response body has been read — the request body is
       // backed by this buffer.
