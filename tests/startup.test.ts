@@ -986,7 +986,12 @@ describe('the on-device engine', () => {
     expect(sampleRate).toBe(16000)
     expect(samples?.length).toBe(1600)
     expect(app.historyAdds()).toEqual([
-      { text: 'Hello from this PC.', durationMs: 100, model: 'parakeet-tdt-0.6b-v3-int8' }
+      {
+        text: 'Hello from this PC.',
+        durationMs: 100,
+        model: 'parakeet-tdt-0.6b-v3-int8',
+        waitMs: expect.any(Number)
+      }
     ])
     expect(workflowErrors(app)).toEqual([])
   })

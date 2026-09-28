@@ -1,4 +1,5 @@
 import './overlay.css'
+import { formatWait, isMeasuredWait } from '../shared/format'
 import type { WorkflowStatus } from '../shared/types'
 import { levelToBars, restingBars } from './level-meter'
 
@@ -70,6 +71,9 @@ function render(status: WorkflowStatus): void {
     tick()
     // 200ms is plenty for a seconds display and costs far less than rAF.
     timer = window.setInterval(tick, 200)
+  } else if (status.phase === 'success' && isMeasuredWait(status.waitMs)) {
+    // Where the recording's time was: how long the text took after letting go.
+    timerElement.textContent = formatWait(status.waitMs)
   } else {
     timerElement.textContent = ''
   }

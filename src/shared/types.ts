@@ -17,6 +17,8 @@ export interface WorkflowStatus {
   detail?: string
   /** Epoch ms the recording began, for the overlay's elapsed timer. */
   startedAt?: number
+  /** On success: how long the text took after letting go, as History keeps it. */
+  waitMs?: number
   /**
    * Whether a failed take is being kept for Retry. The dictation controller
    * sets it on every status it sends, idle included, so the window never has
@@ -67,6 +69,12 @@ export interface HistoryEntry {
   editedAt?: string
   /** The text as it was before the first hand edit; later edits leave it alone. */
   uneditedText?: string
+  /**
+   * How long the user waited for the text, in milliseconds: from letting go of
+   * the shortcut (or pressing Stop, or Retry) until it was ready to paste.
+   * Missing on dictations from before it was measured.
+   */
+  waitMs?: number
 }
 
 /**

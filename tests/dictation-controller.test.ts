@@ -150,7 +150,9 @@ describe('hold → recording → release', () => {
       expect.any(AbortSignal)
     )
     expect(deps.writeClipboard).toHaveBeenCalledWith('Hello world.')
-    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 2100, 'gpt-transcribe', {})
+    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 2100, 'gpt-transcribe', {
+      waitMs: expect.any(Number)
+    })
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success' })
@@ -768,7 +770,8 @@ describe('language-aware cleanup', () => {
     // No space is inserted after the comma any more: that rule is what
     // turned "example.com" into "example. com".
     expect(deps.recordHistory).toHaveBeenCalledWith('Hello,world!', 100, 'gpt-transcribe', {
-      heardText: 'um hello,world!'
+      heardText: 'um hello,world!',
+      waitMs: expect.any(Number)
     })
   })
 
@@ -790,7 +793,7 @@ describe('language-aware cleanup', () => {
       'So I think we should ship it',
       100,
       'gpt-transcribe',
-      { heardText: 'um, so I I think we should, uh, ship it' }
+      { heardText: 'um, so I I think we should, uh, ship it', waitMs: expect.any(Number) }
     )
   })
 
@@ -808,7 +811,8 @@ describe('language-aware cleanup', () => {
 
     // Only the capital is new: the repairs now run in every language.
     expect(deps.recordHistory).toHaveBeenCalledWith('Um ist ein Wort', 100, 'gpt-transcribe', {
-      heardText: 'um ist ein Wort'
+      heardText: 'um ist ein Wort',
+      waitMs: expect.any(Number)
     })
   })
 
@@ -831,7 +835,7 @@ describe('language-aware cleanup', () => {
       'So I think it works',
       100,
       'gpt-transcribe',
-      { heardText: 'um, so I think it works' }
+      { heardText: 'um, so I think it works', waitMs: expect.any(Number) }
     )
   })
 
@@ -850,7 +854,9 @@ describe('language-aware cleanup', () => {
     })
 
     // Only the outer whitespace went, which is not a change worth keeping.
-    expect(deps.recordHistory).toHaveBeenCalledWith('um hello,world!', 100, 'gpt-transcribe', {})
+    expect(deps.recordHistory).toHaveBeenCalledWith('um hello,world!', 100, 'gpt-transcribe', {
+      waitMs: expect.any(Number)
+    })
   })
 
   it('passes the spoken-correction and line-break switches through to the cleanup', async () => {
@@ -872,7 +878,7 @@ describe('language-aware cleanup', () => {
       'Send it to John, I mean Sarah.\nThanks.',
       100,
       'gpt-transcribe',
-      { heardText: 'Send it to John, I mean Sarah. New line. Thanks.' }
+      { heardText: 'Send it to John, I mean Sarah. New line. Thanks.', waitMs: expect.any(Number) }
     )
   })
 
@@ -895,7 +901,8 @@ describe('language-aware cleanup', () => {
     // A line break is something the user asked for, not silence.
     expect(deps.writeClipboard).toHaveBeenCalledWith('\n')
     expect(deps.recordHistory).toHaveBeenCalledWith('\n', 100, 'gpt-transcribe', {
-      heardText: 'New line.'
+      heardText: 'New line.',
+      waitMs: expect.any(Number)
     })
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
@@ -948,7 +955,8 @@ describe('replacements and snippets', () => {
     // Cleanup took the "um" out; the rule then wrote the capitals it wanted.
     expect(deps.writeClipboard).toHaveBeenCalledWith('ITU rocks')
     expect(deps.recordHistory).toHaveBeenCalledWith('ITU rocks', 100, 'gpt-transcribe', {
-      heardText: 'um itu rocks'
+      heardText: 'um itu rocks',
+      waitMs: expect.any(Number)
     })
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
@@ -977,7 +985,7 @@ describe('replacements and snippets', () => {
       'console.log() is broken',
       100,
       'gpt-transcribe',
-      { heardText: 'um console log is broken' }
+      { heardText: 'um console log is broken', waitMs: expect.any(Number) }
     )
   })
 })
@@ -1008,7 +1016,7 @@ describe('what History keeps of what was heard', () => {
       'Send it to ITU.',
       100,
       'gpt-transcribe',
-      { heardText: 'Send it to itu.' }
+      { heardText: 'Send it to itu.', waitMs: expect.any(Number) }
     )
   })
 
@@ -1018,7 +1026,7 @@ describe('what History keeps of what was heard', () => {
 
     const extras = harness.deps.recordHistory.mock.calls[0]?.[3]
     // Not even as undefined: History stores the raw text only when it differs.
-    expect(extras).toEqual({})
+    expect(extras).toEqual({ waitMs: expect.any(Number) })
     expect(extras).not.toHaveProperty('heardText')
   })
 })
@@ -1525,7 +1533,9 @@ describe('errors and retry', () => {
       'The service was busy — trying once more'
     ])
     // The retry was the service's own business: the take still lands.
-    expect(deps.recordHistory).toHaveBeenCalledWith('Landed after all.', 700, 'gpt-transcribe', {})
+    expect(deps.recordHistory).toHaveBeenCalledWith('Landed after all.', 700, 'gpt-transcribe', {
+      waitMs: expect.any(Number)
+    })
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success' })
     )
@@ -1929,7 +1939,7 @@ describe('recording modes and window controls', () => {
       'Hello world.',
       1200,
       'parakeet-tdt-0.6b-v3-int8',
-      {}
+      { waitMs: expect.any(Number) }
     )
   })
 })
@@ -2050,7 +2060,9 @@ describe('instant capture: listening from the keypress', () => {
     await processing
 
     expect(deps.transcribe).toHaveBeenCalledTimes(1)
-    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 1800, 'gpt-transcribe', {})
+    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 1800, 'gpt-transcribe', {
+      waitMs: expect.any(Number)
+    })
     expect(deps.paste).toHaveBeenCalledTimes(1)
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success', message: 'Pasted' })
@@ -2194,7 +2206,9 @@ describe('instant capture: listening from the keypress', () => {
     await vi.advanceTimersByTimeAsync(80)
     await processing
     expect(deps.recordHistory).toHaveBeenCalledTimes(1)
-    expect(deps.recordHistory).toHaveBeenCalledWith('Done.', 500, 'gpt-transcribe', {})
+    expect(deps.recordHistory).toHaveBeenCalledWith('Done.', 500, 'gpt-transcribe', {
+      waitMs: expect.any(Number)
+    })
   })
 
   it('does nothing with the setting off, and the press starts as it always did', () => {
@@ -2480,7 +2494,7 @@ describe('instant capture: listening from the keypress', () => {
       'On the second try.',
       400,
       'gpt-transcribe',
-      {}
+      { waitMs: expect.any(Number) }
     )
     // Its arm ending afterwards has nothing left to cancel.
     controller.abandonPreparation()
@@ -2624,7 +2638,7 @@ describe('your words, corrected after recognition', () => {
       'The ITU-T draft',
       100,
       'gpt-transcribe',
-      { heardText: 'um the ITUT draft' }
+      { heardText: 'um the ITUT draft', waitMs: expect.any(Number) }
     )
   })
 
@@ -2641,7 +2655,7 @@ describe('your words, corrected after recognition', () => {
       'Send it to Sarah.',
       100,
       'gpt-transcribe',
-      { heardText: 'Send it to kirinda, I mean Sarah.' }
+      { heardText: 'Send it to kirinda, I mean Sarah.', waitMs: expect.any(Number) }
     )
   })
 
@@ -2660,7 +2674,7 @@ describe('your words, corrected after recognition', () => {
       'Send it to Kirinde.',
       100,
       'gpt-transcribe',
-      { heardText: 'Send it to kirinda.' }
+      { heardText: 'Send it to kirinda.', waitMs: expect.any(Number) }
     )
   })
 
@@ -2678,7 +2692,7 @@ describe('your words, corrected after recognition', () => {
       'Send the ITU-T draft to kirinda',
       100,
       'gpt-transcribe',
-      { heardText: 'send the ITUT draft to kirinda' }
+      { heardText: 'send the ITUT draft to kirinda', waitMs: expect.any(Number) }
     )
     expect(harness.deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success' })
@@ -2784,7 +2798,9 @@ describe('silence stays silent', () => {
       await promise
 
       expect(deps.transcribe).toHaveBeenCalledTimes(1)
-      expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 900, 'gpt-transcribe', {})
+      expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 900, 'gpt-transcribe', {
+        waitMs: expect.any(Number)
+      })
     }
   })
 })
@@ -2836,7 +2852,7 @@ describe('the plan limits, as a take uses them', () => {
       'Open data verse now.',
       100,
       'gpt-transcribe',
-      {}
+      { waitMs: expect.any(Number) }
     )
   })
 
@@ -2850,7 +2866,7 @@ describe('the plan limits, as a take uses them', () => {
       'Open Dataverse now.',
       100,
       'gpt-transcribe',
-      { heardText: 'Open data verse now.' }
+      { heardText: 'Open data verse now.', waitMs: expect.any(Number) }
     )
   })
 
@@ -2858,13 +2874,15 @@ describe('the plan limits, as a take uses them', () => {
     const free = makeHarness({ settings: settingsFor('', RULES, false) })
     await dictate(free, 'Say word0 and word20.')
     expect(free.deps.recordHistory).toHaveBeenCalledWith('Say W0 and word20.', 100, 'gpt-transcribe', {
-      heardText: 'Say word0 and word20.'
+      heardText: 'Say word0 and word20.',
+      waitMs: expect.any(Number)
     })
 
     const pro = makeHarness({ settings: settingsFor('', RULES, true) })
     await dictate(pro, 'Say word0 and word20.')
     expect(pro.deps.recordHistory).toHaveBeenCalledWith('Say W0 and W20.', 100, 'gpt-transcribe', {
-      heardText: 'Say word0 and word20.'
+      heardText: 'Say word0 and word20.',
+      waitMs: expect.any(Number)
     })
   })
 })
@@ -2962,6 +2980,102 @@ describe('Esc cancels a recording nobody is holding a key for', () => {
       'recorder:cancel',
       expect.anything()
     )
+  })
+})
+
+describe('how long the text took', () => {
+  const successStatus = (harness: ReturnType<typeof makeHarness>): WorkflowStatus | undefined =>
+    harness.deps.broadcastStatus.mock.calls
+      .map(([status]) => status)
+      .filter((status) => status.phase === 'success')
+      .at(-1)
+
+  it('is measured from letting go until the text is ready, and kept and shown', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    deps.transcribe.mockImplementation(
+      () => new Promise<string>((resolve) => setTimeout(() => resolve('Hello world.'), 420))
+    )
+    const requestId = harness.beginRecording()
+    vi.advanceTimersByTime(3_000)
+    controller.onShortcutReleased()
+    // The recorder takes a moment to hand the audio over; the user is waiting.
+    vi.advanceTimersByTime(60)
+    const delivered = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 3_000
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+    await delivered
+
+    const extras = deps.recordHistory.mock.calls[0]?.[3]
+    expect(extras?.waitMs).toBe(480)
+    expect(successStatus(harness)).toEqual(
+      expect.objectContaining({ message: 'Pasted', waitMs: 480 })
+    )
+  })
+
+  it('counts a Retry from its own press', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.transcribe.mockRejectedValueOnce(new Error('Network down.'))
+    const requestId = harness.beginRecording()
+    controller.onShortcutReleased()
+    await controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 1_000
+    })
+    expect(controller.canRetry()).toBe(true)
+
+    // A long pause before pressing Retry is not part of the wait.
+    vi.advanceTimersByTime(60_000)
+    deps.transcribe.mockImplementation(
+      () => new Promise<string>((resolve) => setTimeout(() => resolve('On the second try.'), 700))
+    )
+    const retried = controller.retryLast()
+    await vi.advanceTimersByTimeAsync(1_000)
+    await retried
+    expect(deps.recordHistory.mock.calls.at(-1)?.[3]?.waitMs).toBe(700)
+  })
+
+  it('starts as the audio arrives for a take the recorder ended by itself', async () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' } })
+    const { controller, deps } = harness
+    deps.transcribe.mockImplementation(
+      () => new Promise<string>((resolve) => setTimeout(() => resolve('Cut short.'), 250))
+    )
+    const requestId = harness.beginRecording()
+    vi.advanceTimersByTime(5_000)
+    // No stop was asked for: the device went away, say, and the recorder
+    // handed over what it had.
+    const delivered = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 5_000
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+    await delivered
+    expect(deps.recordHistory.mock.calls[0]?.[3]?.waitMs).toBe(250)
+  })
+
+  it('is never sent to the transcriber', async () => {
+    const harness = makeHarness()
+    const requestId = harness.beginRecording()
+    harness.controller.onShortcutReleased()
+    await harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/wav',
+      durationMs: 1_000
+    })
+    const [payload] = harness.deps.transcribe.mock.calls[0] ?? []
+    expect(payload).not.toHaveProperty('waitMs')
   })
 })
 

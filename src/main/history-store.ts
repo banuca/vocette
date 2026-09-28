@@ -6,6 +6,7 @@ import {
   removeJsonRecoveryCopiesAsync,
   writeJsonAtomicAsync
 } from './atomic-json'
+import { isMeasuredWait } from '../shared/format'
 import {
   EMPTY_EDIT_REFUSAL,
   MAX_HISTORY_TEXT_CHARS,
@@ -49,8 +50,11 @@ function isHistoryEntry(value: unknown): value is HistoryEntry {
 export function isRestorableEntry(value: unknown): value is HistoryEntry {
   if (!isHistoryEntry(value)) return false
   const entry = value as unknown as Record<string, unknown>
-  return [...OPTIONAL_TEXT_FIELDS, 'editedAt'].every(
-    (field) => entry[field] === undefined || typeof entry[field] === 'string'
+  return (
+    [...OPTIONAL_TEXT_FIELDS, 'editedAt'].every(
+      (field) => entry[field] === undefined || typeof entry[field] === 'string'
+    ) &&
+    (entry.waitMs === undefined || isMeasuredWait(entry.waitMs))
   )
 }
 
@@ -204,6 +208,7 @@ export class HistoryStore {
       if (value !== undefined) restored[field] = clampText(value)
     }
     if (entry.editedAt !== undefined) restored.editedAt = entry.editedAt
+    if (entry.waitMs !== undefined) restored.waitMs = entry.waitMs
 
     // Ahead of the first entry that is no newer, so it lands between the
     // same neighbours it was deleted from.

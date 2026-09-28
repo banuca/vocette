@@ -485,6 +485,14 @@ describe('HistoryStore: what was heard, edits and undo', () => {
     expect(new HistoryStore(file).list()).toEqual([current, old])
   })
 
+  it('keeps how long the text took, on disk and across a reload', async () => {
+    const store = new HistoryStore(file)
+    store.add({ text: 'Quick one.', durationMs: 1200, model: 'm', waitMs: 412 })
+    await store.flush()
+    expect(JSON.parse(readFileSync(file, 'utf8'))[0]).toMatchObject({ waitMs: 412 })
+    expect(new HistoryStore(file).list()[0]).toMatchObject({ text: 'Quick one.', waitMs: 412 })
+  })
+
   it('keeps what was heard when a dictation arrives with it', async () => {
     const store = new HistoryStore(file)
     store.add({ text: 'Send it to ITU.', durationMs: 1, model: 'm', heardText: 'send it to itu' })
@@ -633,6 +641,7 @@ describe('HistoryStore: what was heard, edits and undo', () => {
       heardText: 'h'.repeat(MAX_HISTORY_TEXT_CHARS + 1),
       editedAt: '2026-09-28T12:30:00.000Z',
       uneditedText: 'before the edit',
+      waitMs: 380,
       somethingElse: 'not a history field'
     }
 
@@ -642,7 +651,8 @@ describe('HistoryStore: what was heard, edits and undo', () => {
     expect(restored?.heardText).toHaveLength(MAX_HISTORY_TEXT_CHARS)
     expect(restored).toMatchObject({
       editedAt: '2026-09-28T12:30:00.000Z',
-      uneditedText: 'before the edit'
+      uneditedText: 'before the edit',
+      waitMs: 380
     })
   })
 
@@ -727,6 +737,8 @@ describe('isRestorableEntry', () => {
     expect(
       isRestorableEntry({ ...entry, heardText: 'h', editedAt: '2026-09-28T11:00:00.000Z', uneditedText: 'u' })
     ).toBe(true)
+    expect(isRestorableEntry({ ...entry, waitMs: 0 })).toBe(true)
+    expect(isRestorableEntry({ ...entry, waitMs: 640 })).toBe(true)
   })
 
   it('refuses anything short of an entry, or with an optional field of the wrong type', () => {
@@ -738,7 +750,11 @@ describe('isRestorableEntry', () => {
       { ...entry, durationMs: '1000' },
       { ...entry, heardText: 42 },
       { ...entry, editedAt: {} },
-      { ...entry, uneditedText: null }
+      { ...entry, uneditedText: null },
+      { ...entry, waitMs: '640' },
+      { ...entry, waitMs: -1 },
+      { ...entry, waitMs: Number.NaN },
+      { ...entry, waitMs: Number.POSITIVE_INFINITY }
     ]) {
       expect(isRestorableEntry(value)).toBe(false)
     }

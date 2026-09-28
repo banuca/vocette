@@ -135,7 +135,7 @@ export interface ForegroundState {
  * object rather than more positional parameters, so a later field — how long
  * the wait after release was, say — joins without touching every caller.
  */
-export type HistoryExtras = Pick<HistoryEntry, 'heardText'>
+export type HistoryExtras = Pick<HistoryEntry, 'heardText' | 'waitMs'>
 
 export interface TranscriptionPayload {
   /**
@@ -228,6 +228,11 @@ interface ProcessingAttempt {
   readonly take: RetryTake
   /** Normal takes own their audio; Retry borrows the retained retry take. */
   readonly releaseAudioOnCancel: boolean
+  /**
+   * When the user's wait began: the stop of the take, or the press of Retry.
+   * What History and the overlay report is measured from here.
+   */
+  readonly waitFrom: number
 }
 
 /**
@@ -328,6 +333,8 @@ export class DictationController {
   private activeAttempt: ProcessingAttempt | null = null
   /** Set when the current take was started from the app's own window. */
   private clipboardOnly = false
+  /** When the current take was asked to stop: where the user's wait begins. */
+  private stopRequestedAt: number | null = null
   /**
    * The user's clipboard while a transcript is borrowing it: copied just
    * before the transcript is written, given back once the paste has landed,
@@ -405,6 +412,7 @@ export class DictationController {
     this.currentRequestId = randomUUID()
     this.releaseRequested = false
     this.stopRequested = false
+    this.stopRequestedAt = null
     this.clearDictationTimers()
 
     this.broadcast({
@@ -549,6 +557,7 @@ export class DictationController {
     this.clipboardOnly = false
     this.releaseRequested = false
     this.stopRequested = false
+    this.stopRequestedAt = null
     if (startedAt === null) {
       // Still opening, just as an ordinary take would be. The start watchdog
       // armed at the keypress goes on timing the device from its request.
@@ -716,7 +725,11 @@ export class DictationController {
       durationMs: Math.max(0, payload.durationMs),
       clipboardOnly: this.clipboardOnly
     }
-    const attempt = this.beginProcessingAttempt(take, true)
+    // A take the recorder ended by itself was never asked to stop; its wait
+    // starts as its audio arrives.
+    const waitFrom = this.stopRequestedAt ?? Date.now()
+    this.stopRequestedAt = null
+    const attempt = this.beginProcessingAttempt(take, true, waitFrom)
     await this.processTake(attempt, 'Your audio is being converted to text', false)
   }
 
@@ -808,7 +821,8 @@ export class DictationController {
     // take itself is left as it was, sharing the same audio.
     this.clipboardOnly = true
     this.deps.clearForeground()
-    const attempt = this.beginProcessingAttempt({ ...take, clipboardOnly: true }, false)
+    // The wait a Retry reports is its own, from the press.
+    const attempt = this.beginProcessingAttempt({ ...take, clipboardOnly: true }, false, Date.now())
     await this.processTake(attempt, 'Retrying your last recording', true)
   }
 
@@ -822,7 +836,7 @@ export class DictationController {
   async pasteLast(text: string): Promise<void> {
     if (this.isBusy() || !text) return
     const settings = this.deps.getSettings()
-    const attempt = this.beginProcessingAttempt(PASTE_ONLY, false)
+    const attempt = this.beginProcessingAttempt(PASTE_ONLY, false, Date.now())
     // A take started during the settle delay owns the overlay from then on;
     // a success announced over it would strand the recording.
     const owns = (): boolean => this.ownsAttempt(attempt) && !this.isBusy()
@@ -859,13 +873,15 @@ export class DictationController {
 
   private beginProcessingAttempt(
     take: RetryTake,
-    releaseAudioOnCancel: boolean
+    releaseAudioOnCancel: boolean,
+    waitFrom: number
   ): ProcessingAttempt {
     this.cancelActiveAttempt()
     const attempt: ProcessingAttempt = {
       controller: new AbortController(),
       take,
-      releaseAudioOnCancel
+      releaseAudioOnCancel,
+      waitFrom
     }
     this.activeAttempt = attempt
     return attempt
@@ -1095,6 +1111,10 @@ export class DictationController {
       const text = applyReplacements(cleaned, settings.replacements)
       if (!text) throw new Error('Only filler words or silence were detected.')
       if (!this.ownsAttempt(attempt)) return
+      // The text is ready to paste: this is the wait the user sat through,
+      // measured here on their own machine rather than claimed. It stays in
+      // this process and History; no provider is told.
+      const waitMs = Math.max(0, Date.now() - attempt.waitFrom)
 
       // History keeps the recogniser's own words beside the delivered text
       // whenever the steps above changed them, so a rule that misfires can
@@ -1105,7 +1125,7 @@ export class DictationController {
         text,
         attempt.take.durationMs,
         settings.model,
-        heard !== text ? { heardText: heard } : {}
+        heard !== text ? { heardText: heard, waitMs } : { waitMs }
       )
       if (!this.ownsAttempt(attempt)) return
 
@@ -1130,7 +1150,10 @@ export class DictationController {
       this.setRetryTake(null)
       if (!this.ownsAttempt(attempt)) return
 
-      this.broadcast({ phase: 'success', message, detail: previewOf(text) }, SUCCESS_RESET_MS)
+      this.broadcast(
+        { phase: 'success', message, detail: previewOf(text), waitMs },
+        SUCCESS_RESET_MS
+      )
       if (!this.ownsAttempt(attempt)) return
 
       this.deps.playSound('success')
@@ -1259,6 +1282,7 @@ export class DictationController {
       return
     }
     this.stopRequested = true
+    this.stopRequestedAt = Date.now()
     this.deps.sendToRecorder('recorder:stop', { requestId: this.currentRequestId })
     this.armStopWatchdog()
   }
@@ -1272,6 +1296,8 @@ export class DictationController {
   private readonly forceStop = (): void => {
     if (!this.currentRequestId) return
     this.stopRequested = true
+    // A retried stop does not restart the wait; the first stop began it.
+    this.stopRequestedAt ??= Date.now()
     this.deps.sendToRecorder('recorder:stop', { requestId: this.currentRequestId })
     this.armStopWatchdog()
   }

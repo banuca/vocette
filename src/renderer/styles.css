@@ -827,13 +827,13 @@ a:focus-visible {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   margin-bottom: 4px;
 }
 
-/* Hairlines, not boxes: four outlined cards of numbers were the most drawn
-   thing on the page and the least important. */
+/* Hairlines, not boxes: outlined cards of numbers were the most drawn thing
+   on the page and the least important. */
 .metric-card {
   padding: 0 18px;
   background: none;

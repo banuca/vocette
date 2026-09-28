@@ -1,6 +1,7 @@
 import type { AppContext } from '../app-context'
 import { icon } from '../icons'
 import { escapeHtml, formatDate, formatDuration, wordCount } from '../dom'
+import { formatWait, isMeasuredWait, TYPICAL_WAIT_SAMPLE, typicalWait } from '../../shared/format'
 import { commandFailure, createModelRow, type ModelRowView } from '../model-download'
 import { setupHeading, setupSteps, type SetupStep } from '../setup-guide'
 import { createTrialEndNotice } from '../trial-end-notice'
@@ -67,6 +68,7 @@ export function renderHistory(context: AppContext): HistoryView {
       <div class="metric-card"><span>Words captured</span><strong id="metric-words">0</strong></div>
       <div class="metric-card"><span>Est. time saved</span><strong id="metric-saved">0 min</strong></div>
       <div class="metric-card"><span>Last 30 days</span><strong id="metric-month">0</strong></div>
+      <div class="metric-card" title="The middle wait after letting go, over your last ${TYPICAL_WAIT_SAMPLE} dictations, measured on this PC"><span>Typical wait</span><strong id="metric-wait">—</strong></div>
     </section>
     <section class="history-section">
       <div class="section-toolbar">
@@ -195,6 +197,7 @@ export function renderHistory(context: AppContext): HistoryView {
   const metricWords = context.content.querySelector<HTMLElement>('#metric-words')
   const metricSaved = context.content.querySelector<HTMLElement>('#metric-saved')
   const metricMonth = context.content.querySelector<HTMLElement>('#metric-month')
+  const metricWait = context.content.querySelector<HTMLElement>('#metric-wait')
   const undoSlot = context.content.querySelector<HTMLDivElement>('#history-undo')
 
   /**
@@ -298,6 +301,10 @@ export function renderHistory(context: AppContext): HistoryView {
       )
       metricMonth.textContent = `${lastThirtyDays.length.toLocaleString()} · ${minutes} min`
     }
+    if (metricWait) {
+      const typical = typicalWait(context.history)
+      metricWait.textContent = typical === null ? '—' : formatWait(typical)
+    }
   }
 
   /** Builds a paragraph node where search matches are wrapped in `<mark>`. */
@@ -357,6 +364,8 @@ export function renderHistory(context: AppContext): HistoryView {
       const metadata = document.createElement('div')
       metadata.className = 'history-meta'
       metadata.textContent = `${formatDate(entry.createdAt)} · ${formatDuration(entry.durationMs)} · ${wordCount(entry.text)} words`
+      // Only where it was measured; older dictations say nothing rather than guess.
+      if (isMeasuredWait(entry.waitMs)) metadata.append(` · ready in ${formatWait(entry.waitMs)}`)
       if (entry.editedAt) {
         const edited = document.createElement('span')
         edited.textContent = 'Edited'

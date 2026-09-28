@@ -21,3 +21,40 @@ export function wordCount(text: string): number {
   const trimmed = text.trim()
   return trimmed ? trimmed.split(/\s+/u).length : 0
 }
+
+/**
+ * A wait after letting go, as the overlay and History show it: "0.4s", or
+ * whole seconds from 10 s up, where tenths stop meaning anything.
+ */
+export function formatWait(milliseconds: number): string {
+  const seconds = Math.max(0, milliseconds) / 1000
+  return seconds < 9.95 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`
+}
+
+/** True for a wait that was really measured; older entries have none. */
+export function isMeasuredWait(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+/** How many of the newest measured dictations "Typical wait" is taken over. */
+export const TYPICAL_WAIT_SAMPLE = 50
+
+/**
+ * The median wait over the newest measured dictations, newest first as
+ * History lists them; null when none was measured. A median, so one slow
+ * first take after a restart does not speak for the rest.
+ */
+export function typicalWait(entries: readonly { waitMs?: number }[]): number | null {
+  const waits: number[] = []
+  for (const entry of entries) {
+    if (!isMeasuredWait(entry.waitMs)) continue
+    waits.push(entry.waitMs)
+    if (waits.length === TYPICAL_WAIT_SAMPLE) break
+  }
+  if (!waits.length) return null
+  waits.sort((a, b) => a - b)
+  const middle = Math.floor(waits.length / 2)
+  return waits.length % 2 === 1
+    ? (waits[middle] as number)
+    : ((waits[middle - 1] as number) + (waits[middle] as number)) / 2
+}

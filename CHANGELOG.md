@@ -206,6 +206,13 @@ All notable changes to this project are documented here. This project adheres to
   only watches the key, so the app in front sees the same Esc; Settings says so. Where the
   keyboard is not watched (a Wayland desktop) or the shortcut is off, Esc is not offered.
 
+- **How long each dictation took, measured on your PC.** The wait from letting go of the
+  shortcut (or pressing Stop, or Retry) until the text is ready to paste is timed for every
+  dictation. The overlay shows it where the recording timer was — “0.4s” — each History entry
+  ends “ready in 0.4s”, and History's totals gain **Typical wait**, the middle wait over your
+  last 50 dictations. Dictations from before this release have no figure and show none. The
+  timing stays on this PC: it is kept in History and sent to no provider.
+
 ### Fixed
 
 - **The shortcut keeps working after sleep and the lock screen.** Windows can drop the
