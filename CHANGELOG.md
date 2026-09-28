@@ -62,6 +62,18 @@ All notable changes to this project are documented here. This project adheres to
   Murmur retries once with the terms in the prompt instead, so an unverified
   parameter can cost one request some accuracy but cannot break dictation.
 
+- **Your words, spelled right on every engine.** After recognition, and before
+  cleanup, Murmur corrects near-misses of your terms on this computer: “ITUT” and
+  “I T U T” become “ITU-T”, “data verse” becomes “Dataverse”, and “Kirinda”,
+  “Kiranda” and “Kurindi” become “Kirinde”. It runs for the on-device engine,
+  which takes no prompt to bias, and for cloud models, which still miss. A common
+  English word is never turned into one of your terms — “coffee” stays “coffee”
+  with “koffi” in the list, “an apple” is never “an Apple”, and “who” stays “who”
+  with WHO — checked against about 73,000 common English word forms from SCOWL.
+  Sound-alike matching is English only; a match that differs only in spacing,
+  capitals or punctuation applies in every language. A correction never reaches
+  across sentence punctuation, and the note under the box now says it happens.
+
 - **Replacements and snippets.** A second box on the Your words card rewrites
   what you said into what you meant, one `spoken => written` rule per line:
   `itu => ITU`, `console log => console.log()`, `my email => name@example.com`.

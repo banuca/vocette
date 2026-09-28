@@ -119,7 +119,7 @@ describe('renderAbout', () => {
     expect(content.innerHTML).not.toContain('Your API key')
   })
 
-  it('credits the model from its manifest, and the libraries that run it', async () => {
+  it('credits the model from its manifest, the libraries that run it, and the word list', async () => {
     const { renderAbout } = await import('../src/renderer/pages/about')
     const { content, context } = render('local')
     renderAbout(context)
@@ -127,9 +127,10 @@ describe('renderAbout', () => {
     expect(list?.children.map((item) => item.textContent)).toEqual([
       'Speech model: NVIDIA Parakeet TDT 0.6B v3, CC-BY-4.0; ONNX export by the sherpa-onnx project (k2-fsa).',
       'sherpa-onnx — Apache-2.0',
-      'ONNX Runtime — MIT'
+      'ONNX Runtime — MIT',
+      'Word list: SCOWL, © Kevin Atkinson'
     ])
-    expect(attributions()).toHaveLength(3)
+    expect(attributions()).toHaveLength(4)
   })
 
   it('tells an on-device user where their audio goes, without the API documentation', async () => {

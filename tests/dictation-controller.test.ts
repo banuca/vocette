@@ -2475,3 +2475,89 @@ describe('instant capture: listening from the keypress', () => {
     expect(offPrewarm).not.toHaveBeenCalled()
   })
 })
+
+describe('your words, corrected after recognition', () => {
+  /** A stand-in for the SCOWL list the main process supplies. */
+  const COMMON = new Set(['send', 'it', 'to', 'mean', 'sarah', 'the', 'draft'])
+  const isCommon = (word: string): boolean => COMMON.has(word)
+
+  async function dictate(
+    harness: ReturnType<typeof makeHarness>,
+    rawText: string
+  ): Promise<void> {
+    harness.deps.transcribe.mockResolvedValue(rawText)
+    const requestId = harness.beginRecording()
+    await harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+  }
+
+  it('corrects the raw text before cleanup runs', async () => {
+    const harness = makeHarness({ settings: { vocabulary: ['ITU-T'] } })
+    await dictate(harness, 'um the ITUT draft')
+
+    expect(harness.deps.writeClipboard).toHaveBeenCalledWith('The ITU-T draft')
+    expect(harness.deps.recordHistory).toHaveBeenCalledWith(
+      'The ITU-T draft',
+      100,
+      'gpt-transcribe'
+    )
+  })
+
+  it('lets cleanup see the corrected word', async () => {
+    // Corrected first, "kirinda" is the name "Kirinde", so the spoken
+    // correction can replace it. The other way round, cleanup would have seen
+    // a lower-case word with no kind, kept "I mean", and only then had the
+    // name fixed: "Send it to Kirinde, I mean Sarah."
+    const harness = makeHarness({ settings: { vocabulary: ['Kirinde'] } })
+    Object.assign(harness.deps, { commonWords: vi.fn(async () => isCommon) })
+    await dictate(harness, 'Send it to kirinda, I mean Sarah.')
+
+    expect(harness.deps.recordHistory).toHaveBeenCalledWith(
+      'Send it to Sarah.',
+      100,
+      'gpt-transcribe'
+    )
+  })
+
+  it('reads the common-word list only when there are terms to correct', async () => {
+    const commonWords = vi.fn(async () => isCommon)
+    const empty = makeHarness()
+    Object.assign(empty.deps, { commonWords })
+    await dictate(empty, 'Send it to kirinda.')
+    expect(commonWords).not.toHaveBeenCalled()
+
+    const withTerms = makeHarness({ settings: { vocabulary: ['Kirinde'] } })
+    Object.assign(withTerms.deps, { commonWords })
+    await dictate(withTerms, 'Send it to kirinda.')
+    expect(commonWords).toHaveBeenCalledTimes(1)
+    expect(withTerms.deps.recordHistory).toHaveBeenCalledWith(
+      'Send it to Kirinde.',
+      100,
+      'gpt-transcribe'
+    )
+  })
+
+  it('still delivers the take when the common-word list cannot be read', async () => {
+    const harness = makeHarness({ settings: { vocabulary: ['ITU-T', 'Kirinde'] } })
+    Object.assign(harness.deps, {
+      commonWords: vi.fn(async () => {
+        throw new Error('the list is missing')
+      })
+    })
+    await dictate(harness, 'send the ITUT draft to kirinda')
+
+    // Without the list only what cannot change a real word is corrected.
+    expect(harness.deps.recordHistory).toHaveBeenCalledWith(
+      'Send the ITU-T draft to kirinda',
+      100,
+      'gpt-transcribe'
+    )
+    expect(harness.deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success' })
+    )
+  })
+})

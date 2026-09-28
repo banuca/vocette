@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { cleanupTranscript } from '../shared/cleanup'
 import { applyReplacements, type ReplacementRule } from '../shared/replacements'
+import { correctVocabulary, type CommonWordTest } from '../shared/vocabulary-correction'
 import type { RecordingMode } from '../shared/capabilities'
 import type {
   Page,
@@ -173,6 +174,12 @@ export interface DictationDeps {
    * failure is reported by the take that needs the engine.
    */
   prewarm?(): void
+  /**
+   * The common English words the vocabulary correction must leave alone,
+   * loaded on first use. Without it every word counts as common, so only the
+   * corrections that cannot change a real word run.
+   */
+  commonWords?(): Promise<CommonWordTest>
 }
 
 interface RetryTake {
@@ -935,11 +942,25 @@ export class DictationController {
       )
       if (!this.ownsAttempt(attempt)) return
 
+      // The user's own words first, on the recogniser's raw text, so cleanup
+      // sees "ITU-T" rather than "ITUT" — and for every engine, because the
+      // on-device one takes no prompt to bias. The common words the
+      // correction must not touch are only read once there are terms to use.
+      const isCommonWord =
+        settings.vocabulary.length > 0 ? await this.commonWordTest() : undefined
+      if (!this.ownsAttempt(attempt)) return
+      const corrected = correctVocabulary(
+        rawText,
+        settings.vocabulary,
+        settings.language,
+        isCommonWord
+      )
+
       // Every language gets the rules that cannot change a word; the English
       // ones also run for Automatic when the text reads as English. The old
       // gate cleaned explicit English only, so Automatic got nothing while
       // the switch showed as on.
-      const cleaned = cleanupTranscript(rawText, {
+      const cleaned = cleanupTranscript(corrected, {
         language: settings.language,
         removeFillers: settings.removeFillers,
         spokenCorrections: settings.spokenCorrections,
@@ -998,6 +1019,15 @@ export class DictationController {
         this.releaseRequested = false
         this.stopRequested = false
       }
+    }
+  }
+
+  /** The common-word test, or none: a list that cannot be read never costs a take. */
+  private async commonWordTest(): Promise<CommonWordTest | undefined> {
+    try {
+      return await this.deps.commonWords?.()
+    } catch {
+      return undefined
     }
   }
 

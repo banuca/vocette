@@ -27,6 +27,7 @@ import {
   type TranscriptionPayload,
   type WorkflowSettings
 } from './dictation-controller'
+import { loadCommonWords } from './common-words'
 import { LocalEngine, type WorkerHandle } from './engine/local-engine'
 import { ModelStore, ModelStoreError, modelsRoot, type DownloadProgress } from './engine/model-store'
 import { LOCAL_MODEL } from './engine/models'
@@ -526,7 +527,8 @@ function createDictationController(): DictationController {
       if (settingsStore.getInternal().engine !== 'local') return
       if (modelStatus().state !== 'installed') return
       localEngine.prewarm()
-    }
+    },
+    commonWords: loadCommonWords
   })
 }
 

@@ -45,6 +45,10 @@ import {
 /** Requesting the mic once per session is what makes device labels readable. */
 let microphonePermissionRequested = false
 
+/** What happens to the terms after recognition, on every engine. */
+const VOCABULARY_CORRECTION_NOTE =
+  'Murmur corrects near-misses of these words after it hears you — “data verse” becomes “Dataverse”.'
+
 /** How to write a rule. The count that follows it in the note is live. */
 const REPLACEMENTS_HELP =
   'One rule per line: what you say => what you want. Use \\n for a line break, ' +
@@ -410,7 +414,8 @@ export function renderSettings(
    *
    * Honesty matters more here than brevity: the two biasing channels behave
    * differently, and a user whose terms are riding the prompt should know that
-   * most of a long list will not be sent.
+   * most of a long list will not be sent. The on-device engine has neither
+   * channel, so for it the note describes only the correction.
    */
   const paintVocabularyNote = (): void => {
     if (!vocabularyNote && !vocabularyBadge) return
@@ -432,9 +437,17 @@ export function renderSettings(
     }
     if (!vocabularyNote) return
 
-    const limits = `One term per line, up to ${MAX_VOCABULARY_TERMS} terms of ${MAX_VOCABULARY_TERM_CHARS} characters. They are sent to your transcription provider with every dictation.`
+    const format = `One term per line, up to ${MAX_VOCABULARY_TERMS} terms of ${MAX_VOCABULARY_TERM_CHARS} characters.`
+    // True of every engine: the correction runs on this computer, after
+    // recognition. For the on-device engine it is the whole mechanism — that
+    // engine takes no prompt, and nothing is sent anywhere.
+    if (settings.engine === 'local') {
+      vocabularyNote.textContent = `${format} ${VOCABULARY_CORRECTION_NOTE}`
+      return
+    }
+    const limits = `${format} They are sent to your transcription provider with every dictation.`
     if (supportsKeywordList(model, endpoint)) {
-      vocabularyNote.textContent = `${limits} ${model} takes them as a dedicated keyword list, so every term is used.`
+      vocabularyNote.textContent = `${limits} ${model} takes them as a dedicated keyword list, so every term is used. ${VOCABULARY_CORRECTION_NOTE}`
       return
     }
     const sent = budgetPromptTerms(terms).length
@@ -445,7 +458,7 @@ export function renderSettings(
         : ''
     // textContent, not innerHTML: the model name is user input and must not be
     // parsed as markup, and must not be double-escaped either.
-    vocabularyNote.textContent = `${limits} ${model || 'This model'} has no keyword field, so they are added to the transcription prompt, which has room for about ${MAX_PROMPT_TERM_CHARS} characters of terms.${fit}`
+    vocabularyNote.textContent = `${limits} ${model || 'This model'} has no keyword field, so they are added to the transcription prompt, which has room for about ${MAX_PROMPT_TERM_CHARS} characters of terms.${fit} ${VOCABULARY_CORRECTION_NOTE}`
   }
 
   /**

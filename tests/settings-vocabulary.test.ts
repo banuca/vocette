@@ -412,3 +412,41 @@ describe('the replacements box', () => {
     expect(box.value).toBe('itu => ITU\nsign off => Alex')
   })
 })
+
+/**
+ * The correction after recognition runs for every engine, so the note says
+ * so for every engine — and for the on-device one, which takes no prompt, it
+ * is the only thing the note may claim.
+ */
+describe('the vocabulary note and the correction', () => {
+  const CORRECTION =
+    'Murmur corrects near-misses of these words after it hears you — ' +
+    '“data verse” becomes “Dataverse”.'
+
+  it('describes only the correction for the on-device engine, and claims nothing is sent', async () => {
+    const { at } = await makeHarness({ engine: 'local', vocabulary: 'Kirinde' })
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain(CORRECTION)
+    expect(note).toContain('One term per line')
+    expect(note).not.toContain('sent to your transcription provider')
+    expect(note).not.toContain('keyword list')
+    expect(note).not.toContain('transcription prompt')
+  })
+
+  it('keeps the keyword-list note for a cloud engine and adds the correction', async () => {
+    const { at } = await makeHarness({ vocabulary: 'Kirinde' })
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain('sent to your transcription provider')
+    expect(note).toContain('dedicated keyword list')
+    expect(note).toContain(CORRECTION)
+  })
+
+  it('keeps the prompt note and its warning for a cloud engine, and adds the correction', async () => {
+    const many = Array.from({ length: 100 }, (_, i) => `term-number-${i}`).join('\n')
+    const { at } = await makeHarness({ vocabulary: many, model: 'whisper-1' })
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain('transcription prompt')
+    expect(note).toContain('not being sent')
+    expect(note).toContain(CORRECTION)
+  })
+})

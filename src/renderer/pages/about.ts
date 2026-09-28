@@ -20,12 +20,17 @@ function platformName(context: AppContext): string {
 }
 
 /**
- * The credits the on-device engine owes: the model's licence asks for its
- * line, word for word from the manifest, and the libraries that run it are
- * named with theirs.
+ * The credits Murmur owes: the model's licence asks for its line, word for
+ * word from the manifest; the libraries that run it are named with theirs;
+ * and SCOWL's permission notice asks for its copyright to be shown.
  */
 export function attributions(): string[] {
-  return [LOCAL_MODEL_INFO.attribution, 'sherpa-onnx — Apache-2.0', 'ONNX Runtime — MIT']
+  return [
+    LOCAL_MODEL_INFO.attribution,
+    'sherpa-onnx — Apache-2.0',
+    'ONNX Runtime — MIT',
+    'Word list: SCOWL, © Kevin Atkinson'
+  ]
 }
 
 const INDEPENDENT =
