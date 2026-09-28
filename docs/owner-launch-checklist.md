@@ -47,8 +47,10 @@ licence keys the app activates.
    Then on the product: Checkout Fields → add it → mark **Required**.
    *Have a lawyer with EU consumer-law experience look at this; see
    `docs/research/licensing.md` §7.*
-5. **The refund policy:** publish the one on the website (`site/refund.html`: 14 days, no
-   questions) and put the same sentence in the product description.
+5. **The refund policy:** the website's (`site/refund.html`) is 30 days, no questions —
+   more generous than the EU's 14-day withdrawal right. Put the same sentence in the
+   product description, and be ready to honour it: a refunded key is revoked in Polar, but
+   a PC that already activated it keeps Pro, because the app never checks again.
 6. **The checkout link:** Products → **Checkout Links** → **New Link** → select the product.
    Copy the URL.
 7. **The ids the app needs** — paste into `src/shared/product.ts`:
@@ -72,8 +74,12 @@ licence keys the app activates.
    Actions** → then **Custom domain** → your domain → **Enforce HTTPS**. At the registrar,
    add the DNS records GitHub shows. (Pages' "deploy from a branch" can only publish the
    root or `/docs`, which is why the workflow is there.)
-3. Fill in the site's placeholders: the checkout link, your support email, the legal name
-   and address the terms and privacy pages need.
+3. Fill in the site's placeholders (search the `site/` files for `Owner:`): the download
+   link, the checkout link, your support email (`support@example.com` today), the legal
+   name and address the terms and privacy pages need, and the governing law. Pro promises
+   **support by email**, so that address must be one you read.
+4. Before publishing, the hand test must have confirmed the clipboard, paste and
+   Alt + Shift + V claims on the page.
 
 ## 4. Code signing (removes the SmartScreen warning over time)
 
