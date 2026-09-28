@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { PRO_VOCABULARY_TERMS } from '../src/shared/product'
 import {
+  MAX_KEYWORD_TERMS,
   MAX_PROMPT_TERM_CHARS,
   MAX_VOCABULARY_CHARS,
   MAX_VOCABULARY_TERMS,
@@ -46,6 +48,15 @@ describe('parseVocabulary', () => {
     // asked for, so it is omitted entirely.
     const tooLong = 'a'.repeat(MAX_VOCABULARY_TERM_CHARS + 1)
     expect(parseVocabulary(`Kirinde\n${tooLong}\nITU-T`)).toEqual(['Kirinde', 'ITU-T'])
+  })
+
+  it("has room for Pro's list, which Free uses the first part of", () => {
+    // The parser's cap is Pro's; Free's lower cap is applied where a
+    // dictation reads its settings, so a stored list is never cut short.
+    expect(MAX_VOCABULARY_TERMS).toBe(PRO_VOCABULARY_TERMS)
+    expect(MAX_VOCABULARY_TERMS).toBe(500)
+    expect(MAX_VOCABULARY_CHARS).toBe(20_000)
+    expect(MAX_KEYWORD_TERMS).toBe(100)
   })
 
   it('caps the list at the maximum number of terms', () => {
@@ -113,8 +124,9 @@ describe('clampVocabulary', () => {
   it('cuts on a line boundary, never mid-term', () => {
     // A plain slice would leave half a word behind, which parseVocabulary
     // would then bias the recogniser towards.
-    const raw = `${'a'.repeat(39)}\n`.repeat(60)
+    const raw = `${'a'.repeat(39)}\n`.repeat(Math.ceil(MAX_VOCABULARY_CHARS / 40) + 60)
     const clamped = clampVocabulary(raw)
+    expect(clamped.length).toBeGreaterThan(0)
     expect(clamped.length).toBeLessThanOrEqual(MAX_VOCABULARY_CHARS)
     for (const term of clamped.split('\n')) expect(term).toBe('a'.repeat(39))
   })
@@ -122,7 +134,7 @@ describe('clampVocabulary', () => {
   it('never splits a surrogate pair', () => {
     // No newline inside the budget, so nothing is kept rather than half a
     // character.
-    expect(clampVocabulary('\u{1F600}'.repeat(2000))).toBe('')
+    expect(clampVocabulary('\u{1F600}'.repeat(MAX_VOCABULARY_CHARS))).toBe('')
   })
 
   it('keeps the whole lines that precede an enormous one', () => {
@@ -146,7 +158,7 @@ describe('budgetPromptTerms', () => {
   })
 
   it('stops before the prompt budget is exceeded', () => {
-    // 100 terms of 48 characters would be ~4800 characters — far past
+    // Pro's 500 terms would be several thousand characters — far past
     // whisper-1's 224-token window, which would evict the language hint the
     // prompt was built for.
     const terms = Array.from({ length: MAX_VOCABULARY_TERMS }, (_, i) => `term-number-${i}`)

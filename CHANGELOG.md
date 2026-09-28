@@ -47,9 +47,9 @@ All notable changes to this project are documented here. This project adheres to
   the box, in the README, on the About page and in SECURITY.md: this is not a
   place for a secret.
 - Blank lines, duplicates (ignoring case) and terms over 48 characters are
-  dropped rather than truncated. The list is capped at 100 terms, and the
-  2000-character ceiling cuts on a line boundary so a half-word can never be
-  biased into a request.
+  dropped rather than truncated. The list holds up to 500 terms (Free uses the
+  first 50, Pro all of them), and the 20,000-character ceiling cuts on a line
+  boundary so a half-word can never be biased into a request.
 - On the prompt path the list is budgeted to about 480 characters, because
   `whisper-1` keeps only the last 224 tokens of a prompt and an unbounded list
   would push out the language hint it is appended to. The note under the box
@@ -148,8 +148,30 @@ All notable changes to this project are documented here. This project adheres to
   “Headset”, “Hands-Free”, “AirPods”, “Buds”, “Bluetooth”, “BT”, Sony's WH- and WF- models
   — so a wired headset can get the note too; with no name to read, nothing is shown.
 
+- **Pro, with a 30-day trial — and a Free version that stays complete.** Everyone gets
+  Pro for their first 30 days (an existing user from their first launch of this
+  version). Afterwards Free keeps everything dictation needs, for good: on-device and
+  cloud dictation of any length, cleanup, spoken corrections and line breaks, clipboard
+  restore, paste last, Retry and history. Pro is for power users: 500 vocabulary terms in
+  use instead of 50, 200 replacement rules instead of 20, and AI polish when it ships.
+  Nothing is deleted when Pro lapses — a longer list keeps every line, only its first
+  part is used, and the note under each box says so. A new **Pro** page shows the plan,
+  **Buy Pro** (Polar's checkout, in the browser) and a **Licence key** field: **Activate**
+  sends the key and a device label (“Murmur on Windows · 7F3A”) to Polar once — no
+  credentials, no API-version pin — and Murmur never checks again; the buyer details in
+  Polar's answer are discarded, never logged. **Release this PC** frees a device slot,
+  and without a connection **Remove from this PC anyway** clears it here, saying the slot
+  stays in use. The key is encrypted by the operating system where it can be, and kept
+  plain, marked as such, where it cannot. The sidebar shows “Trial · 23d” during the
+  trial and nothing otherwise; when it ends, History shows one notice, dismissed for
+  good. A cloud request still carries at most 100 keywords. Purchases stay closed (“Pro
+  purchases open soon”) until the Polar values in `src/shared/product.ts` are filled in.
+
 ### Fixed
 
+- Only the main window can ask for app info, as for every other channel, and the
+  settings the window sees are now listed field by field — a new stored field no longer
+  crosses into the window unless it is added on purpose.
 - Cleanup no longer inserts a space after punctuation, which turned `example.com`
   into `example. com`, `3.5` into `3. 5` and `10:30` into `10: 30`; and it keeps an
   ellipsis instead of collapsing it to a full stop.

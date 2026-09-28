@@ -1875,6 +1875,115 @@ a:focus-visible {
   line-height: 1.7;
 }
 
+/* --- Pro -------------------------------------------------------------- */
+
+/* The sidebar's quiet trial suffix, "Trial · 23d": muted, never a warning
+   colour, and inside the label so the collapsed rail hides it with the rest.
+   No display rule, so `hidden` keeps working. */
+.nav-suffix {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.pro-plans {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pro-plan {
+  padding: 12px 14px;
+  background: var(--surface-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.pro-plan.is-pro {
+  border-color: var(--accent);
+}
+
+.pro-plan h3 {
+  margin: 0 0 6px;
+  color: var(--text-heading);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pro-plan ul {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.pro-buy {
+  margin-top: 14px;
+}
+
+.licence-active-line {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.licence-remove-local {
+  margin-top: 12px;
+}
+
+.licence-remove-local .capability-note {
+  margin: 0 0 6px;
+}
+
+.licence-feedback {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.licence-feedback.tone-muted {
+  color: var(--text-muted);
+}
+
+.licence-feedback.tone-good {
+  color: var(--status-good);
+}
+
+.licence-feedback.tone-error {
+  color: var(--status-bad);
+}
+
+/* History's one notice once the trial has ended: a plain card, the same
+   weight as the setup guidance, with nothing in a warning colour. */
+.trial-end-notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.trial-end-notice p {
+  flex: 1 1 320px;
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.trial-end-actions {
+  display: flex;
+  flex: none;
+  gap: 14px;
+  align-items: center;
+}
+
 /* --- Loading and failure ----------------------------------------------- */
 
 .loading-screen,
@@ -1949,7 +2058,8 @@ a:focus-visible {
   .about-grid,
   .mode-choice,
   .form-grid,
-  .shortcut-editor {
+  .shortcut-editor,
+  .pro-plans {
     grid-template-columns: minmax(0, 1fr);
   }
 

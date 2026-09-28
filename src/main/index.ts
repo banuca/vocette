@@ -39,6 +39,14 @@ import { createPlatformAdapter } from './platform'
 import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform/types'
 import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
+import {
+  LICENCE_MESSAGES,
+  LicenceClient,
+  deviceLabel,
+  licenceConfig,
+  licenceStatusFor,
+  purchasesConfigured
+} from './licence'
 import { SettingsStore } from './settings-store'
 import { TranscriptionService } from './transcription-service'
 import { decodeWav } from './wav'
@@ -48,8 +56,13 @@ import {
   type EngineStatus,
   type ModelStatus
 } from '../shared/engine'
-import { parseReplacements } from '../shared/replacements'
-import { parseVocabulary } from '../shared/vocabulary'
+import {
+  entitlementFor,
+  planReplacements,
+  planVocabulary,
+  type Entitlement
+} from '../shared/entitlement'
+import { CHECKOUT_URL, CUSTOMER_PORTAL_URL } from '../shared/product'
 import {
   autoPasteSupported,
   effectiveRecordingMode,
@@ -63,6 +76,9 @@ import { chordLabel } from '../shared/keycodes'
 import {
   hasApiKey,
   type HistorySaveStatus,
+  type LicenceActivation,
+  type LicenceRelease,
+  type LicenceStatus,
   type Page,
   type PasteLastStatus,
   type RecorderAudioPayload,
@@ -104,6 +120,9 @@ let foreground!: TargetTracker
 let capabilities!: CapabilityMap
 let modelStore!: ModelStore
 let localEngine!: LocalEngine
+let licenceClient!: LicenceClient
+/** An activation or a release is on its way to Polar; a second click waits for it. */
+let licenceRequestInFlight = false
 
 const transcriber = new TranscriptionService()
 
@@ -245,6 +264,9 @@ function showMain(page: Page = 'history'): void {
 function workflowSettings(): WorkflowSettings {
   const settings = settingsStore.getInternal()
   const status = engineStatus()
+  // Worked out afresh for every take, so the trial ends when it ends — no
+  // restart — and the lists shrink to Free's limits without being cut.
+  const { pro } = entitlement()
   return {
     // Resolved here, once: the controller is told the mode actually in force,
     // never the preference the platform cannot honour.
@@ -262,11 +284,127 @@ function workflowSettings(): WorkflowSettings {
     // model the user chose.
     model: settings.engine === 'local' ? LOCAL_MODEL.id : settings.model,
     language: settings.language,
-    vocabulary: parseVocabulary(settings.vocabulary),
-    replacements: parseReplacements(settings.replacements).rules,
+    pro,
+    // The first 50 terms and 20 rules on Free, all of them with Pro. The
+    // terms feed both the cloud request and the correction after it.
+    vocabulary: planVocabulary(settings.vocabulary, pro),
+    replacements: planReplacements(settings.replacements, pro),
     microphoneId: settings.microphoneId,
     transcriptionReady: status.ready,
     notReadyReason: status.notReadyReason
+  }
+}
+
+/** The plan in force right now: read fresh, because the trial ends on its own. */
+function entitlement(): Entitlement {
+  return entitlementFor({
+    trialStartedAt: settingsStore.getInternal().trialStartedAt,
+    licensed: settingsStore.licenceRecord() !== null,
+    now: Date.now()
+  })
+}
+
+/** "Murmur on Windows · 7F3A": how activation names this PC to Polar. */
+function thisDeviceLabel(): string {
+  return deviceLabel(platform.id, settingsStore.getInternal().deviceTag)
+}
+
+function licenceStatus(): LicenceStatus {
+  return licenceStatusFor({
+    entitlement: entitlement(),
+    licence: settingsStore.licenceRecord(),
+    config: licenceConfig(process.env),
+    trialEndNoticeDismissed: settingsStore.getInternal().trialEndNoticeDismissed,
+    deviceLabel: thisDeviceLabel()
+  })
+}
+
+function broadcastLicenceStatus(): void {
+  mainWindow?.webContents.send('licence:changed', licenceStatus())
+}
+
+/**
+ * Activates a key on this PC. One request to Polar, only when the user asks;
+ * nothing about the licence is ever checked again. Answers with a sentence
+ * rather than throwing, so the Pro page can show it as it is.
+ */
+async function activateLicence(rawKey: string): Promise<LicenceActivation> {
+  const refuse = (error: string): LicenceActivation => ({ ok: false, error, status: licenceStatus() })
+  if (settingsStore.licenceRecord()) return refuse('Pro is already active on this PC.')
+  // Every activation takes a device slot, so a second click must not send a
+  // second request.
+  if (licenceRequestInFlight) return refuse('Murmur is already talking to Polar. Wait a moment.')
+  const config = licenceConfig(process.env)
+  if (!purchasesConfigured(config)) return refuse(LICENCE_MESSAGES.notConfigured)
+
+  licenceRequestInFlight = true
+  try {
+    const key = rawKey.trim()
+    const result = await licenceClient.activate(key, {
+      ...config,
+      label: thisDeviceLabel(),
+      appVersion: app.getVersion()
+    })
+    if (!result.ok) return refuse(result.error)
+    try {
+      settingsStore.saveLicence({
+        key,
+        activationId: result.activationId,
+        benefitId: result.benefitId,
+        displayKey: result.displayKey,
+        activatedAt: new Date().toISOString()
+      })
+    } catch (error) {
+      return refuse(
+        `Pro was activated, but this PC could not save it: ${storageFailureReason(error)}`
+      )
+    }
+    broadcastLicenceStatus()
+    return { ok: true, status: licenceStatus() }
+  } finally {
+    licenceRequestInFlight = false
+  }
+}
+
+/**
+ * Releases this PC's activation, freeing a device slot, then forgets the
+ * licence here. When Polar cannot be asked, the answer says whether the Pro
+ * page may offer to forget it here anyway.
+ */
+async function releaseLicence(): Promise<LicenceRelease> {
+  const refuse = (error: string, canRemoveLocally: boolean): LicenceRelease => ({
+    ok: false,
+    error,
+    canRemoveLocally,
+    status: licenceStatus()
+  })
+  const record = settingsStore.licenceRecord()
+  if (!record) return { ok: true, status: licenceStatus() }
+  if (licenceRequestInFlight) return refuse('Murmur is already talking to Polar. Wait a moment.', false)
+
+  let key: string
+  try {
+    key = settingsStore.getLicenceKey()
+  } catch (error) {
+    return refuse(storageFailureReason(error), true)
+  }
+
+  licenceRequestInFlight = true
+  try {
+    const result = await licenceClient.deactivate(key, record.activationId, licenceConfig(process.env))
+    if (!result.released) return refuse(result.error, result.canRemoveLocally)
+    try {
+      settingsStore.clearLicence()
+    } catch (error) {
+      return refuse(
+        `This PC was released, but the change could not be saved: ${storageFailureReason(error)}`,
+        false
+      )
+    }
+    broadcastLicenceStatus()
+    return { ok: true, status: licenceStatus() }
+  } finally {
+    licenceRequestInFlight = false
   }
 }
 
@@ -866,6 +1004,9 @@ function registerIpc(): void {
     if (before.pasteLastShortcut !== after.pasteLastShortcut) {
       applyPasteLastShortcut(after.pasteLastShortcut)
     }
+    if (before.trialEndNoticeDismissed !== after.trialEndNoticeDismissed) {
+      broadcastLicenceStatus()
+    }
 
     if (await historyStore.prune(after.historyRetentionDays)) {
       mainWindow?.webContents.send('history:changed')
@@ -1012,11 +1153,14 @@ function registerIpc(): void {
     clipboard.writeText(text)
   })
 
-  ipcMain.handle('app:info', () => ({
-    version: app.getVersion(),
-    platform: process.platform,
-    platformStatus: platformStatus()
-  }))
+  ipcMain.handle('app:info', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return {
+      version: app.getVersion(),
+      platform: process.platform,
+      platformStatus: platformStatus()
+    }
+  })
   ipcMain.handle('app:hide-window', (event) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
     mainWindow?.hide()
@@ -1033,11 +1177,43 @@ function registerIpc(): void {
     if (!fromMain(event)) throw new Error('Forbidden.')
     const targets: Record<string, string> = {
       'api-keys': 'https://platform.openai.com/api-keys',
-      'transcription-docs': 'https://developers.openai.com/api/docs/guides/speech-to-text'
+      'transcription-docs': 'https://developers.openai.com/api/docs/guides/speech-to-text',
+      // Empty until the owner fills them in, and then nothing opens.
+      checkout: CHECKOUT_URL,
+      'customer-portal': CUSTOMER_PORTAL_URL
     }
     const url = typeof target === 'string' ? targets[target] : undefined
-    if (!url) return
+    if (!url || !url.startsWith('https://')) return
     await shell.openExternal(url)
+  })
+
+  // Pro. The window learns the plan and what it may offer; it never sees a
+  // key once it has been sent, an activation id, or Polar's identifiers.
+  ipcMain.handle('licence:status', (event): LicenceStatus => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return licenceStatus()
+  })
+  ipcMain.handle('licence:activate', async (event, key: unknown): Promise<LicenceActivation> => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    if (typeof key !== 'string') {
+      return { ok: false, error: LICENCE_MESSAGES.empty, status: licenceStatus() }
+    }
+    return activateLicence(key)
+  })
+  ipcMain.handle('licence:deactivate', async (event): Promise<LicenceRelease> => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return releaseLicence()
+  })
+  // Local only: the device slot stays in use until it is released from the
+  // purchase email. The Pro page says so before offering this.
+  ipcMain.handle('licence:remove-local', (event): LicenceStatus => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    if (licenceRequestInFlight) throw new Error('Murmur is already talking to Polar. Wait a moment.')
+    if (settingsStore.licenceRecord()) {
+      settingsStore.clearLicence()
+      broadcastLicenceStatus()
+    }
+    return licenceStatus()
   })
 
   ipcMain.handle('shortcut:begin-capture', (event) => {
@@ -1120,6 +1296,8 @@ async function bootstrap(): Promise<void> {
     // a managed network's proxy and TLS inspection both need.
     fetch: (url, init) => net.fetch(url, init)
   })
+  // The same network stack, for the one activation request a licence needs.
+  licenceClient = new LicenceClient({ fetch: (url, init) => net.fetch(url, init) })
   // Nothing starts here: the worker is spawned by the first dictation that
   // needs it, and killed again once it has been idle for a while.
   localEngine = new LocalEngine({

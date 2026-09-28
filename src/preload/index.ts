@@ -5,6 +5,9 @@ import type {
   AppInfo,
   HistoryEntry,
   HistorySaveStatus,
+  LicenceActivation,
+  LicenceRelease,
+  LicenceStatus,
   Page,
   PasteLastStatus,
   PublicSettings,
@@ -59,6 +62,15 @@ const api = {
   getPasteLastStatus: (): Promise<PasteLastStatus> =>
     ipcRenderer.invoke('shortcut:paste-last-status'),
 
+  // Pro. The status says what the Pro page may offer. Activating and
+  // releasing answer with the sentence to show rather than an exception, and
+  // a key, once sent, never comes back this way.
+  getLicenceStatus: (): Promise<LicenceStatus> => ipcRenderer.invoke('licence:status'),
+  activateLicence: (key: string): Promise<LicenceActivation> =>
+    ipcRenderer.invoke('licence:activate', key),
+  releaseLicence: (): Promise<LicenceRelease> => ipcRenderer.invoke('licence:deactivate'),
+  removeLicenceLocally: (): Promise<LicenceStatus> => ipcRenderer.invoke('licence:remove-local'),
+
   onWorkflowStatus: (callback: (status: WorkflowStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: WorkflowStatus): void => callback(status)
     ipcRenderer.on('workflow:status', listener)
@@ -93,6 +105,11 @@ const api = {
     const listener = (): void => callback()
     ipcRenderer.on('history:changed', listener)
     return () => ipcRenderer.removeListener('history:changed', listener)
+  },
+  onLicenceChanged: (callback: (status: LicenceStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: LicenceStatus): void => callback(status)
+    ipcRenderer.on('licence:changed', listener)
+    return () => ipcRenderer.removeListener('licence:changed', listener)
   },
   onSettingsChanged: (callback: (settings: PublicSettings) => void): (() => void) => {
     const listener = (_event: unknown, settings: PublicSettings): void => callback(settings)

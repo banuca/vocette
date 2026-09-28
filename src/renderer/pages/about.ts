@@ -37,6 +37,11 @@ const INDEPENDENT =
   'Murmur is an independent MIT-licensed project with no affiliation to any commercial ' +
   'dictation product.'
 
+/** Pro's one request, said wherever the notice says what leaves this computer. */
+export const PRO_ACTIVATION_NOTICE =
+  'Activating Pro sends your licence key and a device label to Polar, the payment provider, ' +
+  'once, when you press Activate.'
+
 /**
  * What leaves this computer, for the engine actually in use. Telling an
  * on-device user that their audio goes to "the provider you configure" would
@@ -47,13 +52,14 @@ export function privacyNotice(engine: TranscriptionEngine): string {
     return (
       `${INDEPENDENT} Your audio is transcribed on this PC and never leaves it, and ` +
       'neither does the vocabulary you set in Settings. The only thing Murmur downloads is ' +
-      'the speech model, once, from Hugging Face.'
+      `the speech model, once, from Hugging Face. ${PRO_ACTIVATION_NOTICE}`
     )
   }
   return (
     `${INDEPENDENT} It sends your audio — and the vocabulary you set in Settings, which is ` +
     'what makes those words come back spelled correctly — only to the transcription provider ' +
-    'you configure, using your own API key. Nothing else leaves this computer.'
+    `you configure, using your own API key. ${PRO_ACTIVATION_NOTICE} Nothing else leaves ` +
+    'this computer.'
   )
 }
 

@@ -13,6 +13,8 @@
  * Settings note can count exactly the rules a dictation will apply.
  */
 
+import { PRO_REPLACEMENT_RULES } from './product'
+
 export interface ReplacementRule {
   /** What the user says, trimmed, with runs of whitespace collapsed to one space. */
   spoken: string
@@ -28,8 +30,12 @@ export interface ParsedReplacements {
 
 /** Ceiling on the stored string, applied on both the load and save paths. */
 export const MAX_REPLACEMENTS_CHARS = 20_000
-/** Ceiling on rules applied, which also bounds the one pattern built from them. */
-export const MAX_REPLACEMENT_RULES = 200
+/**
+ * Ceiling on rules the parser returns — Pro's limit — which also bounds the
+ * one pattern built from them. Free's lower limit is applied where a dictation
+ * reads its settings, so the stored list is never cut.
+ */
+export const MAX_REPLACEMENT_RULES = PRO_REPLACEMENT_RULES
 /** A trigger is a phrase, not a sentence. */
 export const MAX_SPOKEN_CHARS = 60
 /** Room for a signature or an address block. */

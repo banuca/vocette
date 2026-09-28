@@ -49,6 +49,21 @@ Builds are **not code-signed or notarised**, so Windows SmartScreen and macOS Ga
 
 On first run, History opens on **Get started**: press **Download** to fetch the speech model (670 MB, once), and dictation then runs on your PC with nothing sent anywhere. The download shows its progress, can be cancelled and resumed, and is checked before first use. Prefer a cloud provider? Choose **Cloud, with your API key** under **Settings → Transcription** and add your key there — for OpenAI, create one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
 
+## Free and Pro
+
+Everyone gets Pro free for their first 30 days. After that, Free keeps everything you need, for good — no nagging, no countdown, and dictation itself is never limited.
+
+| | Free, for good | Pro |
+|---|---|---|
+| Dictation on this PC or in the cloud, any length, as often as you like | ✓ | ✓ |
+| Cleanup, spoken corrections, spoken line breaks | ✓ | ✓ |
+| Clipboard restore, paste last dictation, Retry, history | ✓ | ✓ |
+| Vocabulary terms in use | 50 | 500 |
+| Replacements and snippets in use | 20 | 200 |
+| AI polish | — | When it ships |
+
+Nothing is deleted when Pro lapses: a longer list keeps every line, only its first part is used, and the note under each box says so. Pro is a one-off purchase through Polar, the payment provider, for up to three PCs. **Activate** on the Pro page sends your key and a device label (“Murmur on Windows · 7F3A”) to Polar once, and Murmur never checks it again; **Release this PC** frees a device slot for another one.
+
 ## Your API key
 
 The key is encrypted at rest by the operating system — DPAPI on Windows, the Keychain on macOS, libsecret or KWallet on Linux — and is never displayed again.
@@ -86,7 +101,7 @@ On Wayland the shortcut is registered with the desktop portal rather than observ
 | Put my clipboard back | On by default. After an automatic paste, whatever you had copied is put back about ¾ s later — text, formatting and images; a file list copied in Explorer, or an application's own private format, cannot be restored. When Murmur does not paste — clipboard-only delivery, focus moved, an elevated window — the transcript stays on the clipboard for you to paste. Turn off to keep every transcript on the clipboard. |
 | Paste last dictation with Alt + Shift + V | Windows only, for now; on by default. Pastes your newest transcript again into the window in front, with the same focus and elevation checks as a dictation — handy when a paste went to the wrong place. If another app already owns the combination, Settings says so. |
 | Your words | A vocabulary of names, acronyms and product terms, one per line. With a cloud provider they are **sent to it with every dictation** — that is how they work, so it is not a place for a secret. Against OpenAI, `gpt-transcribe` takes them as a dedicated `keywords` list. Every other model, and every custom endpoint, is given them through the transcription prompt instead, which has room for about 480 characters of terms; the line under the box says which is in use and warns when the list no longer fits. On every engine, Murmur then corrects near-misses of your terms on this computer, before cleanup: “ITUT” becomes “ITU-T”, “data verse” becomes “Dataverse”, “Kirinda” becomes “Kirinde”. A common English word is never turned into a term (“coffee” stays “coffee” with “koffi” in the list), checked against the SCOWL word list; sound-alike matching is English only. |
-| Replacements and snippets | One rule per line, `spoken => written`: `itu => ITU`, `my email => name@example.com`, `sign off => Best regards,\nAlex`. `\n` is a line break, `{date}` and `{time}` become today's date and the time, and a line starting with `#` is a comment. Applied on this computer after cleanup — never sent to your provider — matching whole words and ignoring capitals; what you wrote goes in exactly as typed, so code keeps its case. Up to 200 rules; the line under the box counts them and any lines it could not read. |
+| Replacements and snippets | One rule per line, `spoken => written`: `itu => ITU`, `my email => name@example.com`, `sign off => Best regards,\nAlex`. `\n` is a line break, `{date}` and `{time}` become today's date and the time, and a line starting with `#` is a comment. Applied on this computer after cleanup — never sent to your provider — matching whole words and ignoring capitals; what you wrote goes in exactly as typed, so code keeps its case. Free applies the first 20 rules and Pro up to 200, and the line under the box counts them and any lines it could not read. |
 | Remove filler words | Drops “um”, “uh”, “hmm”, stutters like “I I”, and a filler “like” or “you know” set off by commas. Hesitation sounds are removed in every language; the English wording rules apply to English, and to Automatic when the text reads as English. Nothing you said is rewritten, and `example.com`, `3.5` and `10:30` are left alone. |
 | Follow spoken corrections | “Scratch that” drops the sentence before it; “Tuesday, no sorry, Wednesday” becomes “Wednesday”. Only clear-cut corrections are acted on — anything ambiguous is left as you said it. English. |
 | Spoken line breaks | Say “new line” or “new paragraph” as a phrase of its own. English. |
@@ -166,6 +181,7 @@ Every window runs with `contextIsolation: true`, `sandbox: true`, `nodeIntegrati
 - The API key is encrypted at rest by the operating system and scoped to your user account — or, where that is not possible, kept for the session only and never written at all.
 - The foreground checks read a window handle and an elevation or secure-input flag. No window contents, titles or input are read, and nothing is stored.
 - Before an automatic paste, what is on your clipboard is copied into memory so it can be put back afterwards. It is held only until then, and is never written to disk or sent anywhere.
+- Activating Pro sends your licence key, a device label and the app version to Polar (US), once, when you press **Activate**; **Release this PC** sends the key again to free the slot. Nothing else about Pro is ever sent, and the buyer details Polar returns are discarded.
 - No telemetry, no analytics, no auto-update calls.
 
 ## License

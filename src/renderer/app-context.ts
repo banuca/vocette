@@ -4,6 +4,7 @@ import type { MicrophoneAccess } from './setup-guide'
 import type {
   AppInfo,
   HistoryEntry,
+  LicenceStatus,
   Page,
   PublicSettings,
   TranscriptionEngine,
@@ -36,6 +37,12 @@ export interface AppContext {
   workflow: WorkflowStatus
   /** Microphone permission as the renderer last observed it. */
   microphone: MicrophoneAccess
+  /**
+   * Where this PC stands with Pro: the plan, the trial, the licence. Pushed by
+   * the main process on every change, and asked for again when the window
+   * comes back into focus, because the trial can end while it is open.
+   */
+  licence: LicenceStatus
   setHeading(title: string, subtitle: string): void
   /** Replaces the cached settings and refreshes the sidebar. */
   applySettings(next: PublicSettings): void
@@ -43,6 +50,8 @@ export interface AppContext {
   applyPlatform(next: PlatformStatus): void
   /** Replaces the cached engine status and refreshes anything that depends on it. */
   applyEngine(next: EngineStatus): void
+  /** Replaces the cached licence status and refreshes anything that shows it. */
+  applyLicence(next: LicenceStatus): void
   navigate(page: Page, intent?: NavigationIntent): void
   reloadHistory(): Promise<void>
 }

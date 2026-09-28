@@ -1,4 +1,5 @@
 import type { PlatformStatus, RecordingMode } from './capabilities'
+import type { Plan } from './entitlement'
 import type { ShortcutChord } from './shortcuts'
 
 export type WorkflowPhase =
@@ -200,6 +201,8 @@ export interface SettingsUpdate {
    * process memory only; it is the offer made where secure storage is unfit.
    */
   apiKeyScope?: 'persist' | 'session'
+  /** Dismisses the one notice that the trial has ended. Only `true` does anything. */
+  trialEndNoticeDismissed?: boolean
 }
 
 /** True when a key is available for transcription, wherever it is held. */
@@ -214,7 +217,45 @@ export interface AppInfo {
   platformStatus: PlatformStatus
 }
 
-export type Page = 'history' | 'settings' | 'about'
+export type Page = 'history' | 'settings' | 'pro' | 'about'
+
+/**
+ * Where this PC stands with Pro, as the window may know it. Carries no key,
+ * no activation id and no Polar identifier: whether purchases are set up is a
+ * yes or no, worked out in the main process.
+ */
+export interface LicenceStatus {
+  plan: Plan
+  /** Whole days left in the trial, rounded up; 0 outside it. */
+  trialDaysLeft: number
+  trialEndsAt: string | null
+  /** The licence on this PC, as the Pro page shows it. */
+  licence: { displayKey: string; activatedAt: string } | null
+  /** An organisation and a benefit are configured, so a key can be activated. */
+  purchasesConfigured: boolean
+  checkoutAvailable: boolean
+  portalAvailable: boolean
+  /** "US$29, once, for up to 3 PCs". */
+  priceLabel: string
+  /** The trial has ended and its one notice has not been dismissed. */
+  trialEndNoticeDue: boolean
+  /** What activation names this PC to Polar: "Murmur on Windows · 7F3A". */
+  deviceLabel: string
+}
+
+/** Activating answers with the new status, or the sentence that says why not. */
+export type LicenceActivation =
+  | { ok: true; status: LicenceStatus }
+  | { ok: false; error: string; status: LicenceStatus }
+
+/**
+ * Releasing this PC. `canRemoveLocally` is true when Polar could not be asked —
+ * no connection, or a key this PC cannot read — so the Pro page can offer to
+ * remove the licence here anyway, saying the device slot stays in use.
+ */
+export type LicenceRelease =
+  | { ok: true; status: LicenceStatus }
+  | { ok: false; error: string; canRemoveLocally: boolean; status: LicenceStatus }
 
 export interface RecorderStartRequest {
   requestId: string

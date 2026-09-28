@@ -1,4 +1,4 @@
-import { budgetPromptTerms, supportsKeywordList } from '../shared/vocabulary'
+import { MAX_KEYWORD_TERMS, budgetPromptTerms, supportsKeywordList } from '../shared/vocabulary'
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 const REQUEST_TIMEOUT_MS = 120_000
@@ -244,7 +244,10 @@ export class TranscriptionService {
     body.append('model', input.model)
 
     if (useKeywords) {
-      for (const term of terms) body.append('keywords[]', term)
+      // The first terms, in the user's order: a Pro list can hold several
+      // hundred, but one request carries no more than it always did. Every
+      // term still corrects near-misses after recognition.
+      for (const term of terms.slice(0, MAX_KEYWORD_TERMS)) body.append('keywords[]', term)
     }
 
     // A language-appropriate quality hint. Confirmed supported for every model

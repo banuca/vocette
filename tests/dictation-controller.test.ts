@@ -6,6 +6,7 @@ import {
   type SoundKind,
   type WorkflowSettings
 } from '../src/main/dictation-controller'
+import { planReplacements, planVocabulary } from '../src/shared/entitlement'
 import type { Page, WorkflowStatus } from '../src/shared/types'
 
 /** Stands in for the snapshot of whatever the user had copied. */
@@ -25,6 +26,7 @@ function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
     engine: 'cloud',
     model: 'gpt-transcribe',
     language: 'en',
+    pro: true,
     vocabulary: [],
     replacements: [],
     microphoneId: 'mic-1',
@@ -2710,5 +2712,78 @@ describe('silence stays silent', () => {
       expect(deps.transcribe).toHaveBeenCalledTimes(1)
       expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 900, 'gpt-transcribe')
     }
+  })
+})
+
+/**
+ * Free's limits as a take meets them. The settings are built with the same
+ * functions the main process uses for every take, so this is the path a real
+ * dictation follows: the cloud request and the correction after it both see
+ * the capped list, and the stored list itself is never cut.
+ */
+describe('the plan limits, as a take uses them', () => {
+  const settingsFor = (
+    vocabulary: string,
+    replacements: string,
+    pro: boolean
+  ): Partial<WorkflowSettings> => ({
+    pro,
+    vocabulary: planVocabulary(vocabulary, pro),
+    replacements: planReplacements(replacements, pro)
+  })
+
+  /** Fifty terms, then Dataverse as the fifty-first. */
+  const TERMS = [...Array.from({ length: 50 }, (_, index) => `Term${index}`), 'Dataverse'].join('\n')
+  /** Twenty rules, then a twenty-first. */
+  const RULES = Array.from({ length: 21 }, (_, index) => `word${index} => W${index}`).join('\n')
+
+  async function dictate(harness: ReturnType<typeof makeHarness>, rawText: string): Promise<void> {
+    harness.deps.transcribe.mockResolvedValue(rawText)
+    const requestId = harness.beginRecording()
+    await harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+  }
+
+  const sentTerms = (harness: ReturnType<typeof makeHarness>): string[] =>
+    harness.deps.transcribe.mock.calls[0]?.[0].vocabulary ?? []
+
+  it('leaves the 51st term out of the request and the correction on Free', async () => {
+    const harness = makeHarness({ settings: settingsFor(TERMS, '', false) })
+    await dictate(harness, 'Open data verse now.')
+
+    expect(sentTerms(harness)).toHaveLength(50)
+    expect(sentTerms(harness)).not.toContain('Dataverse')
+    expect(harness.deps.recordHistory).toHaveBeenCalledWith(
+      'Open data verse now.',
+      100,
+      'gpt-transcribe'
+    )
+  })
+
+  it('sends the 51st term with Pro, and corrects to it', async () => {
+    const harness = makeHarness({ settings: settingsFor(TERMS, '', true) })
+    await dictate(harness, 'Open data verse now.')
+
+    expect(sentTerms(harness)).toHaveLength(51)
+    expect(sentTerms(harness).at(-1)).toBe('Dataverse')
+    expect(harness.deps.recordHistory).toHaveBeenCalledWith(
+      'Open Dataverse now.',
+      100,
+      'gpt-transcribe'
+    )
+  })
+
+  it('applies the first 20 rules on Free, and the 21st only with Pro', async () => {
+    const free = makeHarness({ settings: settingsFor('', RULES, false) })
+    await dictate(free, 'Say word0 and word20.')
+    expect(free.deps.recordHistory).toHaveBeenCalledWith('Say W0 and word20.', 100, 'gpt-transcribe')
+
+    const pro = makeHarness({ settings: settingsFor('', RULES, true) })
+    await dictate(pro, 'Say word0 and word20.')
+    expect(pro.deps.recordHistory).toHaveBeenCalledWith('Say W0 and W20.', 100, 'gpt-transcribe')
   })
 })

@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import type { EngineStatus } from '../src/shared/engine'
 import { MAX_REPLACEMENT_RULES } from '../src/shared/replacements'
-import type { PublicSettings } from '../src/shared/types'
+import type { LicenceStatus, PublicSettings } from '../src/shared/types'
 
 /**
  * The vocabulary card, driven through the same render function the app uses.
@@ -167,7 +168,10 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
   }
 }
 
-async function makeHarness(overrides: Partial<PublicSettings> = {}) {
+async function makeHarness(
+  overrides: Partial<PublicSettings> = {},
+  licence: LicenceStatus = licenceStatus()
+) {
   const elements = new Map<string, FakeElement>()
   SELECTORS.forEach((selector) => elements.set(selector, new FakeElement()))
   const content = new FakeElement(elements)
@@ -182,10 +186,12 @@ async function makeHarness(overrides: Partial<PublicSettings> = {}) {
     engine: TEST_ENGINE,
     workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
+    licence,
     setHeading: vi.fn(),
     applySettings: vi.fn(),
     applyPlatform: vi.fn(),
     applyEngine: vi.fn(),
+    applyLicence: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }
@@ -232,7 +238,7 @@ async function makeHarness(overrides: Partial<PublicSettings> = {}) {
     return element
   }
 
-  return { view, at, saveSettings, settings }
+  return { view, at, saveSettings, settings, context }
 }
 
 afterEach(() => {
@@ -448,5 +454,108 @@ describe('the vocabulary note and the correction', () => {
     expect(note).toContain('transcription prompt')
     expect(note).toContain('not being sent')
     expect(note).toContain(CORRECTION)
+  })
+})
+
+/**
+ * Free and Pro. A list longer than Free's limit keeps every line; the notes
+ * say how much of it the plan in force uses, and say nothing about Pro to a
+ * list the plan makes no difference to.
+ */
+describe('the notes under the lists, on each plan', () => {
+  const terms = (count: number): string =>
+    Array.from({ length: count }, (_, index) => `Term${index}`).join('\n')
+  const rules = (count: number): string =>
+    Array.from({ length: count }, (_, index) => `word${index} => W${index}`).join('\n')
+
+  it('say Free uses the first 50 of a longer vocabulary, and Pro all of it', async () => {
+    const { at } = await makeHarness({ vocabulary: terms(80) }, licenceStatus({ plan: 'free' }))
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain('One term per line, up to 50 terms of 48 characters.')
+    expect(note).toContain('Using 50 of your 80 terms — Pro uses all of them.')
+    // Every line is kept, and the badge counts all of them.
+    expect(at('#vocabulary').value.split('\n')).toHaveLength(80)
+    expect(at('#vocabulary-badge').textContent).toBe('80 terms')
+  })
+
+  it('say during the trial that every term is in use', async () => {
+    const { at } = await makeHarness(
+      { vocabulary: terms(80) },
+      licenceStatus({ plan: 'trial', trialDaysLeft: 23 })
+    )
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain('One term per line, up to 500 terms of 48 characters.')
+    expect(note).toContain('Pro trial: all 80 terms in use.')
+  })
+
+  it('say nothing about Pro for a list inside the Free limit', async () => {
+    const { at } = await makeHarness({ vocabulary: terms(30) }, licenceStatus({ plan: 'free' }))
+    const note = at('#vocabulary-note').textContent ?? ''
+    expect(note).not.toContain('Pro')
+    expect(note).toContain('up to 50 terms')
+  })
+
+  it('warn about the prompt only for the terms Free actually uses', async () => {
+    // 80 terms, 50 of them in use: the budget warning counts those 50.
+    const long = Array.from({ length: 80 }, (_, index) => `term-number-${index}`).join('\n')
+    const { at } = await makeHarness(
+      { vocabulary: long, model: 'whisper-1' },
+      licenceStatus({ plan: 'free' })
+    )
+    const note = at('#vocabulary-note').textContent ?? ''
+    expect(note).toContain('Using 50 of your 80 terms')
+    const match = /Only the first (\d+) fit, so (\d+) are not being sent/u.exec(note)
+    expect(match).not.toBeNull()
+    expect(Number(match?.[1]) + Number(match?.[2])).toBe(50)
+  })
+
+  it('say a Pro list beyond 100 terms sends its first 100 as keywords', async () => {
+    const { at } = await makeHarness({ vocabulary: terms(150) }, licenceStatus({ plan: 'pro' }))
+    const note = at('#vocabulary-note').textContent ?? ''
+    expect(note).toContain(
+      'gpt-transcribe takes the first 100 as a dedicated keyword list, and the rest still correct near-misses.'
+    )
+    expect(note).not.toContain('so every term is used')
+  })
+
+  it('say Free applies the first 20 of a longer list of rules, and the trial all of them', async () => {
+    const free = await makeHarness({ replacements: rules(35) }, licenceStatus({ plan: 'free' }))
+    expect(free.at('#replacements-note').textContent).toContain(
+      'Using 20 of your 35 rules — Pro uses all of them.'
+    )
+    expect(free.at('#replacements').value.split('\n')).toHaveLength(35)
+
+    const trial = await makeHarness({ replacements: rules(35) }, licenceStatus({ plan: 'trial' }))
+    expect(trial.at('#replacements-note').textContent).toContain('Pro trial: all 35 rules in use.')
+  })
+
+  it('keep counting ignored lines alongside the plan', async () => {
+    const { at } = await makeHarness(
+      { replacements: `${rules(25)}\nno arrow here` },
+      licenceStatus({ plan: 'free' })
+    )
+    expect(at('#replacements-note').textContent).toContain(
+      'Using 20 of your 25 rules — Pro uses all of them. 1 line ignored:'
+    )
+  })
+
+  it('follow the plan when it changes while the page is open', async () => {
+    const { view, at, context } = await makeHarness(
+      { vocabulary: terms(80), replacements: rules(35) },
+      licenceStatus({ plan: 'trial', trialDaysLeft: 1 })
+    )
+    expect(at('#vocabulary-note').textContent).toContain('Pro trial: all 80 terms in use.')
+
+    // The trial ends: the shell updates the context, then tells the page.
+    const ended = licenceStatus({ plan: 'free', trialEndNoticeDue: true })
+    context.licence = ended
+    view.applyLicence(ended)
+
+    expect(at('#vocabulary-note').textContent).toContain(
+      'Using 50 of your 80 terms — Pro uses all of them.'
+    )
+    expect(at('#replacements-note').textContent).toContain(
+      'Using 20 of your 35 rules — Pro uses all of them.'
+    )
   })
 })

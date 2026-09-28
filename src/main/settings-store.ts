@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { safeStorage } from 'electron'
 import {
   readJsonWithBackup,
@@ -33,6 +34,47 @@ import { assessSecureStorage, type SecureStorageAssessment } from './secure-stor
 /** v5 added `theme`; earlier files load with the default. */
 export const SETTINGS_VERSION = 5
 
+/**
+ * A Pro licence activated on this PC: what releasing it later needs, and what
+ * the Pro page shows. Nothing else from Polar's answer is kept — it names the
+ * buyer, and none of that is Murmur's business.
+ *
+ * `encryptedKey` holds the key encrypted by the operating system wherever
+ * that is possible. Where it is not, it holds the key as typed, and
+ * `keyStorage` says `plain`. The API key is refused in that case, but a
+ * licence key is an entitlement token rather than a credential: it unlocks
+ * Pro in this app, and it spends no money and opens no account. Refusing to
+ * keep it would take Pro away from a paying user for very little protection.
+ * It is still encrypted where it can be, because whoever holds a key can use
+ * one of its device slots and see the buyer details Polar returns.
+ */
+export interface StoredLicence {
+  encryptedKey: string
+  keyStorage: 'encrypted' | 'plain'
+  activationId: string
+  benefitId: string
+  /** Polar's masked form of the key, "****-E304DA", or its last four characters. */
+  displayKey: string
+  activatedAt: string
+}
+
+/** The licence as the main process may pass it around: no key material. */
+export type LicenceRecord = Omit<StoredLicence, 'encryptedKey' | 'keyStorage'>
+
+/** What activating hands the store to keep. */
+export interface NewLicence {
+  key: string
+  activationId: string
+  benefitId: string
+  displayKey: string
+  activatedAt: string
+}
+
+/** Four upper-case hexadecimal characters, generated once per profile. */
+const DEVICE_TAG_PATTERN = /^[0-9A-F]{4}$/u
+const MAX_LICENCE_FIELD_CHARS = 200
+const MAX_STORED_KEY_CHARS = 4096
+
 export interface StoredSettings {
   version: number
   engine: TranscriptionEngine
@@ -58,6 +100,17 @@ export interface StoredSettings {
   replacements: string
   apiEndpoint: string
   encryptedApiKey: string
+  /**
+   * When this profile's Pro trial began. Absent in a file written before the
+   * trial existed, and then set the first time this version loads it — so an
+   * existing user's trial starts on their first launch of it, like a new one's.
+   */
+  trialStartedAt: string | null
+  /** The one notice that the trial has ended has been dismissed, for good. */
+  trialEndNoticeDismissed: boolean
+  /** Names this PC in the activation label: the 7F3A of "Murmur on Windows · 7F3A". */
+  deviceTag: string
+  licence: StoredLicence | null
 }
 
 export const DEFAULT_SETTINGS: StoredSettings = {
@@ -88,7 +141,11 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   vocabulary: '',
   replacements: '',
   apiEndpoint: '',
-  encryptedApiKey: ''
+  encryptedApiKey: '',
+  trialStartedAt: null,
+  trialEndNoticeDismissed: false,
+  deviceTag: '',
+  licence: null
 }
 
 const MAX_API_KEY_LENGTH = 512
@@ -106,6 +163,17 @@ interface SettingsPersistence {
   writeJsonAtomic: typeof writeJsonAtomic
   removeJsonRecoveryCopies: typeof removeJsonRecoveryCopies
   refreshJsonRecoveryBackup: typeof refreshJsonRecoveryBackup
+}
+
+/** What the store needs from the world beyond its file; injectable for tests. */
+export interface StoreEnvironment {
+  now?: () => number
+  /** Four upper-case hexadecimal characters; random unless a test supplies them. */
+  newDeviceTag?: () => string
+}
+
+function randomDeviceTag(): string {
+  return randomBytes(2).toString('hex').toUpperCase()
 }
 
 function isLanguageCode(value: unknown): value is string {
@@ -251,8 +319,49 @@ export function normaliseSettings(value: unknown): StoredSettings {
         : DEFAULT_SETTINGS.replacements,
     apiEndpoint,
     encryptedApiKey:
-      typeof candidate.encryptedApiKey === 'string' ? candidate.encryptedApiKey : ''
+      typeof candidate.encryptedApiKey === 'string' ? candidate.encryptedApiKey : '',
+    // Added within v5, like the switches. Absent, or a date that cannot be
+    // read, means not started — and the store starts it as it loads.
+    trialStartedAt:
+      typeof candidate.trialStartedAt === 'string' &&
+      candidate.trialStartedAt.length <= 64 &&
+      !Number.isNaN(Date.parse(candidate.trialStartedAt))
+        ? candidate.trialStartedAt
+        : null,
+    trialEndNoticeDismissed: candidate.trialEndNoticeDismissed === true,
+    deviceTag:
+      typeof candidate.deviceTag === 'string' && DEVICE_TAG_PATTERN.test(candidate.deviceTag)
+        ? candidate.deviceTag
+        : '',
+    licence: normaliseLicence(candidate.licence)
   }
+}
+
+/**
+ * A stored licence, or null when there is none or it cannot be used. Every
+ * field is needed — releasing this PC sends the key and the activation id —
+ * so a record missing one is treated as no licence rather than half of one.
+ */
+function normaliseLicence(value: unknown): StoredLicence | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Record<string, unknown>
+  const text = (field: unknown, max = MAX_LICENCE_FIELD_CHARS): string | null =>
+    typeof field === 'string' && field.length > 0 && field.length <= max ? field : null
+  const encryptedKey = text(candidate.encryptedKey, MAX_STORED_KEY_CHARS)
+  const keyStorage =
+    candidate.keyStorage === 'encrypted' || candidate.keyStorage === 'plain'
+      ? candidate.keyStorage
+      : null
+  const activationId = text(candidate.activationId)
+  const benefitId = text(candidate.benefitId)
+  const displayKey = text(candidate.displayKey)
+  const activatedText = text(candidate.activatedAt)
+  const activatedAt =
+    activatedText !== null && !Number.isNaN(Date.parse(activatedText)) ? activatedText : null
+  if (!encryptedKey || !keyStorage || !activationId || !benefitId || !displayKey || !activatedAt) {
+    return null
+  }
+  return { encryptedKey, keyStorage, activationId, benefitId, displayKey, activatedAt }
 }
 
 /**
@@ -286,7 +395,8 @@ export class SettingsStore {
   constructor(
     private readonly filePath: string,
     persistence: Partial<SettingsPersistence> = {},
-    private readonly storage: SecureStorageAssessment = assessSecureStorage(safeStorage)
+    private readonly storage: SecureStorageAssessment = assessSecureStorage(safeStorage),
+    environment: StoreEnvironment = {}
   ) {
     this.persistence = {
       writeJsonAtomic,
@@ -297,6 +407,33 @@ export class SettingsStore {
     const { value, problem } = readJsonWithBackup<unknown>(filePath)
     this.settings = normaliseSettings(value)
     this.warning = problem ?? null
+    this.startTrialAndTagDevice(environment)
+  }
+
+  /**
+   * The trial starts the first time this version loads a profile, and this PC
+   * gets its tag the same way. Both are written straight away, so a restart
+   * moves neither. A write that fails here is not fatal: both stay in memory
+   * for this session, and the next save writes them.
+   */
+  private startTrialAndTagDevice(environment: StoreEnvironment): void {
+    let changed = false
+    if (this.settings.trialStartedAt === null) {
+      const now = (environment.now ?? Date.now)()
+      this.settings.trialStartedAt = new Date(Number.isFinite(now) ? now : Date.now()).toISOString()
+      changed = true
+    }
+    if (this.settings.deviceTag === '') {
+      const tag = environment.newDeviceTag?.() ?? ''
+      this.settings.deviceTag = DEVICE_TAG_PATTERN.test(tag) ? tag : randomDeviceTag()
+      changed = true
+    }
+    if (!changed) return
+    try {
+      this.write()
+    } catch {
+      // Kept in memory; the next save persists it.
+    }
   }
 
   /** One-shot read of any recovery warning raised while loading. */
@@ -306,9 +443,42 @@ export class SettingsStore {
     return warning
   }
 
+  /**
+   * What the renderer may see, named field by field.
+   *
+   * An allow-list on purpose. This used to copy the stored settings and delete
+   * the fields that must not cross, so every field added to the file crossed
+   * into the window by default — the trial date and the licence among them.
+   * Now a new stored field stays in the main process until it is listed here,
+   * and the key-set test fails if one is added to either side alone.
+   */
   getPublic(): PublicSettings {
-    const { encryptedApiKey: _key, version: _version, ...values } = this.settings
-    return { ...values, apiKeySource: this.apiKeySource() }
+    const stored = this.settings
+    return {
+      engine: stored.engine,
+      shortcut: { keys: [...stored.shortcut.keys] },
+      holdDelayMs: stored.holdDelayMs,
+      recordingMode: stored.recordingMode,
+      hotkeyEnabled: stored.hotkeyEnabled,
+      instantCapture: stored.instantCapture,
+      autoPaste: stored.autoPaste,
+      restoreClipboard: stored.restoreClipboard,
+      pasteLastShortcut: stored.pasteLastShortcut,
+      removeFillers: stored.removeFillers,
+      spokenCorrections: stored.spokenCorrections,
+      spokenFormatting: stored.spokenFormatting,
+      playSounds: stored.playSounds,
+      launchAtLogin: stored.launchAtLogin,
+      theme: stored.theme,
+      microphoneId: stored.microphoneId,
+      historyRetentionDays: stored.historyRetentionDays,
+      model: stored.model,
+      language: stored.language,
+      vocabulary: stored.vocabulary,
+      replacements: stored.replacements,
+      apiEndpoint: stored.apiEndpoint,
+      apiKeySource: this.apiKeySource()
+    }
   }
 
   apiKeySource(): ApiKeySource {
@@ -321,9 +491,79 @@ export class SettingsStore {
     return this.storage
   }
 
-  getInternal(): Omit<StoredSettings, 'encryptedApiKey' | 'version'> {
-    const { encryptedApiKey: _key, version: _version, ...values } = this.settings
+  /**
+   * Main process only. Leaves out the API key and the licence, which have
+   * their own accessors, so neither is handed around with the rest.
+   */
+  getInternal(): Omit<StoredSettings, 'encryptedApiKey' | 'version' | 'licence'> {
+    const {
+      encryptedApiKey: _key,
+      version: _version,
+      licence: _licence,
+      ...values
+    } = this.settings
     return { ...values }
+  }
+
+  /** The licence activated on this PC, without its key, or null. */
+  licenceRecord(): LicenceRecord | null {
+    const licence = this.settings.licence
+    if (!licence) return null
+    const { encryptedKey: _key, keyStorage: _storage, ...record } = licence
+    return record
+  }
+
+  /**
+   * The licence key itself, which only releasing this PC needs. Throws when a
+   * key the operating system encrypted cannot be read back — on another user
+   * account, say, or with secure storage gone.
+   */
+  getLicenceKey(): string {
+    const licence = this.settings.licence
+    if (!licence) throw new Error('No licence is active on this PC.')
+    if (licence.keyStorage === 'plain') return licence.encryptedKey
+    try {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable.')
+      return safeStorage.decryptString(Buffer.from(licence.encryptedKey, 'base64'))
+    } catch {
+      throw new Error(
+        'The saved licence key could not be read on this PC, so it cannot be released from here.'
+      )
+    }
+  }
+
+  /**
+   * Keeps a licence Polar has just activated: encrypted wherever the system
+   * can hold it safely, and see `StoredLicence` for why it is kept plain
+   * where it cannot.
+   */
+  saveLicence(input: NewLicence): void {
+    const encrypted = this.storage.usable
+    const licence: StoredLicence = {
+      encryptedKey: encrypted ? safeStorage.encryptString(input.key).toString('base64') : input.key,
+      keyStorage: encrypted ? 'encrypted' : 'plain',
+      activationId: input.activationId,
+      benefitId: input.benefitId,
+      displayKey: input.displayKey,
+      activatedAt: input.activatedAt
+    }
+    const next = { ...this.settings, licence }
+    this.persistence.writeJsonAtomic(this.filePath, next)
+    this.settings = next
+  }
+
+  /**
+   * Forgets the licence on this PC, and scrubs the recovery copies so the key
+   * does not linger in a backup. It also settles the notice that the trial
+   * has ended: someone who has just taken Pro off this PC knows their plan,
+   * and "your Pro trial has ended" would be news about something else.
+   */
+  clearLicence(): void {
+    const next = { ...this.settings, licence: null, trialEndNoticeDismissed: true }
+    this.persistence.writeJsonAtomic(this.filePath, next)
+    this.persistence.removeJsonRecoveryCopies(this.filePath)
+    this.persistence.refreshJsonRecoveryBackup(this.filePath)
+    this.settings = next
   }
 
   getApiKey(): string {
@@ -423,6 +663,8 @@ export class SettingsStore {
     if (typeof update.replacements === 'string') {
       this.settings.replacements = clampReplacements(update.replacements)
     }
+    // Only ever set: once dismissed, the notice is gone for good.
+    if (update.trialEndNoticeDismissed === true) this.settings.trialEndNoticeDismissed = true
 
     if (typeof update.apiKey === 'string' && update.apiKey.trim()) {
       const apiKey = update.apiKey.trim()

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TranscriptionService, type TranscribeInput } from '../src/main/transcription-service'
+import { MAX_KEYWORD_TERMS } from '../src/shared/vocabulary'
 
 const service = new TranscriptionService()
 const key = 'sk-test'
@@ -274,6 +275,28 @@ describe('TranscriptionService vocabulary biasing', () => {
     const prompt = body.get('prompt') as string
     expect(prompt).toContain('English dictation.')
     expect(prompt).not.toContain('Kirinde')
+  })
+
+  it('carries no more than the first 100 terms in the keyword list, however long a Pro list is', async () => {
+    const fetchMock = stubFetch(respond('ok'))
+    const many = Array.from({ length: MAX_KEYWORD_TERMS + 150 }, (_, index) => `term${index}`)
+
+    await service.transcribe({
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      apiKey: key,
+      model: 'gpt-transcribe',
+      language: 'en',
+      endpoint: '',
+      terms: many
+    })
+
+    const sent = bodyOf(fetchMock).getAll('keywords[]')
+    expect(MAX_KEYWORD_TERMS).toBe(100)
+    expect(sent).toHaveLength(MAX_KEYWORD_TERMS)
+    // The user's order decides which ones go.
+    expect(sent[0]).toBe('term0')
+    expect(sent.at(-1)).toBe(`term${MAX_KEYWORD_TERMS - 1}`)
   })
 
   it('folds the terms into the prompt for a model with no keyword field', async () => {

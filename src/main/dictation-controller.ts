@@ -92,7 +92,13 @@ export interface WorkflowSettings {
   /** The model that will transcribe, as History records it. */
   model: string
   language: string
-  /** Parsed once by the caller; the controller only forwards it. */
+  /**
+   * Whether Pro's limits apply to this take: during the trial and with a
+   * licence. The lists below already honour it — Free's first 50 terms and
+   * 20 rules — so nothing here needs to look, until a Pro-only step does.
+   */
+  pro: boolean
+  /** Parsed once by the caller, and cut to the plan's limit; the controller only forwards it. */
   vocabulary: string[]
   /** Parsed once by the caller, like the vocabulary; the controller only applies them. */
   replacements: ReplacementRule[]

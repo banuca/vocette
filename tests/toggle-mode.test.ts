@@ -49,6 +49,7 @@ function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
     engine: 'cloud',
     model: 'gpt-transcribe',
     language: 'en',
+    pro: true,
     vocabulary: [],
     replacements: [],
     microphoneId: 'mic-1',

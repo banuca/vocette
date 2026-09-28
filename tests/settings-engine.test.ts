@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext, NavigationIntent } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import {
@@ -211,10 +212,12 @@ async function makeHarness(
     engine: options.engine ?? engineStatus('missing'),
     workflow: options.workflow ?? { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
+    licence: licenceStatus(),
     setHeading: vi.fn(),
     applySettings: vi.fn(),
     applyPlatform: vi.fn(),
     applyEngine,
+    applyLicence: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }

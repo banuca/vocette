@@ -274,4 +274,25 @@ describe('robustness', () => {
     // The target is 50 ms; the bound is loose so a busy machine does not fail it.
     expect(elapsed).toBeLessThan(250)
   })
+
+  it("handles Pro's 500 terms against a 300-word transcript in reasonable time", () => {
+    // Pro keeps up to 500 terms in use, and the correction sees all of them.
+    const names = ['Kirinde', 'Dataverse', 'Parakeet', 'Murmur', 'Sherpa']
+    const terms = Array.from({ length: 500 }, (_, index) => `${names[index % 5]}${index}`)
+    const sentence =
+      'please send the draft to Kirinda before friday and open data verse for the ' +
+      'coffee machine is broken again so the ITUT group can'
+    const words = sentence.split(' ')
+    const transcript = Array.from({ length: 300 }, (_, index) => words[index % words.length]).join(
+      ' '
+    )
+
+    const started = performance.now()
+    const corrected = correctVocabulary(transcript, terms, 'en', isCommon)
+    const elapsed = performance.now() - started
+
+    expect(typeof corrected).toBe('string')
+    // Five times the terms of the test above, so five times its bound.
+    expect(elapsed).toBeLessThan(1250)
+  })
 })

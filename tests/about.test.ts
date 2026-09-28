@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
-import { attributions, privacyNotice } from '../src/renderer/pages/about'
+import { PRO_ACTIVATION_NOTICE, attributions, privacyNotice } from '../src/renderer/pages/about'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import { MODEL_NOT_READY_REASON } from '../src/shared/engine'
 import type { PublicSettings, TranscriptionEngine } from '../src/shared/types'
@@ -76,10 +77,12 @@ function render(engine: TranscriptionEngine) {
     },
     workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
+    licence: licenceStatus(),
     setHeading: vi.fn(),
     applySettings: vi.fn(),
     applyPlatform: vi.fn(),
     applyEngine: vi.fn(),
+    applyLicence: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }
@@ -104,6 +107,19 @@ describe('privacyNotice', () => {
     const text = privacyNotice('cloud')
     expect(text).toContain('only to the transcription provider you configure')
     expect(text).toContain('the vocabulary you set in Settings')
+  })
+
+  it("says what Pro's activation sends, on either engine, before claiming nothing else leaves", () => {
+    expect(PRO_ACTIVATION_NOTICE).toBe(
+      'Activating Pro sends your licence key and a device label to Polar, the payment provider, ' +
+        'once, when you press Activate.'
+    )
+    expect(privacyNotice('local')).toContain(PRO_ACTIVATION_NOTICE)
+    const cloud = privacyNotice('cloud')
+    expect(cloud).toContain(PRO_ACTIVATION_NOTICE)
+    expect(cloud.indexOf(PRO_ACTIVATION_NOTICE)).toBeLessThan(
+      cloud.indexOf('Nothing else leaves this computer.')
+    )
   })
 })
 

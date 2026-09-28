@@ -33,6 +33,7 @@ export type IconName =
   | 'key'
   | 'lock'
   | 'empty'
+  | 'sparkle'
 
 /** The body of each icon: paths only, sharing one set of stroke attributes. */
 const PATHS: Record<IconName, string> = {
@@ -72,7 +73,12 @@ const PATHS: Record<IconName, string> = {
   // Deliberately not a magnifying glass or a document: an empty history is not
   // a failed search and not a missing file, it is simply a page not yet
   // written on.
-  empty: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3 3.4"/><path d="M12 8.5v7M8.5 12h7"/>'
+  empty: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3 3.4"/><path d="M12 8.5v7M8.5 12h7"/>',
+  // Pro: a four-pointed spark with a small one beside it. Not a star, which
+  // reads as "favourite", and not a crown, which would oversell a word list.
+  sparkle:
+    '<path d="M11 5C11.7 10 14 12.3 19 13C14 13.7 11.7 16 11 21C10.3 16 8 13.7 3 13C8 12.3 10.3 10 11 5Z"/>' +
+    '<path d="M19 3v4M17 5h4"/>'
 }
 
 /**

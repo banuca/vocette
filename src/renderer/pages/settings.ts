@@ -1,8 +1,10 @@
 import type { AppContext, NavigationIntent } from '../app-context'
 import { BLUETOOTH_HEADSET_NOTE, looksLikeBluetoothHeadset } from '../bluetooth-headset'
 import { escapeHtml, friendlyError, keyChips } from '../dom'
+import { replacementsPlanNote, vocabularyPlanNote } from '../licence-text'
 import { createModelRow, localLanguageNote } from '../model-download'
 import type { EngineStatus } from '../../shared/engine'
+import { vocabularyTermLimit } from '../../shared/entitlement'
 import {
   autoPasteSupported,
   clipboardOnlyReason,
@@ -22,6 +24,7 @@ import {
   LANGUAGE_OPTIONS,
   TRANSCRIPTION_MODELS,
   dictationIsBusy,
+  type LicenceStatus,
   type PasteLastStatus,
   type PublicSettings,
   type SettingsUpdate,
@@ -29,8 +32,8 @@ import {
   type WorkflowStatus
 } from '../../shared/types'
 import {
+  MAX_KEYWORD_TERMS,
   MAX_PROMPT_TERM_CHARS,
-  MAX_VOCABULARY_TERMS,
   MAX_VOCABULARY_TERM_CHARS,
   budgetPromptTerms,
   parseVocabulary,
@@ -83,6 +86,8 @@ export interface SettingsView {
   applyEngine(next: EngineStatus): void
   /** Removing the model waits for a dictation to finish. */
   applyWorkflow(status: WorkflowStatus): void
+  /** The notes under the lists say how much of each the plan in force uses. */
+  applyLicence(next: LicenceStatus): void
   dispose(): void
 }
 
@@ -423,6 +428,11 @@ export function renderSettings(
   const paintVocabularyNote = (): void => {
     if (!vocabularyNote && !vocabularyBadge) return
     const terms = parseVocabulary(vocabulary?.value ?? '')
+    // What a dictation uses on the plan in force: the first terms, up to its
+    // limit. The list itself is never cut, so the badge counts all of it.
+    const plan = context.licence.plan
+    const limit = vocabularyTermLimit(plan !== 'free')
+    const inUse = terms.slice(0, limit)
     const selected = modelSelect?.value ?? settings.model
     const model =
       selected === CUSTOM_MODEL_OPTION ? modelCustom?.value.trim() ?? '' : selected
@@ -440,28 +450,40 @@ export function renderSettings(
     }
     if (!vocabularyNote) return
 
-    const format = `One term per line, up to ${MAX_VOCABULARY_TERMS} terms of ${MAX_VOCABULARY_TERM_CHARS} characters.`
-    // True of every engine: the correction runs on this computer, after
-    // recognition. For the on-device engine it is the whole mechanism — that
-    // engine takes no prompt, and nothing is sent anywhere.
-    if (settings.engine === 'local') {
-      vocabularyNote.textContent = `${format} ${VOCABULARY_CORRECTION_NOTE}`
-      return
+    const format = `One term per line, up to ${limit} terms of ${MAX_VOCABULARY_TERM_CHARS} characters.`
+    // Said only when the plan changes what is used: a list inside Free's
+    // limit is the same on every plan, and hears nothing about Pro.
+    const planNote = vocabularyPlanNote(plan, terms.length)
+    const lead = planNote ? `${format} ${planNote}` : format
+    const describe = (): string => {
+      // True of every engine: the correction runs on this computer, after
+      // recognition. For the on-device engine it is the whole mechanism —
+      // that engine takes no prompt, and nothing is sent anywhere.
+      if (settings.engine === 'local') return `${lead} ${VOCABULARY_CORRECTION_NOTE}`
+      const limits = `${lead} They are sent to your transcription provider with every dictation.`
+      if (supportsKeywordList(model, endpoint)) {
+        // One request carries no more keywords than it always did; a longer
+        // Pro list still corrects near-misses after recognition.
+        const keywords =
+          inUse.length > MAX_KEYWORD_TERMS
+            ? `${model} takes the first ${MAX_KEYWORD_TERMS} as a dedicated keyword list, and the rest still correct near-misses.`
+            : `${model} takes them as a dedicated keyword list, so every term is used.`
+        return `${limits} ${keywords} ${VOCABULARY_CORRECTION_NOTE}`
+      }
+      const sent = budgetPromptTerms(inUse).length
+      const dropped = inUse.length - sent
+      const fit =
+        dropped > 0
+          ? ` Only the first ${sent} fit, so ${dropped} ${dropped === 1 ? 'is' : 'are'} not being sent — shorten the list.`
+          : ''
+      return `${limits} ${model || 'This model'} has no keyword field, so they are added to the transcription prompt, which has room for about ${MAX_PROMPT_TERM_CHARS} characters of terms.${fit} ${VOCABULARY_CORRECTION_NOTE}`
     }
-    const limits = `${format} They are sent to your transcription provider with every dictation.`
-    if (supportsKeywordList(model, endpoint)) {
-      vocabularyNote.textContent = `${limits} ${model} takes them as a dedicated keyword list, so every term is used. ${VOCABULARY_CORRECTION_NOTE}`
-      return
-    }
-    const sent = budgetPromptTerms(terms).length
-    const dropped = terms.length - sent
-    const fit =
-      dropped > 0
-        ? ` Only the first ${sent} fit, so ${dropped} ${dropped === 1 ? 'is' : 'are'} not being sent — shorten the list.`
-        : ''
     // textContent, not innerHTML: the model name is user input and must not be
-    // parsed as markup, and must not be double-escaped either.
-    vocabularyNote.textContent = `${limits} ${model || 'This model'} has no keyword field, so they are added to the transcription prompt, which has room for about ${MAX_PROMPT_TERM_CHARS} characters of terms.${fit} ${VOCABULARY_CORRECTION_NOTE}`
+    // parsed as markup, and must not be double-escaped either. Written only
+    // when it changes: the note is a live region, and a repaint that changes
+    // nothing — the window coming back into focus — must not read it out again.
+    const text = describe()
+    if (vocabularyNote.textContent !== text) vocabularyNote.textContent = text
   }
 
   /**
@@ -481,17 +503,26 @@ export function renderSettings(
   const paintReplacementsNote = (): void => {
     if (!replacementsNote) return
     const { rules, ignored } = parseReplacements(replacements?.value ?? '')
-    const count =
-      rules.length === 0 ? 'No rules yet' : rules.length === 1 ? '1 rule' : `${rules.length} rules`
-    const full = rules.length >= MAX_REPLACEMENT_RULES ? ', the most Murmur will use' : ''
     const skipped =
       ignored === 0
         ? ''
-        : ` — ${ignored} ${ignored === 1 ? 'line' : 'lines'} ignored: a rule needs => with something on both sides, at most ${MAX_SPOKEN_CHARS} characters before it and ${MAX_WRITTEN_CHARS.toLocaleString('en-GB')} after`
+        : `${ignored} ${ignored === 1 ? 'line' : 'lines'} ignored: a rule needs => with something on both sides, at most ${MAX_SPOKEN_CHARS} characters before it and ${MAX_WRITTEN_CHARS.toLocaleString('en-GB')} after`
+    // A list longer than Free's limit hears how much of it the plan uses, in
+    // place of the plain count, so the number is said once. Every rule stays
+    // in the box whatever the plan.
+    const planNote = replacementsPlanNote(context.licence.plan, rules.length)
+    let text: string
+    if (planNote) {
+      text = `${REPLACEMENTS_HELP} ${planNote}${skipped ? ` ${skipped}.` : ''}`
+    } else {
+      const count =
+        rules.length === 0 ? 'No rules yet' : rules.length === 1 ? '1 rule' : `${rules.length} rules`
+      const full = rules.length >= MAX_REPLACEMENT_RULES ? ', the most Murmur will use' : ''
+      text = `${REPLACEMENTS_HELP} ${count}${full}${skipped ? ` — ${skipped}` : ''}.`
+    }
     // textContent, not innerHTML: the rules are user input, and `=>` must
     // read as typed. Written only when it changes, because the note is a live
     // region and would otherwise be read out in full on every keystroke.
-    const text = `${REPLACEMENTS_HELP} ${count}${full}${skipped}.`
     if (replacementsNote.textContent !== text) replacementsNote.textContent = text
   }
 
@@ -1155,6 +1186,12 @@ export function renderSettings(
     },
     applyEngine: (next) => modelRow?.apply(next),
     applyWorkflow: (status) => modelRow?.setDictating(dictationIsBusy(status.phase)),
+    // Read from the context, which the shell has already updated; the trial
+    // can end while this page is open.
+    applyLicence: () => {
+      paintVocabularyNote()
+      paintReplacementsNote()
+    },
     dispose: () => {
       disposed = true
       releaseCaptureListener?.()

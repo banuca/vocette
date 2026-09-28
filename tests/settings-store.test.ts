@@ -191,6 +191,47 @@ describe('validation', () => {
     expect(() => store.update({ apiKey: 'x'.repeat(600) })).toThrow()
   })
 
+  it('names exactly the fields the renderer may see, and no others', () => {
+    // An allow-list: a field added to the stored settings must not cross into
+    // the window until it is added here on purpose, and one added here must
+    // exist in the public shape.
+    const store = new SettingsStore(file)
+    store.update({ apiKey: 'sk-listed', vocabulary: 'Kirinde', replacements: 'itu => ITU' })
+    expect(Object.keys(store.getPublic()).sort()).toEqual(
+      [
+        'engine',
+        'shortcut',
+        'holdDelayMs',
+        'recordingMode',
+        'hotkeyEnabled',
+        'instantCapture',
+        'autoPaste',
+        'restoreClipboard',
+        'pasteLastShortcut',
+        'removeFillers',
+        'spokenCorrections',
+        'spokenFormatting',
+        'playSounds',
+        'launchAtLogin',
+        'theme',
+        'microphoneId',
+        'historyRetentionDays',
+        'model',
+        'language',
+        'vocabulary',
+        'replacements',
+        'apiEndpoint',
+        'apiKeySource'
+      ].sort()
+    )
+  })
+
+  it('hands out a copy of the shortcut, not the stored chord itself', () => {
+    const store = new SettingsStore(file)
+    store.getPublic().shortcut.keys.push(KEY.A)
+    expect(store.getPublic().shortcut).toEqual({ keys: [KEY.Ctrl, KEY.Shift] })
+  })
+
   it('never exposes the key through the public shape', () => {
     const store = new SettingsStore(file)
     store.update({ apiKey: 'sk-secret' })
@@ -713,7 +754,7 @@ describe('vocabulary', () => {
   })
 
   it('clamps an over-long stored value rather than discarding it', () => {
-    const raw = `${'x'.repeat(30)}\n`.repeat(200)
+    const raw = `${'x'.repeat(30)}\n`.repeat(Math.ceil(MAX_VOCABULARY_CHARS / 31) + 200)
     const result = normaliseSettings({ vocabulary: raw })
     expect(result.vocabulary.length).toBeLessThanOrEqual(MAX_VOCABULARY_CHARS)
     expect(result.vocabulary.length).toBeGreaterThan(0)
@@ -751,7 +792,9 @@ describe('vocabulary', () => {
       removeJsonRecoveryCopies,
       refreshJsonRecoveryBackup
     })
-    const saved = store.update({ vocabulary: `${'y'.repeat(25)}\n`.repeat(200) })
+    const saved = store.update({
+      vocabulary: `${'y'.repeat(25)}\n`.repeat(Math.ceil(MAX_VOCABULARY_CHARS / 26) + 200)
+    })
     expect(saved.vocabulary.length).toBeLessThanOrEqual(MAX_VOCABULARY_CHARS)
     for (const term of saved.vocabulary.split('\n')) expect(term).toBe('y'.repeat(25))
   })
@@ -865,5 +908,251 @@ describe('replacements', () => {
     store.update({ replacements: 'itu => ITU' })
     expect(store.update({ replacements: '' }).replacements).toBe('')
     expect(new SettingsStore(file).getPublic().replacements).toBe('')
+  })
+})
+
+describe('the Pro trial', () => {
+  const T0 = Date.parse('2026-09-25T09:00:00.000Z')
+  const clock = (at: number) => ({ now: () => at })
+  const usable = { usable: true, reason: '', backend: 'os' }
+
+  it('starts on the first load and is written straight away', () => {
+    const store = new SettingsStore(file, {}, usable, clock(T0))
+    expect(store.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(JSON.parse(readFileSync(file, 'utf8')).trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+  })
+
+  it('is set once: a later launch keeps the first date', () => {
+    new SettingsStore(file, {}, usable, clock(T0))
+    const later = new SettingsStore(file, {}, usable, clock(T0 + 12 * 86_400_000))
+    expect(later.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    later.update({ playSounds: false })
+    expect(JSON.parse(readFileSync(file, 'utf8')).trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+  })
+
+  it('starts for an existing user on their first launch of this version, changing nothing else', () => {
+    const before = { ...DEFAULT_SETTINGS, theme: 'light', vocabulary: 'Kirinde' } as Record<
+      string,
+      unknown
+    >
+    delete before.trialStartedAt
+    delete before.trialEndNoticeDismissed
+    delete before.deviceTag
+    delete before.licence
+    writeFileSync(file, JSON.stringify(before))
+
+    const store = new SettingsStore(file, {}, usable, clock(T0))
+    expect(store.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    const written = JSON.parse(readFileSync(file, 'utf8'))
+    expect(written.trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(written.theme).toBe('light')
+    expect(written.vocabulary).toBe('Kirinde')
+    expect(written.version).toBe(SETTINGS_VERSION)
+  })
+
+  it('starts again from now when the stored date cannot be read', () => {
+    expect(normaliseSettings({ trialStartedAt: 'last Tuesday' }).trialStartedAt).toBeNull()
+    expect(normaliseSettings({ trialStartedAt: 42 }).trialStartedAt).toBeNull()
+    writeFileSync(file, JSON.stringify({ ...DEFAULT_SETTINGS, trialStartedAt: 'garbage' }))
+    const store = new SettingsStore(file, {}, usable, clock(T0))
+    expect(store.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+  })
+
+  it('keeps a readable stored date exactly as written', () => {
+    const stored = '2026-08-01T10:00:00.000Z'
+    expect(normaliseSettings({ trialStartedAt: stored }).trialStartedAt).toBe(stored)
+  })
+
+  it('still opens when the first write fails, and the next save writes the date', () => {
+    let fail = true
+    const store = new SettingsStore(
+      file,
+      {
+        writeJsonAtomic: (path, value) => {
+          if (fail) throw new Error('disk full')
+          writeJsonAtomic(path, value)
+        }
+      },
+      usable,
+      clock(T0)
+    )
+    expect(store.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(existsSync(file)).toBe(false)
+    fail = false
+    store.update({ playSounds: false })
+    expect(JSON.parse(readFileSync(file, 'utf8')).trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+  })
+})
+
+describe('the device tag', () => {
+  const usable = { usable: true, reason: '', backend: 'os' }
+
+  it('is four upper-case hexadecimal characters, made once and kept', () => {
+    const store = new SettingsStore(file)
+    const tag = store.getInternal().deviceTag
+    expect(tag).toMatch(/^[0-9A-F]{4}$/u)
+    expect(JSON.parse(readFileSync(file, 'utf8')).deviceTag).toBe(tag)
+    expect(new SettingsStore(file).getInternal().deviceTag).toBe(tag)
+  })
+
+  it('uses the tag it is given, and replaces a stored one that is not a tag', () => {
+    const tagged = new SettingsStore(file, {}, usable, { newDeviceTag: () => '7F3A' })
+    expect(tagged.getInternal().deviceTag).toBe('7F3A')
+    expect(normaliseSettings({ deviceTag: '7f3a' }).deviceTag).toBe('')
+    expect(normaliseSettings({ deviceTag: 'ZZZZ' }).deviceTag).toBe('')
+    expect(normaliseSettings({ deviceTag: 1234 }).deviceTag).toBe('')
+    expect(normaliseSettings({ deviceTag: 'BEEF' }).deviceTag).toBe('BEEF')
+  })
+})
+
+describe('the trial-end notice', () => {
+  it('is not dismissed on a fresh install or in a file that predates it', () => {
+    expect(DEFAULT_SETTINGS.trialEndNoticeDismissed).toBe(false)
+    expect(new SettingsStore(file).getInternal().trialEndNoticeDismissed).toBe(false)
+    expect(normaliseSettings({ version: 5 }).trialEndNoticeDismissed).toBe(false)
+  })
+
+  it('is dismissed through a settings update, for good, and survives a restart', () => {
+    const store = new SettingsStore(file)
+    store.update({ trialEndNoticeDismissed: true })
+    expect(store.getInternal().trialEndNoticeDismissed).toBe(true)
+    expect(JSON.parse(readFileSync(file, 'utf8')).trialEndNoticeDismissed).toBe(true)
+    expect(new SettingsStore(file).getInternal().trialEndNoticeDismissed).toBe(true)
+
+    // Once dismissed, nothing brings it back.
+    store.update({ trialEndNoticeDismissed: false })
+    expect(store.getInternal().trialEndNoticeDismissed).toBe(true)
+  })
+
+  it('ignores anything but true, on both paths', () => {
+    const store = new SettingsStore(file)
+    store.update({ trialEndNoticeDismissed: 'yes' as unknown as boolean })
+    expect(store.getInternal().trialEndNoticeDismissed).toBe(false)
+    expect(normaliseSettings({ trialEndNoticeDismissed: 'true' }).trialEndNoticeDismissed).toBe(false)
+    expect(normaliseSettings({ trialEndNoticeDismissed: 1 }).trialEndNoticeDismissed).toBe(false)
+    expect(normaliseSettings({ trialEndNoticeDismissed: true }).trialEndNoticeDismissed).toBe(true)
+  })
+
+  it('is left alone by an update that does not mention it', () => {
+    const store = new SettingsStore(file)
+    store.update({ trialEndNoticeDismissed: true })
+    store.update({ vocabulary: 'Kirinde' })
+    expect(new SettingsStore(file).getInternal().trialEndNoticeDismissed).toBe(true)
+  })
+})
+
+describe('the licence', () => {
+  const KEY_TEXT = 'MURMUR-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA'
+  const activated = {
+    key: KEY_TEXT,
+    activationId: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe',
+    benefitId: '32a8eda4-56cf-4a94-8228-792d324a519e',
+    displayKey: '****-E304DA',
+    activatedAt: '2026-09-25T13:48:13.251Z'
+  }
+  const unusable = { usable: false, reason: 'No keyring here.', backend: 'basic_text' }
+
+  it('is kept encrypted where the system can hold it, and read back for a release', () => {
+    const store = new SettingsStore(file)
+    store.saveLicence(activated)
+    const onDisk = readFileSync(file, 'utf8')
+    expect(onDisk).not.toContain(KEY_TEXT)
+    const written = JSON.parse(onDisk)
+    expect(written.licence.keyStorage).toBe('encrypted')
+    expect(written.licence.activationId).toBe(activated.activationId)
+
+    const reopened = new SettingsStore(file)
+    expect(reopened.getLicenceKey()).toBe(KEY_TEXT)
+    expect(reopened.licenceRecord()).toEqual({
+      activationId: activated.activationId,
+      benefitId: activated.benefitId,
+      displayKey: '****-E304DA',
+      activatedAt: '2026-09-25T13:48:13.251Z'
+    })
+  })
+
+  it('is kept as typed, and says so, where the system has no secure storage', () => {
+    const store = new SettingsStore(file, {}, unusable)
+    store.saveLicence(activated)
+    const written = JSON.parse(readFileSync(file, 'utf8'))
+    expect(written.licence.keyStorage).toBe('plain')
+    expect(written.licence.encryptedKey).toBe(KEY_TEXT)
+    expect(new SettingsStore(file, {}, unusable).getLicenceKey()).toBe(KEY_TEXT)
+  })
+
+  it('never reaches the public settings or the internal ones', () => {
+    const store = new SettingsStore(file, {}, unusable)
+    store.saveLicence(activated)
+    const shown = JSON.stringify(store.getPublic())
+    expect(shown).not.toContain(KEY_TEXT)
+    expect(shown).not.toContain(activated.activationId)
+    expect(shown).not.toContain('licence')
+    expect(shown).not.toContain('trialStartedAt')
+    expect(shown).not.toContain('deviceTag')
+    expect(shown).not.toContain('trialEndNoticeDismissed')
+    expect('licence' in store.getInternal()).toBe(false)
+    expect(JSON.stringify(store.getInternal())).not.toContain(KEY_TEXT)
+    expect(JSON.stringify(store.licenceRecord())).not.toContain(KEY_TEXT)
+  })
+
+  it('says in a sentence when an encrypted key cannot be read back', async () => {
+    const { safeStorage } = await import('electron')
+    const store = new SettingsStore(file)
+    store.saveLicence(activated)
+    const decrypt = vi.spyOn(safeStorage, 'decryptString').mockImplementation(() => {
+      throw new Error('DPAPI refused')
+    })
+    try {
+      expect(() => store.getLicenceKey()).toThrow(
+        'The saved licence key could not be read on this PC, so it cannot be released from here.'
+      )
+    } finally {
+      decrypt.mockRestore()
+    }
+  })
+
+  it('is forgotten on this PC, recovery copies and all, and settles the trial notice', () => {
+    const store = new SettingsStore(file, {}, unusable)
+    store.saveLicence(activated)
+    store.update({ autoPaste: false })
+    writeFileSync(`${file}.tmp`, 'stale temporary copy')
+    writeFileSync(`${file}.corrupt`, 'stale corrupt copy')
+
+    store.clearLicence()
+    expect(store.licenceRecord()).toBeNull()
+    expect(() => store.getLicenceKey()).toThrow()
+    expect(store.getInternal().trialEndNoticeDismissed).toBe(true)
+    expect(readFileSync(file, 'utf8')).not.toContain(KEY_TEXT)
+    expect(readFileSync(`${file}.bak`, 'utf8')).not.toContain(KEY_TEXT)
+    expect(existsSync(`${file}.tmp`)).toBe(false)
+    expect(existsSync(`${file}.corrupt`)).toBe(false)
+    expect(new SettingsStore(file, {}, unusable).licenceRecord()).toBeNull()
+  })
+
+  it('is untouched by settings saves', () => {
+    const store = new SettingsStore(file)
+    store.saveLicence(activated)
+    store.update({ vocabulary: 'Kirinde', playSounds: false })
+    expect(new SettingsStore(file).getLicenceKey()).toBe(KEY_TEXT)
+  })
+
+  it('is read back only when every field is there, on the load path', () => {
+    const record = {
+      encryptedKey: KEY_TEXT,
+      keyStorage: 'plain',
+      activationId: activated.activationId,
+      benefitId: activated.benefitId,
+      displayKey: '****-E304DA',
+      activatedAt: activated.activatedAt
+    }
+    expect(normaliseSettings({ licence: record }).licence).toEqual(record)
+    expect(normaliseSettings({}).licence).toBeNull()
+    expect(normaliseSettings({ licence: 'MURMUR-KEY' }).licence).toBeNull()
+    expect(normaliseSettings({ licence: { ...record, keyStorage: 'rot13' } }).licence).toBeNull()
+    expect(normaliseSettings({ licence: { ...record, activationId: '' } }).licence).toBeNull()
+    expect(normaliseSettings({ licence: { ...record, activatedAt: 'soon' } }).licence).toBeNull()
+    const partial: Record<string, unknown> = { ...record }
+    delete partial.benefitId
+    expect(normaliseSettings({ licence: partial }).licence).toBeNull()
   })
 })
