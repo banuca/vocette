@@ -94,3 +94,15 @@ Settings: `instantCapture: boolean` (default true) — five-place recipe, both p
 ## Done when
 
 `npm run typecheck && npx vitest run && npm run lint` pass. Do not commit.
+
+## Notes added after 07a/07b/04/05 landed
+
+- `LocalEngine.prewarm()` exists (src/main/engine/local-engine.ts) and nothing calls it yet:
+  wire the new `prewarm` dep to it, but only when `settings.engine === 'local'` and the
+  model is installed (a prewarm with no model would just fail).
+- The controller's delivery code was restructured for clipboard custody (`pasteOrExplain`,
+  `Delivery`, the clipboard loan, `pasteLast`) and statuses now carry `canRetry`; a
+  provisional take must not disturb any of that, and must never broadcast.
+- `WorkflowSettings.transcriptionReady` replaced `apiKeyConfigured`: `prepareDictation()`
+  does nothing when it is false.
+- Run vitest from the upper-case path `C:\Users\KIRINDE\Desktop\voice-hotkey`.
