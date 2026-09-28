@@ -1,4 +1,5 @@
 import type { AppContext, NavigationIntent } from '../app-context'
+import { BLUETOOTH_HEADSET_NOTE, looksLikeBluetoothHeadset } from '../bluetooth-headset'
 import { escapeHtml, friendlyError, keyChips } from '../dom'
 import { createModelRow, localLanguageNote } from '../model-download'
 import type { EngineStatus } from '../../shared/engine'
@@ -265,15 +266,17 @@ export function renderSettings(
             </select>
             <small>A short delay stops shortcuts like Ctrl + Shift + T from triggering dictation.</small>
           </label>
-          <label class="field"><span>Microphone</span>
+          <div class="field">
+            <label class="field-label" for="microphone">Microphone</label>
             <div class="inline-control">
-              <select id="microphone"><option value="">System default microphone</option></select>
+              <select id="microphone" aria-describedby="microphone-feedback microphone-note"><option value="">System default microphone</option></select>
               <button class="icon-refresh" id="refresh-microphones" type="button" aria-label="Refresh microphones">↻</button>
               <button class="secondary-button" id="mic-test" type="button">Test</button>
             </div>
             <div class="mic-meter" id="mic-meter"><div class="mic-meter-bar" id="mic-meter-bar"></div></div>
             <small id="microphone-feedback">Checking microphones…</small>
-          </label>
+            <small class="microphone-note" id="microphone-note" aria-live="polite" hidden></small>
+          </div>
         </div>
 
         <div class="toggle-list">
@@ -863,6 +866,37 @@ export function renderSettings(
 
   // --- Microphones --------------------------------------------------------
 
+  /**
+   * The operating system's name for each microphone last listed, by device
+   * id. The `default` entry is kept here although the picker leaves it out:
+   * its name is the only way to know which device "Windows default
+   * microphone" will open.
+   */
+  let microphoneLabels = new Map<string, string>()
+
+  /**
+   * Opening a Bluetooth headset's microphone drops the user's headphones to
+   * call quality until it closes, so the note says so while one is chosen —
+   * before Save as well as after. With no name to go on (access not granted
+   * yet, or a saved microphone that is not connected) it stays hidden rather
+   * than guess. It sits outside the picker's <label>, as the Language note
+   * does: inside, its three sentences would become part of the picker's
+   * accessible name.
+   */
+  const paintMicrophoneNote = (): void => {
+    const select = query<HTMLSelectElement>('#microphone')
+    const microphoneNote = query<HTMLElement>('#microphone-note')
+    if (!select || !microphoneNote) return
+    // "Windows default microphone" is the empty value; the OS lists the
+    // device it stands for under the id `default`.
+    const label = microphoneLabels.get(select.value || 'default') ?? ''
+    const text = looksLikeBluetoothHeadset(label) ? BLUETOOTH_HEADSET_NOTE : ''
+    // Written only when it changes: the note is a live region, and a refresh
+    // that finds the same headset should not read it out again.
+    if (microphoneNote.textContent !== text) microphoneNote.textContent = text
+    microphoneNote.hidden = text === ''
+  }
+
   const populateMicrophones = async (requestPermission: boolean): Promise<void> => {
     const select = query<HTMLSelectElement>('#microphone')
     const feedback = query<HTMLElement>('#microphone-feedback')
@@ -880,6 +914,9 @@ export function renderSettings(
       const devices = (await navigator.mediaDevices.enumerateDevices()).filter(
         (device) => device.kind === 'audioinput'
       )
+      // Replaced together with the list, so the note and the picker never
+      // disagree about which microphones exist.
+      microphoneLabels = new Map(devices.map((device) => [device.deviceId, device.label] as const))
 
       select.replaceChildren()
       select.add(new Option('Windows default microphone', ''))
@@ -895,6 +932,7 @@ export function renderSettings(
         select.add(new Option('Saved microphone (not connected)', saved))
       }
       select.value = saved
+      paintMicrophoneNote()
 
       if (feedback) {
         feedback.textContent = devices.length
@@ -912,6 +950,7 @@ export function renderSettings(
   query('#refresh-microphones')?.addEventListener('click', () => {
     void populateMicrophones(true)
   })
+  query('#microphone')?.addEventListener('change', paintMicrophoneNote)
 
   // --- Microphone test ----------------------------------------------------
 

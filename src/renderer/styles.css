@@ -1739,6 +1739,14 @@ a:focus-visible {
   transition: width 80ms linear;
 }
 
+/* The Bluetooth headset note under the picker. Amber like a capability note,
+   because it warns of something the user will hear — but colour only, and not
+   the capability-note class: its display rule would override `hidden`, and an
+   empty line would still take a gap in the field's column. */
+.field .microphone-note {
+  color: var(--status-warn);
+}
+
 /* --- Save bar ---------------------------------------------------------- */
 
 .settings-savebar {

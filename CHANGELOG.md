@@ -139,6 +139,14 @@ All notable changes to this project are documented here. This project adheres to
   muted or wrong microphone shows while you speak, not after an empty transcript. Where
   the system is set to reduce motion, one still dot brightens instead. The level goes
   from the recorder to the overlay and nowhere else, and is never stored or logged.
+- **A plain note about Bluetooth headsets.** While a Bluetooth headset's microphone is
+  open, Windows switches the headphones to call quality — mono and muffled — and nothing
+  said why. When the microphone chosen in Settings looks like a Bluetooth headset (or,
+  for the system default, the device Windows is using does), a note under the picker now
+  says so and suggests the computer's built-in microphone instead. It follows the picker
+  before Save and is worked out again on refresh. It is a guess from the device's name —
+  “Headset”, “Hands-Free”, “AirPods”, “Buds”, “Bluetooth”, “BT”, Sony's WH- and WF- models
+  — so a wired headset can get the note too; with no name to read, nothing is shown.
 
 ### Fixed
 
