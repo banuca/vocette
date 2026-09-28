@@ -54,6 +54,14 @@ const REPLACEMENTS_HELP =
 const CUSTOM_MODEL_OPTION = '__custom__'
 const MIC_TEST_DURATION_MS = 8000
 
+/**
+ * Why "Start listening as soon as the shortcut is held" is off where the
+ * shortcut works but no key is watched: a desktop that registers the shortcut
+ * itself (Wayland) says nothing until it has fired.
+ */
+const INSTANT_CAPTURE_NEEDS_KEYS =
+  'This desktop tells Murmur about the shortcut only once it has fired, so listening cannot start any earlier.'
+
 /** The Transcription card's subtitle; the cloud keeps the key's promise it always made. */
 const LOCAL_SUMMARY = 'Where your speech becomes text.'
 const CLOUD_SUMMARY =
@@ -266,6 +274,7 @@ export function renderSettings(
 
         <div class="toggle-list">
           <label class="toggle-row" id="row-hotkey"><div><strong>Global shortcut enabled</strong><span>Turn the system-wide shortcut off without quitting the app.</span><small class="capability-note" id="hotkey-note" hidden></small></div><input id="hotkey-enabled" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-instant-capture"><div><strong>Start listening as soon as the shortcut is held</strong><span>Helps catch your first word when you start speaking straight away. The microphone opens once the keys have been held for a moment, and anything captured before recording starts is thrown away unheard if you were pressing a different shortcut.</span><small class="capability-note" id="instant-capture-note" hidden></small></div><input id="instant-capture" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-auto-paste"><div><strong>Paste automatically</strong><span>Copy the transcript and send ${escapeHtml(context.platform.pasteLabel)} to the app you were using.</span><small class="capability-note" id="auto-paste-note" hidden></small></div><input id="auto-paste" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-restore-clipboard"><div><strong>Put my clipboard back</strong><span>After pasting, Murmur restores what you had copied. Turn off to keep each transcript on the clipboard.</span><small class="capability-note" id="restore-clipboard-note" hidden></small></div><input id="restore-clipboard" type="checkbox" /><i></i></label>
           ${pasteLastRow}
@@ -301,6 +310,7 @@ export function renderSettings(
 
   const holdDelay = query<HTMLSelectElement>('#hold-delay')
   const hotkeyEnabled = query<HTMLInputElement>('#hotkey-enabled')
+  const instantCapture = query<HTMLInputElement>('#instant-capture')
   const autoPaste = query<HTMLInputElement>('#auto-paste')
   const restoreClipboard = query<HTMLInputElement>('#restore-clipboard')
   const pasteLastShortcut = query<HTMLInputElement>('#paste-last-shortcut')
@@ -473,6 +483,7 @@ export function renderSettings(
     settings = next
     if (holdDelay) holdDelay.value = String(next.holdDelayMs)
     if (hotkeyEnabled) hotkeyEnabled.checked = next.hotkeyEnabled
+    if (instantCapture) instantCapture.checked = next.instantCapture
     if (autoPaste) autoPaste.checked = next.autoPaste
     if (restoreClipboard) restoreClipboard.checked = next.restoreClipboard
     if (pasteLastShortcut) pasteLastShortcut.checked = next.pasteLastShortcut
@@ -615,6 +626,21 @@ export function renderSettings(
           : ''
       modeNote.textContent = text
       modeNote.hidden = text === ''
+    }
+
+    // Listening early needs the key going down, which only a watched keyboard
+    // reports. Without one the switch could do nothing, so it says why; the
+    // saved choice underneath is kept for a session that can.
+    if (instantCapture) instantCapture.disabled = !holdPossible
+    const instantNote = query<HTMLElement>('#instant-capture-note')
+    if (instantNote) {
+      const text = holdPossible
+        ? ''
+        : shortcutUsable
+          ? INSTANT_CAPTURE_NEEDS_KEYS
+          : map.globalToggle.reason
+      instantNote.textContent = text
+      instantNote.hidden = text === ''
     }
 
     // A desktop-registered shortcut cannot be recorded from live keystrokes.
@@ -1012,6 +1038,8 @@ export function renderSettings(
       // time, so the preference survives a move to one that can.
       recordingMode: modeToggle?.checked ? 'toggle' : 'hold',
       hotkeyEnabled: hotkeyEnabled?.checked ?? true,
+      // Kept as saved when it cannot apply here: the switch is only disabled.
+      instantCapture: instantCapture?.checked ?? settings.instantCapture,
       microphoneId: microphoneSelect?.value ?? '',
       autoPaste: autoPaste?.checked ?? true,
       restoreClipboard: restoreClipboard?.checked ?? true,

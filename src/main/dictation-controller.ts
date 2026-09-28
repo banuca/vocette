@@ -15,6 +15,13 @@ import type {
 const MAX_RECORDING_MS = 5 * 60 * 1000
 /** The microphone must report back within this long, or the take is abandoned. */
 const START_WATCHDOG_MS = 8000
+/**
+ * The longest a take opened at the keypress may wait to be confirmed. A press
+ * is settled within the hold delay (400 ms at most), so reaching this means a
+ * key-up went missing or a modifier is stuck — and the microphone must never
+ * stay open behind the user's back.
+ */
+const PROVISIONAL_MAX_MS = 2000
 /** A stop request must produce audio or an error within this long. */
 const STOP_WATCHDOG_MS = 10_000
 /** How long a success/error status lingers before the overlay hides. */
@@ -62,6 +69,8 @@ export type DictationSource = 'shortcut' | 'ui'
 export interface WorkflowSettings {
   /** Already resolved against platform capability by the caller. */
   recordingMode: RecordingMode
+  /** Open the microphone at the keypress, before the hold delay confirms it. */
+  instantCapture: boolean
   autoPaste: boolean
   /** Whether this platform can verify a target and type into it at all. */
   pasteAvailable: boolean
@@ -158,6 +167,12 @@ export interface DictationDeps {
   shortcutLabel(): string
   /** Fired when a failed take becomes retryable (or stops being retryable). */
   onRetryChanged?(available: boolean): void
+  /**
+   * Gets the speech engine ready while the user is still speaking, so the
+   * transcription does not wait for it to load. Only ever a head start: a
+   * failure is reported by the take that needs the engine.
+   */
+  prewarm?(): void
 }
 
 interface RetryTake {
@@ -221,6 +236,14 @@ function previewOf(text: string): string {
 }
 
 /**
+ * Zeroes audio nobody is going to use, so it is not left lying in memory.
+ * Typed loosely because it runs on payloads that are being turned away.
+ */
+function discard(audio: unknown): void {
+  if (audio instanceof Uint8Array) audio.fill(0)
+}
+
+/**
  * The dictation phase machine: hold → starting → recording → processing →
  * success/error → idle, with watchdogs on every step where a peer (the
  * recorder window or the network) has to respond.
@@ -228,12 +251,31 @@ function previewOf(text: string): string {
  * Extracted from the app entry point so every transition is unit-testable,
  * because the two most damaging bugs in the previous build (a lost stop
  * request and a tray reset wedging the recorder) lived exactly here.
+ *
+ * A shortcut take can also be opened provisionally, once the chord has been
+ * held on its own for a moment (`prepareDictation`), so the rest of the hold
+ * delay no longer costs the first word. A provisional take changes no phase
+ * and is invisible: it becomes the take when the chord is held, and is
+ * otherwise thrown away unheard.
  */
 export class DictationController {
   private currentStatus: WorkflowStatus = { phase: 'idle', message: 'Ready' }
   private currentRequestId = ''
   private releaseRequested = false
   private stopRequested = false
+
+  /**
+   * Set while the take behind `currentRequestId` has been sent
+   * `recorder:start` but the user has not yet held the shortcut past its
+   * delay. Such a take never broadcasts, sounds, writes history, touches the
+   * clipboard or becomes a retry take; until it is promoted, the phase on
+   * screen still belongs to whatever came before it.
+   */
+  private provisional = false
+  /** When the recorder reported a provisional take live; null while it opens. */
+  private provisionalStartedAt: number | null = null
+  /** The ceiling on a provisional take, `PROVISIONAL_MAX_MS`. */
+  private provisionalTimer: NodeJS.Timeout | null = null
 
   private statusResetTimer: NodeJS.Timeout | null = null
   private maximumRecordingTimer: NodeJS.Timeout | null = null
@@ -264,7 +306,11 @@ export class DictationController {
     return this.retryTake !== null
   }
 
-  /** True while a take is being opened, recorded or transcribed. */
+  /**
+   * True while a take is being opened, recorded or transcribed. A take opened
+   * at a keypress and not yet confirmed does not count: nothing about it is on
+   * screen, so nothing may be switched off or greyed out because of it.
+   */
   isBusy(): boolean {
     const phase = this.currentStatus.phase
     return phase === 'starting' || phase === 'recording' || phase === 'processing'
@@ -282,6 +328,17 @@ export class DictationController {
    * never a second owner of the device or a second transcription pipeline.
    */
   startDictation(source: DictationSource): void {
+    if (this.provisional) {
+      // The take opened at this press's keypress already holds its first
+      // words. Only a shortcut take may carry on with it, and only while it
+      // could still be transcribed; anything else lets it go unheard first.
+      const settings = this.deps.getSettings()
+      if (source === 'shortcut' && settings.transcriptionReady) {
+        this.promoteProvisional(settings)
+        return
+      }
+      this.abandonProvisional()
+    }
     if (this.isBusy()) return
 
     // `success`, `error` and `cancelled` linger on screen for a few seconds.
@@ -316,15 +373,63 @@ export class DictationController {
       detail: this.startingHint(settings, source)
     })
 
-    this.startWatchdog = setTimeout(() => {
-      this.startWatchdog = null
-      this.fail('The microphone did not start in time. Check it is connected and try again.')
-    }, START_WATCHDOG_MS)
+    this.startWatchdog = setTimeout(this.startTimedOut, START_WATCHDOG_MS)
 
     this.deps.sendToRecorder('recorder:start', {
       requestId: this.currentRequestId,
       microphoneId: settings.microphoneId
     })
+    this.prewarm()
+  }
+
+  /**
+   * Opens the microphone while the shortcut is held, before its hold delay has
+   * said whether the user means to dictate — or is pressing some other
+   * shortcut that begins the same way. The take is provisional: nothing is
+   * shown and nothing sounds. It becomes the dictation if the shortcut is held
+   * on (`startDictation`), and `abandonPreparation` throws it away if not.
+   *
+   * Only ever a head start. Whenever it cannot be one it does nothing, and a
+   * press that is held starts its take in the ordinary way.
+   */
+  prepareDictation(): void {
+    // Busy includes a toggle recording, whose stop press must never open a
+    // second take.
+    if (this.isBusy() || this.provisional) return
+    // "Paste last dictation" is still delivering. Capturing the window in
+    // front now would change the target its own last check compares with.
+    if (this.activeAttempt) return
+    const settings = this.deps.getSettings()
+    // Not being ready is not news yet: a press that is held says so itself.
+    if (!settings.instantCapture || !settings.transcriptionReady) return
+
+    // What any shortcut take captures at its start, and nothing the user can
+    // see. The status on screen, its timer and a kept retry take are all left
+    // exactly as they are, in case this press was never meant for Murmur.
+    this.deps.captureForeground()
+    this.currentRequestId = randomUUID()
+    this.clearDictationTimers()
+    this.provisional = true
+    this.provisionalStartedAt = null
+    // Silent while the take is provisional; the ceiling below ends it first.
+    this.startWatchdog = setTimeout(this.startTimedOut, START_WATCHDOG_MS)
+    this.provisionalTimer = setTimeout(this.provisionalExpired, PROVISIONAL_MAX_MS)
+
+    this.deps.sendToRecorder('recorder:start', {
+      requestId: this.currentRequestId,
+      microphoneId: settings.microphoneId
+    })
+    this.prewarm()
+  }
+
+  /**
+   * The press was not a dictation after all: another shortcut, or let go too
+   * soon. The provisional take goes unheard — the recorder discards what it
+   * has, nothing is transcribed or kept, and nothing is shown. A take the user
+   * has already confirmed is left alone.
+   */
+  abandonPreparation(): void {
+    this.abandonProvisional()
   }
 
   /** Ends the recording and sends it for transcription. */
@@ -379,6 +484,81 @@ export class DictationController {
     this.stopDictation()
   }
 
+  /**
+   * The shortcut was held: the provisional take becomes the dictation, with
+   * the audio it already has. Nothing is reopened, so the first word stays.
+   */
+  private promoteProvisional(settings: WorkflowSettings): void {
+    const startedAt = this.provisionalStartedAt
+    this.endProvisional()
+    this.statusResetTimer = clearTimer(this.statusResetTimer)
+    // From here it is a take the user asked for, so it replaces a retryable one.
+    this.setRetryTake(null)
+    this.clipboardOnly = false
+    this.releaseRequested = false
+    this.stopRequested = false
+    if (startedAt === null) {
+      // Still opening, just as an ordinary take would be. The start watchdog
+      // armed at the keypress goes on timing the device from its request.
+      this.broadcast({
+        phase: 'starting',
+        message: 'Starting microphone…',
+        detail: this.startingHint(settings, 'shortcut')
+      })
+      return
+    }
+    this.enterRecording(startedAt)
+  }
+
+  /**
+   * Ends a provisional take without a trace, and says nothing. There is no
+   * audio in this process to zero: it only leaves the recorder after a stop,
+   * and a provisional take is never stopped. Safe to call with none.
+   */
+  private abandonProvisional(): void {
+    if (!this.provisional) return
+    const requestId = this.currentRequestId
+    this.endProvisional()
+    this.currentRequestId = ''
+    this.clearDictationTimers()
+    // Last, once nothing here refers to the take any more.
+    this.deps.sendToRecorder('recorder:cancel', { requestId })
+  }
+
+  /** Clears what marks a take as provisional; what becomes of it is the caller's. */
+  private endProvisional(): void {
+    this.provisional = false
+    this.provisionalStartedAt = null
+    this.provisionalTimer = clearTimer(this.provisionalTimer)
+  }
+
+  /** Neither confirmed nor cancelled in time: see `PROVISIONAL_MAX_MS`. */
+  private readonly provisionalExpired = (): void => {
+    this.provisionalTimer = null
+    this.abandonProvisional()
+  }
+
+  /** The microphone never reported back. */
+  private readonly startTimedOut = (): void => {
+    this.startWatchdog = null
+    // Nobody has seen a provisional take start, so it goes quietly. (Its
+    // ceiling normally ends it long before this could.)
+    if (this.provisional) {
+      this.abandonProvisional()
+      return
+    }
+    this.fail('The microphone did not start in time. Check it is connected and try again.')
+  }
+
+  /** A head start for the engine; never a reason for a take to fail. */
+  private prewarm(): void {
+    try {
+      this.deps.prewarm?.()
+    } catch {
+      // The take that needs the engine reports whatever is wrong with it.
+    }
+  }
+
   private startingHint(settings: WorkflowSettings, source: DictationSource): string {
     if (source === 'ui') return 'Press Stop when you have finished'
     return settings.recordingMode === 'toggle'
@@ -387,24 +567,53 @@ export class DictationController {
   }
 
   onRecorderStarted(payload: RecorderStartedPayload): void {
-    if (payload.requestId !== this.currentRequestId || this.currentStatus.phase !== 'starting') {
+    if (payload.requestId !== this.currentRequestId) return
+    if (this.provisional) {
+      // Live, but not yet confirmed: nothing is shown and nothing sounds until
+      // the shortcut has been held. Remembered, so that a confirmation arriving
+      // later goes straight to recording, timed from now.
+      this.provisionalStartedAt ??= Date.now()
+      this.startWatchdog = clearTimer(this.startWatchdog)
       return
     }
+    if (this.currentStatus.phase !== 'starting') return
+    this.enterRecording(Date.now())
+  }
+
+  /** The microphone is live and the take is on screen: say so, and time it. */
+  private enterRecording(startedAt: number): void {
     this.startWatchdog = clearTimer(this.startWatchdog)
     this.broadcast({
       phase: 'recording',
       message: 'Listening…',
       detail: `Release ${this.deps.shortcutLabel()} to finish`,
-      startedAt: Date.now()
+      startedAt
     })
     this.deps.playSound('start')
-    this.maximumRecordingTimer = setTimeout(this.forceStop, MAX_RECORDING_MS)
+    // Measured from when recording really began, which for a take opened at
+    // the keypress is before it was confirmed.
+    const remaining = MAX_RECORDING_MS - Math.max(0, Date.now() - startedAt)
+    this.maximumRecordingTimer = setTimeout(this.forceStop, Math.max(0, remaining))
     if (this.releaseRequested) this.requestStop()
   }
 
   async onRecorderAudio(payload: RecorderAudioPayload): Promise<void> {
-    if (payload.requestId !== this.currentRequestId) return
+    if (payload.requestId !== this.currentRequestId) {
+      // Audio for a take nobody wants any more — abandoned, cancelled or
+      // superseded — is thrown away unheard, and not left lying in memory.
+      discard(payload.audio)
+      return
+    }
+    if (this.provisional) {
+      // The recorder has ended a take the user never confirmed: its device
+      // went away, say. It is not theirs to transcribe, and it is over, so a
+      // press held from here opens the microphone afresh.
+      discard(payload.audio)
+      this.abandonProvisional()
+      return
+    }
     if (this.currentStatus.phase !== 'recording' && this.currentStatus.phase !== 'starting') {
+      discard(payload.audio)
       return
     }
     this.clearDictationTimers()
@@ -425,6 +634,13 @@ export class DictationController {
 
   onRecorderError(payload: RecorderErrorPayload): void {
     if (payload.requestId !== this.currentRequestId) return
+    if (this.provisional) {
+      // Nobody has seen this take start, so its failure is not news yet. If
+      // the shortcut is held, the take is opened again in the ordinary way,
+      // and a device that really is at fault says so then.
+      this.abandonProvisional()
+      return
+    }
     this.fail(payload.message)
   }
 
@@ -448,6 +664,9 @@ export class DictationController {
     // a user wants to do the moment they see it.
     if (!take || this.isBusy()) return
 
+    // Asked for by name, so it outranks a press not yet confirmed. That take
+    // is let go first: under a new id its microphone could never be closed.
+    this.abandonProvisional()
     // A fresh id invalidates any stale recorder events still in flight.
     this.currentRequestId = randomUUID()
     // Every Retry is pressed in Murmur's own window or tray menu, so whatever
@@ -784,6 +1003,7 @@ export class DictationController {
 
   /** Stops timers and releases memory. Call before quitting. */
   shutdown(): void {
+    this.abandonProvisional()
     this.cancelActiveAttempt()
     this.clearDictationTimers()
     this.statusResetTimer = clearTimer(this.statusResetTimer)
@@ -839,15 +1059,23 @@ export class DictationController {
   }
 
   private goIdle(): void {
-    this.abandonRecorder()
-    this.currentRequestId = ''
-    this.releaseRequested = false
-    this.stopRequested = false
-    this.clearDictationTimers()
+    // A take opened at a keypress is not this status's to end: only the
+    // lingering message goes, and the take carries on unseen, to be confirmed
+    // or thrown away. Clearing its id here would strand its microphone.
+    if (!this.provisional) {
+      this.abandonRecorder()
+      this.currentRequestId = ''
+      this.releaseRequested = false
+      this.stopRequested = false
+      this.clearDictationTimers()
+    }
     this.broadcast({ phase: 'idle', message: 'Ready' })
   }
 
   private fail(message: string, openSettings = false, silent = false): void {
+    // A take opened at a keypress goes too, and quietly. The recorder has to
+    // be told: nothing below would, because no phase says it is running.
+    this.abandonProvisional()
     this.cancelActiveAttempt()
     this.abandonRecorder()
     this.currentRequestId = ''

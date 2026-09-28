@@ -230,6 +230,58 @@ describe('recorder take ownership', () => {
     expect(newest.track.stop).toHaveBeenCalledTimes(1)
   })
 
+  it('closes a stream that arrives after a cancel sent while the device was still opening', async () => {
+    // Listening from the keypress opens the microphone at once and cancels it
+    // when the press turns out to be another shortcut — typically some tens of
+    // milliseconds later, well before a slow device has answered.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const harness = await makeRecorderHarness()
+      const slowOpen = harness.queueOpen()
+      const nextOpen = harness.queueOpen()
+      const slow = makeStream()
+      const next = makeStream()
+
+      harness.onStart({ requestId: 'provisional-take', microphoneId: '' })
+      vi.advanceTimersByTime(50)
+      await flushAsyncStart()
+      expect(harness.getUserMedia).toHaveBeenCalledTimes(1)
+      harness.onCancel({ requestId: 'provisional-take' })
+
+      // The next press can open a take straight away: the recorder is free.
+      harness.onStart({ requestId: 'next-take', microphoneId: '' })
+      await flushAsyncStart()
+      expect(harness.getUserMedia).toHaveBeenCalledTimes(2)
+      expect(harness.bridge.sendError).not.toHaveBeenCalled()
+
+      // The cancelled device answers late: its stream is closed at once, and
+      // nothing is ever recorded from it.
+      slowOpen.resolve(slow.stream)
+      await flushAsyncStart()
+      expect(slow.track.stop).toHaveBeenCalledTimes(1)
+      expect(harness.recorders).toHaveLength(0)
+      expect(harness.bridge.sendStarted).not.toHaveBeenCalled()
+
+      nextOpen.resolve(next.stream)
+      await flushAsyncStart()
+      expect(harness.bridge.sendStarted).toHaveBeenCalledTimes(1)
+      expect(harness.bridge.sendStarted).toHaveBeenCalledWith({ requestId: 'next-take' })
+      expect(harness.recorders).toHaveLength(1)
+      expect(next.track.stop).not.toHaveBeenCalled()
+
+      // Nor does the cancelled take's open timeout come back later as an error.
+      vi.advanceTimersByTime(6000)
+      await flushAsyncStart()
+      expect(harness.bridge.sendError).not.toHaveBeenCalled()
+
+      harness.onCancel({ requestId: 'next-take' })
+      expect(next.track.stop).toHaveBeenCalledTimes(1)
+      expect(slow.track.stop).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('emits final queued audio exactly once, releases the microphone and allows a new take', async () => {
     const harness = await makeRecorderHarness()
     const firstOpen = harness.queueOpen()

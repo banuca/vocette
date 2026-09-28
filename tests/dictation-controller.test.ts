@@ -14,6 +14,7 @@ const USER_CLIPBOARD = { snapshot: 'what the user had copied' }
 function makeHarness(overrides: { settings?: Partial<WorkflowSettings> } = {}) {
   const settings: WorkflowSettings = {
     recordingMode: 'hold',
+    instantCapture: true,
     autoPaste: true,
     pasteAvailable: true,
     restoreClipboard: true,
@@ -1820,5 +1821,657 @@ describe('recording modes and window controls', () => {
       1200,
       'parakeet-tdt-0.6b-v3-int8'
     )
+  })
+})
+
+describe('instant capture: listening from the keypress', () => {
+  type Harness = ReturnType<typeof makeHarness>
+
+  /** Every message of one kind sent to the recorder, in order. */
+  const sent = (harness: Harness, channel: string): unknown[] =>
+    harness.deps.sendToRecorder.mock.calls
+      .filter(([sentChannel]) => sentChannel === channel)
+      .map(([, payload]) => payload)
+
+  /** Nothing about the take has reached the user or anywhere they keep things. */
+  const expectUnseen = (harness: Harness): void => {
+    const { deps, controller } = harness
+    expect(deps.broadcastStatus).not.toHaveBeenCalled()
+    expect(deps.playSound).not.toHaveBeenCalled()
+    expect(deps.transcribe).not.toHaveBeenCalled()
+    expect(deps.recordHistory).not.toHaveBeenCalled()
+    expect(deps.writeClipboard).not.toHaveBeenCalled()
+    expect(deps.snapshotClipboard).not.toHaveBeenCalled()
+    expect(deps.paste).not.toHaveBeenCalled()
+    expect(deps.onRetryChanged).not.toHaveBeenCalled()
+    expect(controller.canRetry()).toBe(false)
+  }
+
+  it('opens the microphone at the keypress, and shows and sounds nothing', () => {
+    const harness = makeHarness({ settings: { playSounds: true } })
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+
+    expect(deps.sendToRecorder).toHaveBeenCalledTimes(1)
+    expect(deps.sendToRecorder).toHaveBeenCalledWith('recorder:start', {
+      requestId: lastRequestId(),
+      microphoneId: 'mic-1'
+    })
+    // The window the press was made in is the paste target, as for any take.
+    expect(deps.captureForeground).toHaveBeenCalledTimes(1)
+    expect(controller.getStatus().phase).toBe('idle')
+    expect(controller.isBusy()).toBe(false)
+    expect(controller.isRecording()).toBe(false)
+
+    // The microphone answering is not news either.
+    controller.onRecorderStarted({ requestId: lastRequestId() })
+    expectUnseen(harness)
+  })
+
+  it('arm, press, then the microphone answers: one "recording", one start sound, one take', () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+
+    controller.onShortcutPressed()
+    expect(deps.broadcastStatus).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting', detail: 'Keep holding the shortcut' })
+    )
+    expect(deps.playSound).not.toHaveBeenCalled()
+
+    controller.onRecorderStarted({ requestId })
+    expect(deps.broadcastStatus.mock.calls.map(([status]) => status.phase)).toEqual([
+      'starting',
+      'recording'
+    ])
+    expect(deps.playSound).toHaveBeenCalledTimes(1)
+    expect(deps.playSound).toHaveBeenCalledWith('start')
+    // The take opened at the keypress is the take: never a second microphone.
+    expect(sent(harness, 'recorder:start')).toHaveLength(1)
+    expect(deps.captureForeground).toHaveBeenCalledTimes(1)
+  })
+
+  it('arm, the microphone answers, then press: straight to recording, timed from the real start', () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    vi.advanceTimersByTime(120)
+    controller.onRecorderStarted({ requestId })
+    const liveAt = Date.now()
+    vi.advanceTimersByTime(130)
+    controller.onShortcutPressed()
+
+    expect(deps.broadcastStatus).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'recording', message: 'Listening…', startedAt: liveAt })
+    )
+    expect(deps.playSound).toHaveBeenCalledTimes(1)
+    expect(controller.isRecording()).toBe(true)
+
+    // The five-minute cap counts from when recording really began.
+    vi.advanceTimersByTime(5 * 60 * 1000 - 130 - 1)
+    expect(sent(harness, 'recorder:stop')).toHaveLength(0)
+    vi.advanceTimersByTime(1)
+    expect(sent(harness, 'recorder:stop')).toEqual([{ requestId }])
+  })
+
+  it('delivers a confirmed take like any other, first word and all', async () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.onRecorderStarted({ requestId })
+    controller.onShortcutPressed()
+    controller.onShortcutReleased()
+    expect(deps.sendToRecorder).toHaveBeenLastCalledWith('recorder:stop', { requestId })
+
+    const audio = new Uint8Array([1, 2, 3])
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio,
+      mimeType: 'audio/wav',
+      durationMs: 1800
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await processing
+
+    expect(deps.transcribe).toHaveBeenCalledTimes(1)
+    expect(deps.recordHistory).toHaveBeenCalledWith('Hello world.', 1800, 'gpt-transcribe')
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Pasted' })
+    )
+    expect([...audio]).toEqual([0, 0, 0])
+  })
+
+  it('arm, press, let go before the microphone answers: stops the moment it does', () => {
+    const harness = makeHarness()
+    const { controller, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.onShortcutPressed()
+    controller.onShortcutReleased()
+    expect(sent(harness, 'recorder:stop')).toHaveLength(0)
+
+    controller.onRecorderStarted({ requestId })
+    expect(sent(harness, 'recorder:stop')).toEqual([{ requestId }])
+  })
+
+  it('arm, then let go before the microphone opened: cancelled unheard', () => {
+    const harness = makeHarness()
+    const { controller, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.abandonPreparation()
+
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+    // A microphone answering afterwards is answering for nobody.
+    controller.onRecorderStarted({ requestId })
+    vi.advanceTimersByTime(10_000)
+    expect(controller.getStatus().phase).toBe('idle')
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(1)
+    expectUnseen(harness)
+  })
+
+  it('arm, the microphone opens, then another shortcut: cancelled unheard', () => {
+    const harness = makeHarness()
+    const { controller, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    vi.advanceTimersByTime(90)
+    controller.onRecorderStarted({ requestId })
+    vi.advanceTimersByTime(40)
+    controller.abandonPreparation()
+
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+    vi.advanceTimersByTime(10_000)
+    expect(controller.getStatus().phase).toBe('idle')
+    expectUnseen(harness)
+  })
+
+  it('ignores the late audio of an abandoned take, and zeroes it', async () => {
+    const harness = makeHarness()
+    const { controller, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.onRecorderStarted({ requestId })
+    controller.abandonPreparation()
+
+    const audio = new Uint8Array([5, 6, 7])
+    await controller.onRecorderAudio({ requestId, audio, mimeType: 'audio/wav', durationMs: 300 })
+    await vi.advanceTimersByTimeAsync(80)
+
+    expect([...audio]).toEqual([0, 0, 0])
+    expect(controller.getStatus().phase).toBe('idle')
+    expectUnseen(harness)
+  })
+
+  it('abandons a take neither confirmed nor cancelled within two seconds', () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.onRecorderStarted({ requestId })
+
+    vi.advanceTimersByTime(1999)
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(0)
+    vi.advanceTimersByTime(1)
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+    // Silent, and never reported later as a microphone that did not start.
+    vi.advanceTimersByTime(10_000)
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(1)
+    expectUnseen(harness)
+
+    // A press that does arrive after all starts afresh, where the user can see it.
+    controller.onShortcutPressed()
+    expect(sent(harness, 'recorder:start')).toHaveLength(2)
+    expect(lastRequestId()).not.toBe(requestId)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting' })
+    )
+  })
+
+  it('keeps the ceiling silent even when the microphone never answers', () => {
+    const harness = makeHarness()
+    const { controller, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    vi.advanceTimersByTime(8000)
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+    expect(controller.getStatus().phase).toBe('idle')
+    expectUnseen(harness)
+  })
+
+  it('opens nothing while a take is being opened, recorded or transcribed', async () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    controller.onShortcutPressed()
+    controller.prepareDictation()
+    expect(sent(harness, 'recorder:start')).toHaveLength(1)
+
+    const requestId = lastRequestId()
+    controller.onRecorderStarted({ requestId })
+    controller.prepareDictation()
+    expect(sent(harness, 'recorder:start')).toHaveLength(1)
+
+    let finish!: (text: string) => void
+    deps.transcribe.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve
+        })
+    )
+    controller.onShortcutReleased()
+    const processing = controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 500
+    })
+    await Promise.resolve()
+    expect(controller.getStatus().phase).toBe('processing')
+    controller.prepareDictation()
+    expect(sent(harness, 'recorder:start')).toHaveLength(1)
+    // An arm that was turned away leaves nothing behind to cancel.
+    controller.abandonPreparation()
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(0)
+
+    finish('Done.')
+    await vi.advanceTimersByTimeAsync(80)
+    await processing
+    expect(deps.recordHistory).toHaveBeenCalledTimes(1)
+    expect(deps.recordHistory).toHaveBeenCalledWith('Done.', 500, 'gpt-transcribe')
+  })
+
+  it('does nothing with the setting off, and the press starts as it always did', () => {
+    const harness = makeHarness({ settings: { instantCapture: false } })
+    const { controller, deps } = harness
+    controller.prepareDictation()
+    controller.abandonPreparation()
+    expect(deps.sendToRecorder).not.toHaveBeenCalled()
+    expect(deps.captureForeground).not.toHaveBeenCalled()
+
+    controller.onShortcutPressed()
+    expect(sent(harness, 'recorder:start')).toHaveLength(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting' })
+    )
+  })
+
+  it('opens nothing without a way to transcribe, and leaves the reason to the press', () => {
+    const harness = makeHarness({
+      settings: { transcriptionReady: false, notReadyReason: 'Download the speech model first.' }
+    })
+    const { controller, deps } = harness
+    controller.prepareDictation()
+    expect(deps.sendToRecorder).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).not.toHaveBeenCalled()
+    expect(deps.showMain).not.toHaveBeenCalled()
+
+    controller.onShortcutPressed()
+    expect(deps.sendToRecorder).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'error', detail: 'Download the speech model first.' })
+    )
+    expect(deps.showMain).toHaveBeenCalledWith('settings')
+  })
+
+  it('checks again when the press is held, and lets the take go if it can no longer be transcribed', () => {
+    const harness = makeHarness()
+    const { controller, deps, settings, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    settings.transcriptionReady = false
+    settings.notReadyReason = 'Download the speech model first.'
+
+    controller.onShortcutPressed()
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+    expect(sent(harness, 'recorder:start')).toHaveLength(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'error', detail: 'Download the speech model first.' })
+    )
+  })
+
+  it('in toggle mode: arm, press, and a second press stops without opening another take', () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' } })
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.onShortcutPressed()
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        phase: 'starting',
+        detail: 'Press Left Ctrl + Left Shift again to finish'
+      })
+    )
+    controller.onRecorderStarted({ requestId })
+    // Letting go means nothing in toggle mode.
+    controller.onShortcutReleased()
+    expect(controller.getStatus().phase).toBe('recording')
+
+    // The press that stops it is armed too, and must not open a second take.
+    controller.prepareDictation()
+    controller.onShortcutPressed()
+    expect(sent(harness, 'recorder:start')).toHaveLength(1)
+    expect(deps.sendToRecorder).toHaveBeenLastCalledWith('recorder:stop', { requestId })
+    expect(deps.playSound).toHaveBeenCalledTimes(1)
+  })
+
+  it('in toggle mode: a stop press that turns into another shortcut leaves the recording alone', () => {
+    const harness = makeHarness({ settings: { recordingMode: 'toggle' } })
+    const { controller, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.onShortcutPressed()
+    controller.onRecorderStarted({ requestId })
+
+    controller.prepareDictation()
+    controller.abandonPreparation()
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(0)
+    expect(sent(harness, 'recorder:stop')).toHaveLength(0)
+    expect(controller.getStatus().phase).toBe('recording')
+  })
+
+  it('leaves a confirmed take alone when an arm is abandoned after it', () => {
+    const harness = makeHarness()
+    const { controller } = harness
+    controller.prepareDictation()
+    controller.onShortcutPressed()
+    controller.abandonPreparation()
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(0)
+    expect(controller.getStatus().phase).toBe('starting')
+  })
+
+  it('arms afresh with a new id, and ignores the abandoned take’s late news', async () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+    const abandoned = lastRequestId()
+    controller.abandonPreparation()
+    controller.prepareDictation()
+    const current = lastRequestId()
+    expect(current).not.toBe(abandoned)
+
+    controller.onRecorderStarted({ requestId: abandoned })
+    controller.onRecorderError({ requestId: abandoned, message: 'Microphone open cancelled' })
+    const audio = new Uint8Array([8, 8])
+    await controller.onRecorderAudio({
+      requestId: abandoned,
+      audio,
+      mimeType: 'audio/wav',
+      durationMs: 100
+    })
+    expect([...audio]).toEqual([0, 0])
+    expect(deps.broadcastStatus).not.toHaveBeenCalled()
+
+    // The current take was never reported live, so a press shows it opening…
+    controller.onShortcutPressed()
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting' })
+    )
+    // …until its own microphone answers.
+    controller.onRecorderStarted({ requestId: current })
+    expect(controller.getStatus().phase).toBe('recording')
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId: abandoned }])
+  })
+
+  it('keeps a failed take for Retry through a press that was never a dictation', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.transcribe.mockRejectedValueOnce(new Error('Provider unavailable.'))
+    const first = harness.beginRecording()
+    controller.onShortcutReleased()
+    const audio = new Uint8Array([4, 4])
+    await controller.onRecorderAudio({
+      requestId: first,
+      audio,
+      mimeType: 'audio/wav',
+      durationMs: 400
+    })
+    expect(controller.canRetry()).toBe(true)
+    deps.onRetryChanged.mockClear()
+    deps.broadcastStatus.mockClear()
+
+    // Ctrl + Shift + T while the error is still on screen.
+    controller.prepareDictation()
+    controller.abandonPreparation()
+    expect(controller.canRetry()).toBe(true)
+    expect([...audio]).toEqual([4, 4])
+    expect(deps.onRetryChanged).not.toHaveBeenCalled()
+    expect(deps.broadcastStatus).not.toHaveBeenCalled()
+    expect(controller.getStatus().phase).toBe('error')
+
+    // Held this time: a new take, which replaces the kept one as any take does.
+    controller.prepareDictation()
+    controller.onShortcutPressed()
+    expect(controller.canRetry()).toBe(false)
+    expect([...audio]).toEqual([0, 0])
+    expect(deps.onRetryChanged).toHaveBeenLastCalledWith(false)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting', canRetry: false })
+    )
+  })
+
+  it('lets a lingering message go on time without disturbing the take opened under it', async () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    expect(controller.getStatus().phase).toBe('success')
+    vi.advanceTimersByTime(1500)
+
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    deps.broadcastStatus.mockClear()
+    vi.advanceTimersByTime(100)
+    // The success message expires as it would have anyway…
+    expect(deps.broadcastStatus).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'idle' })
+    )
+    // …and the take opened at the keypress carries on under the same id.
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(0)
+    controller.onRecorderStarted({ requestId })
+    controller.onShortcutPressed()
+    expect(controller.getStatus().phase).toBe('recording')
+    controller.onShortcutReleased()
+    expect(deps.sendToRecorder).toHaveBeenLastCalledWith('recorder:stop', { requestId })
+  })
+
+  it('treats a recorder failure for an unconfirmed take as not news, and a held press tries again', () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    const unavailable =
+      'The selected microphone is unavailable. Choose another microphone in Settings.'
+    controller.prepareDictation()
+    const first = lastRequestId()
+    controller.onRecorderError({ requestId: first, message: unavailable })
+    expectUnseen(harness)
+    expect(deps.showMain).not.toHaveBeenCalled()
+
+    controller.onShortcutPressed()
+    expect(sent(harness, 'recorder:start')).toHaveLength(2)
+    const second = lastRequestId()
+    expect(second).not.toBe(first)
+    // A device that really is at fault says so now, once the user can see it.
+    controller.onRecorderError({ requestId: second, message: unavailable })
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'error', detail: unavailable })
+    )
+  })
+
+  it('ends an unconfirmed take that the recorder finished on its own, unheard', async () => {
+    // Audio only follows a stop, which a provisional take never gets — unless
+    // its device went away and the recorder wrapped the take up itself.
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.onRecorderStarted({ requestId })
+    const audio = new Uint8Array([3, 3])
+    await controller.onRecorderAudio({ requestId, audio, mimeType: 'audio/wav', durationMs: 90 })
+
+    expect([...audio]).toEqual([0, 0])
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+    expectUnseen(harness)
+
+    controller.onShortcutPressed()
+    expect(sent(harness, 'recorder:start')).toHaveLength(2)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting' })
+    )
+  })
+
+  it('lets the tray reset close a take opened at the keypress', () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.onRecorderStarted({ requestId })
+
+    controller.resetKeyState()
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'idle' })
+    )
+    // The shortcut's own disarm follows, and finds nothing left to do.
+    controller.abandonPreparation()
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(1)
+  })
+
+  it('closes a take opened at the keypress before Retry takes over', async () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    deps.transcribe
+      .mockRejectedValueOnce(new Error('Provider unavailable.'))
+      .mockResolvedValueOnce('On the second try.')
+    const first = harness.beginRecording()
+    controller.onShortcutReleased()
+    await controller.onRecorderAudio({
+      requestId: first,
+      audio: new Uint8Array([2, 2]),
+      mimeType: 'audio/wav',
+      durationMs: 400
+    })
+
+    // The failed take's own clean-up has already told the recorder.
+    const earlier = sent(harness, 'recorder:cancel').length
+    controller.prepareDictation()
+    const provisional = lastRequestId()
+    const retry = controller.retryLast()
+    expect(sent(harness, 'recorder:cancel').slice(earlier)).toEqual([{ requestId: provisional }])
+    await vi.advanceTimersByTimeAsync(80)
+    await retry
+    expect(deps.recordHistory).toHaveBeenLastCalledWith('On the second try.', 400, 'gpt-transcribe')
+    // Its arm ending afterwards has nothing left to cancel.
+    controller.abandonPreparation()
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(earlier + 1)
+  })
+
+  it('starts a take from the window cleanly over one opened at the keypress', () => {
+    const harness = makeHarness()
+    const { controller, deps, lastRequestId } = harness
+    controller.prepareDictation()
+    const provisional = lastRequestId()
+
+    controller.startDictation('ui')
+    const messages = deps.sendToRecorder.mock.calls.map(([channel, payload]) => [
+      channel,
+      (payload as { requestId: string }).requestId
+    ])
+    expect(messages).toEqual([
+      ['recorder:start', provisional],
+      ['recorder:cancel', provisional],
+      ['recorder:start', lastRequestId()]
+    ])
+    expect(lastRequestId()).not.toBe(provisional)
+    expect(deps.clearForeground).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'starting', detail: 'Press Stop when you have finished' })
+    )
+  })
+
+  it('opens no take while "paste last dictation" is still delivering', async () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    const pasting = controller.pasteLast('Earlier words.')
+    controller.prepareDictation()
+    expect(deps.sendToRecorder).not.toHaveBeenCalled()
+    // The paste checks against the target it captured itself, and no other.
+    expect(deps.captureForeground).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(80)
+    await pasting
+    expect(deps.paste).toHaveBeenCalledTimes(1)
+    expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'success', message: 'Pasted your last dictation' })
+    )
+
+    // Once it has landed, the next press is heard from its keypress again.
+    controller.prepareDictation()
+    expect(sent(harness, 'recorder:start')).toHaveLength(1)
+  })
+
+  it('times a confirmed take’s microphone from the keypress, and reports one that never answers', () => {
+    const harness = makeHarness()
+    const { controller, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    vi.advanceTimersByTime(250)
+    controller.onShortcutPressed()
+
+    vi.advanceTimersByTime(8000 - 250 - 1)
+    expect(controller.getStatus().phase).toBe('starting')
+    vi.advanceTimersByTime(1)
+    expect(controller.getStatus().phase).toBe('error')
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+  })
+
+  it('gives the microphone back at shutdown', () => {
+    const harness = makeHarness()
+    const { controller, lastRequestId } = harness
+    controller.prepareDictation()
+    const requestId = lastRequestId()
+    controller.shutdown()
+    expect(sent(harness, 'recorder:cancel')).toEqual([{ requestId }])
+    vi.advanceTimersByTime(10_000)
+    expect(sent(harness, 'recorder:cancel')).toHaveLength(1)
+    expectUnseen(harness)
+  })
+
+  it('warms the engine at the keypress and at an ordinary start, never costing the take anything', () => {
+    const harness = makeHarness()
+    const { controller, deps } = harness
+    const prewarm = vi.fn(() => {
+      throw new Error('The speech engine could not start on this PC.')
+    })
+    Object.assign(deps, { prewarm })
+
+    controller.prepareDictation()
+    expect(prewarm).toHaveBeenCalledTimes(1)
+    // After the microphone was asked for: the device is the slower of the two.
+    expect(deps.sendToRecorder.mock.invocationCallOrder[0]).toBeLessThan(
+      prewarm.mock.invocationCallOrder[0] ?? 0
+    )
+    // Confirming the take opens nothing new, so warms nothing new.
+    controller.onShortcutPressed()
+    expect(prewarm).toHaveBeenCalledTimes(1)
+    expect(controller.getStatus().phase).toBe('starting')
+
+    controller.cancelDictation()
+    controller.startDictation('ui')
+    expect(prewarm).toHaveBeenCalledTimes(2)
+    expect(controller.getStatus().phase).toBe('starting')
+
+    const off = makeHarness({ settings: { instantCapture: false } })
+    const offPrewarm = vi.fn()
+    Object.assign(off.deps, { prewarm: offPrewarm })
+    off.controller.prepareDictation()
+    expect(offPrewarm).not.toHaveBeenCalled()
   })
 })

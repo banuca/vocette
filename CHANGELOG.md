@@ -107,6 +107,21 @@ All notable changes to this project are documented here. This project adheres to
   top bar and at the head of History, for as long as the recording is kept, and sends
   it again without re-speaking — on-device takes included. Starting a new dictation or
   cancelling removes it, just as it greys out **Retry last dictation** in the tray.
+- **The first word is less likely to be cut off.** The microphone used to open only
+  once the hold delay had passed (250 ms by default), and then had to start up —
+  slower still on a Bluetooth headset — so “Send it by Friday” could arrive as “it by
+  Friday”. It now opens once the keys have been held on their own for a moment (a
+  tenth of a second), while the hold delay is still running, so it has a head start
+  and what you say from then on is in the take. A shortcut typed at speed, such as
+  Ctrl + Shift + T, brings its third key within that moment and never opens the
+  microphone at all. If it has opened and the keys turn out to be part of another
+  shortcut, or are let go before the delay, what was captured is thrown away unheard:
+  nothing is transcribed or stored, and no overlay appears, though the system's
+  microphone indicator may flash briefly. With the on-device engine, the speech model
+  starts loading at the same moment. **Start listening as soon as the shortcut is
+  held** (Settings → Recording, on by default) turns it off. It needs a keyboard Murmur
+  can watch, so on Wayland, or wherever the keyboard hook cannot start, the switch is
+  disabled and says why.
 
 ### Fixed
 

@@ -23,6 +23,7 @@ type TranscribeLocally = (
 interface EngineHarness {
   setModelState: (state: StoredModelState) => void
   transcribe: Mock<TranscribeLocally>
+  prewarm: Mock<() => void>
   unload: Mock<() => void>
   dispose: Mock<() => void>
   downloads: () => number
@@ -49,6 +50,10 @@ interface StartupHarness {
   emitFromRecorder: (channel: string, payload: unknown) => void
   sentToRecorder: () => Array<{ channel: string; payload: unknown }>
   pressShortcut: () => void
+  /** The chord has been held on its own for a moment, inside its hold delay. */
+  armShortcut: () => void
+  /** The armed chord turns out to be another shortcut. */
+  disarmShortcut: () => void
   setCapabilities: (patch: Record<string, unknown>) => void
   sentToMain: () => Array<{ channel: string; payload: unknown }>
   trayLabels: () => string[]
@@ -94,6 +99,7 @@ async function startApp(options: {
     null
   let settleDownload: { resolve: () => void; reject: (error: Error) => void } | null = null
   const transcribeLocally = vi.fn<TranscribeLocally>(async () => 'Hello from this PC.')
+  const prewarmEngine = vi.fn<() => void>()
   const unloadEngine = vi.fn<() => void>()
   const disposeEngine = vi.fn<() => void>()
   const historyAdds: Array<{ text: string; durationMs: number; model: string }> = []
@@ -115,6 +121,8 @@ async function startApp(options: {
   let quits = 0
   let hookStarted = false
   let shortcutPress: (() => void) | null = null
+  let shortcutArm: (() => void) | null = null
+  let shortcutDisarm: (() => void) | null = null
   const accelerators = new Set<string>()
   // Saved settings are remembered, so a save can be seen to take effect.
   let storedSettings: typeof DEFAULT_SETTINGS = { ...DEFAULT_SETTINGS, historyRetentionDays: 30 }
@@ -336,7 +344,7 @@ async function startApp(options: {
       transcribe = transcribeLocally
       unload = unloadEngine
       dispose = disposeEngine
-      prewarm = vi.fn()
+      prewarm = prewarmEngine
     }
   }))
 
@@ -348,8 +356,14 @@ async function startApp(options: {
       session: null,
       pasteLabel: 'Ctrl + V',
       primaryModifierLabel: 'Ctrl',
-      createShortcutBackend: (backendOptions: { onPress: () => void }) => {
+      createShortcutBackend: (backendOptions: {
+        onPress: () => void
+        onArm?: () => void
+        onDisarm?: () => void
+      }) => {
         shortcutPress = backendOptions.onPress
+        shortcutArm = backendOptions.onArm ?? null
+        shortcutDisarm = backendOptions.onDisarm ?? null
         return {
           supportsHold: true,
           supportsCapture: true,
@@ -413,6 +427,7 @@ async function startApp(options: {
         modelState = state
       },
       transcribe: transcribeLocally,
+      prewarm: prewarmEngine,
       unload: unloadEngine,
       dispose: disposeEngine,
       downloads: () => downloads,
@@ -442,6 +457,14 @@ async function startApp(options: {
       return handler({ sender }, ...args)
     },
     pressShortcut: () => shortcutPress?.(),
+    armShortcut: () => {
+      if (!shortcutArm) throw new Error('The shortcut backend was given no onArm.')
+      shortcutArm()
+    },
+    disarmShortcut: () => {
+      if (!shortcutDisarm) throw new Error('The shortcut backend was given no onDisarm.')
+      shortcutDisarm()
+    },
     setCapabilities: (patch: Record<string, unknown>) => {
       currentCapabilities = { ...fullyCapable, ...patch }
     },
@@ -930,5 +953,78 @@ describe('the on-device engine', () => {
     const app = await startApp({ engine: 'local', modelState: 'installed' })
     app.quit()
     expect(app.engine.dispose).toHaveBeenCalled()
+  })
+})
+
+/** Every phase the window has been shown, in order. */
+const workflowPhases = (app: StartupHarness): string[] =>
+  app
+    .sentToMain()
+    .filter((message) => message.channel === 'workflow:status')
+    .map((message) => (message.payload as { phase: string }).phase)
+
+/** The request ids sent to the recorder on one channel, in order. */
+const recorderIds = (app: StartupHarness, channel: string): string[] =>
+  app
+    .sentToRecorder()
+    .filter((message) => message.channel === channel)
+    .map((message) => (message.payload as { requestId: string }).requestId)
+
+describe('listening from the keypress', () => {
+  it('opens the microphone when the chord is armed, unseen, and warms the engine on this PC', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    const shown = workflowPhases(app).length
+    app.armShortcut()
+    const opened = recorderIds(app, 'recorder:start')
+    expect(opened).toHaveLength(1)
+    expect(app.engine.prewarm).toHaveBeenCalledTimes(1)
+    expect(workflowPhases(app)).toHaveLength(shown)
+
+    // Another shortcut after all: closed again, and still nothing shown.
+    app.disarmShortcut()
+    expect(recorderIds(app, 'recorder:cancel')).toEqual(opened)
+    expect(workflowPhases(app)).toHaveLength(shown)
+  })
+
+  it('makes the take opened at the keypress the dictation once the chord is held', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    app.armShortcut()
+    const [requestId] = recorderIds(app, 'recorder:start')
+    app.emitFromRecorder('recorder:started', { requestId })
+    expect(workflowPhases(app)).not.toContain('recording')
+
+    app.pressShortcut()
+    expect(workflowPhases(app).at(-1)).toBe('recording')
+    expect(recorderIds(app, 'recorder:start')).toEqual([requestId])
+    expect(app.trayLabels()).toContain('Stop recording')
+  })
+
+  it('warms nothing on the cloud, and opens nothing on this PC before the model is there', async () => {
+    const cloud = await startApp({ engine: 'cloud', apiKeySource: 'stored' })
+    cloud.armShortcut()
+    expect(recorderIds(cloud, 'recorder:start')).toHaveLength(1)
+    expect(cloud.engine.prewarm).not.toHaveBeenCalled()
+
+    const missing = await startApp({ engine: 'local', modelState: 'missing' })
+    missing.armShortcut()
+    // Nothing could be transcribed; the reason waits for a press that is held.
+    expect(recorderIds(missing, 'recorder:start')).toEqual([])
+    expect(missing.engine.prewarm).not.toHaveBeenCalled()
+    expect(workflowErrors(missing)).toEqual([])
+  })
+
+  it('opens nothing at the keypress once the setting is switched off', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    await app.invoke('settings:save', true, { instantCapture: false })
+    app.armShortcut()
+    expect(recorderIds(app, 'recorder:start')).toEqual([])
+    expect(app.engine.prewarm).not.toHaveBeenCalled()
+  })
+
+  it('warms the engine for a take started from the window too', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    app.invoke('dictation:start', true)
+    expect(recorderIds(app, 'recorder:start')).toHaveLength(1)
+    expect(app.engine.prewarm).toHaveBeenCalledTimes(1)
   })
 })

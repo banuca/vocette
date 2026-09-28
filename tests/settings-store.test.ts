@@ -480,6 +480,62 @@ describe('clipboard switches', () => {
   })
 })
 
+describe('listening from the keypress', () => {
+  /** A v5 file written before "Start listening as soon as the shortcut is held" existed. */
+  const withoutSwitch = (): Record<string, unknown> => {
+    const v5 = { ...DEFAULT_SETTINGS, hotkeyEnabled: false } as Record<string, unknown>
+    delete v5.instantCapture
+    return v5
+  }
+
+  it('is on for a fresh install', () => {
+    expect(DEFAULT_SETTINGS.instantCapture).toBe(true)
+    expect(new SettingsStore(file).getPublic().instantCapture).toBe(true)
+    expect(normaliseSettings(null).instantCapture).toBe(true)
+  })
+
+  it('defaults to on when an existing file predates it', () => {
+    const loaded = normaliseSettings(withoutSwitch())
+    expect(loaded.instantCapture).toBe(true)
+    // What the file did say survives: adding the field disturbs nothing.
+    expect(loaded.hotkeyEnabled).toBe(false)
+    expect(loaded.version).toBe(SETTINGS_VERSION)
+
+    writeFileSync(file, JSON.stringify(withoutSwitch(), null, 2))
+    const store = new SettingsStore(file)
+    expect(store.getInternal().instantCapture).toBe(true)
+    expect(store.getPublic().instantCapture).toBe(true)
+    expect(store.getInternal().hotkeyEnabled).toBe(false)
+  })
+
+  it('keeps a stored false, and ignores a value that is not a boolean on the load path', () => {
+    expect(normaliseSettings({ instantCapture: false }).instantCapture).toBe(false)
+    expect(normaliseSettings({ instantCapture: 'no' }).instantCapture).toBe(true)
+    expect(normaliseSettings({ instantCapture: 0 }).instantCapture).toBe(true)
+  })
+
+  it('persists false and survives a reload', () => {
+    const store = new SettingsStore(file)
+    expect(store.update({ instantCapture: false }).instantCapture).toBe(false)
+    expect(JSON.parse(readFileSync(file, 'utf8')).instantCapture).toBe(false)
+
+    const reopened = new SettingsStore(file)
+    expect(reopened.getPublic().instantCapture).toBe(false)
+    expect(reopened.getInternal().instantCapture).toBe(false)
+
+    reopened.update({ instantCapture: true })
+    expect(new SettingsStore(file).getInternal().instantCapture).toBe(true)
+  })
+
+  it('is left alone by an update that does not mention it, and ignores a non-boolean on save', () => {
+    const store = new SettingsStore(file)
+    store.update({ instantCapture: false })
+    expect(store.update({ hotkeyEnabled: false }).instantCapture).toBe(false)
+    store.update({ instantCapture: 'yes' as unknown as boolean })
+    expect(store.getPublic().instantCapture).toBe(false)
+  })
+})
+
 describe('API keys where secure storage is unfit', () => {
   const unusable = { usable: false, reason: 'No keyring here.', backend: 'basic_text' }
 

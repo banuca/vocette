@@ -129,6 +129,13 @@ export interface PublicSettings {
   /** What the user asked for; the platform may not be able to honour it. */
   recordingMode: RecordingMode
   hotkeyEnabled: boolean
+  /**
+   * Open the microphone once the shortcut has been held for a moment, before
+   * the hold delay has confirmed it, so the first word is less likely to be
+   * cut off. Audio captured for a press that turns out to be another shortcut
+   * is thrown away unheard.
+   */
+  instantCapture: boolean
   autoPaste: boolean
   /** Put back what the user had copied once an automatic paste has landed. */
   restoreClipboard: boolean
@@ -170,6 +177,7 @@ export interface SettingsUpdate {
   holdDelayMs?: number
   recordingMode?: RecordingMode
   hotkeyEnabled?: boolean
+  instantCapture?: boolean
   autoPaste?: boolean
   restoreClipboard?: boolean
   pasteLastShortcut?: boolean

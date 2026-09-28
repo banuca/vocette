@@ -85,6 +85,7 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     holdDelayMs: 250,
     recordingMode: 'hold',
     hotkeyEnabled: true,
+    instantCapture: true,
     autoPaste: true,
     restoreClipboard: true,
     pasteLastShortcut: true,

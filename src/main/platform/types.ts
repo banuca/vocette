@@ -36,6 +36,21 @@ export interface ShortcutBackendOptions {
   onPress(): void
   /** Hold backends only; a toggle backend never calls this. */
   onRelease(): void
+  /**
+   * The chord has been held on its own for a moment and its hold delay is
+   * still running, so the user may be about to dictate — or may yet press the
+   * rest of some other shortcut that begins the same way. Only a backend that
+   * watches key-down calls this. Every arm announced here ends in exactly one
+   * `onPress` (the chord was held) or one `onDisarm`. A press can also come
+   * with no arm before it — a quick tap, or a delay too short to announce one.
+   */
+  onArm?(): void
+  /**
+   * An announced arm ended without activating: a key outside the chord, an
+   * early release, a reset, a new chord or delay, or the start of a capture.
+   * A toggle tap that fires `onPress` on release is an activation, not this.
+   */
+  onDisarm?(): void
   onError(message: string): void
   /** Streams the chord being recorded by "Change shortcut". */
   onCapture(keys: number[], done: boolean): void

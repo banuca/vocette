@@ -247,6 +247,7 @@ function workflowSettings(): WorkflowSettings {
     // Resolved here, once: the controller is told the mode actually in force,
     // never the preference the platform cannot honour.
     recordingMode: effectiveRecordingMode(settings.recordingMode, capabilities),
+    instantCapture: settings.instantCapture,
     autoPaste: settings.autoPaste,
     pasteAvailable: autoPasteSupported(capabilities),
     restoreClipboard: settings.restoreClipboard,
@@ -517,7 +518,15 @@ function createDictationController(): DictationController {
     clearForeground: () => foreground.clear(),
     getForegroundState: () => foreground.check(),
     shortcutLabel,
-    onRetryChanged: () => rebuildTrayMenu()
+    onRetryChanged: () => rebuildTrayMenu(),
+    // The model loads while the user is still speaking. Only the on-device
+    // engine has anything to load, and only once its model is on disk: a
+    // prewarm without one would just fail.
+    prewarm: () => {
+      if (settingsStore.getInternal().engine !== 'local') return
+      if (modelStatus().state !== 'installed') return
+      localEngine.prewarm()
+    }
   })
 }
 
@@ -1133,6 +1142,11 @@ async function bootstrap(): Promise<void> {
       dictation.onShortcutReleased()
       rebuildTrayMenu()
     },
+    // The microphone opens once the chord has been held on its own for a
+    // moment, before the hold delay has confirmed it. Neither changes anything
+    // on screen, so the tray menu is not rebuilt for them.
+    onArm: () => dictation.prepareDictation(),
+    onDisarm: () => dictation.abandonPreparation(),
     onError: (message) => dictation.reportError(message),
     onCapture: (keys, done) => {
       if (done) captureTimeout = clearTimer(captureTimeout)

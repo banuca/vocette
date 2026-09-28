@@ -40,6 +40,7 @@ export interface StoredSettings {
   holdDelayMs: number
   recordingMode: RecordingMode
   hotkeyEnabled: boolean
+  instantCapture: boolean
   autoPaste: boolean
   restoreClipboard: boolean
   pasteLastShortcut: boolean
@@ -68,6 +69,9 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   holdDelayMs: DEFAULT_HOLD_DELAY_MS,
   recordingMode: 'hold',
   hotkeyEnabled: true,
+  // The clipped first word is the commonest complaint about push-to-talk, and
+  // what is captured for another shortcut is discarded unheard.
+  instantCapture: true,
   autoPaste: true,
   restoreClipboard: true,
   pasteLastShortcut: true,
@@ -173,6 +177,12 @@ export function normaliseSettings(value: unknown): StoredSettings {
       typeof candidate.hotkeyEnabled === 'boolean'
         ? candidate.hotkeyEnabled
         : DEFAULT_SETTINGS.hotkeyEnabled,
+    // Added within v5, like the clipboard switches: absent means on, the same
+    // as a fresh install, so an existing user keeps their first word too.
+    instantCapture:
+      typeof candidate.instantCapture === 'boolean'
+        ? candidate.instantCapture
+        : DEFAULT_SETTINGS.instantCapture,
     autoPaste:
       typeof candidate.autoPaste === 'boolean' ? candidate.autoPaste : DEFAULT_SETTINGS.autoPaste,
     // Added within v5, like the cleanup switches: absent means on, the same as
@@ -357,6 +367,9 @@ export class SettingsStore {
       this.settings.theme = update.theme
     }
     if (typeof update.hotkeyEnabled === 'boolean') this.settings.hotkeyEnabled = update.hotkeyEnabled
+    if (typeof update.instantCapture === 'boolean') {
+      this.settings.instantCapture = update.instantCapture
+    }
     if (typeof update.autoPaste === 'boolean') this.settings.autoPaste = update.autoPaste
     if (typeof update.restoreClipboard === 'boolean') {
       this.settings.restoreClipboard = update.restoreClipboard
