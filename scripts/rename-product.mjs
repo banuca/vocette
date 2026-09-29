@@ -86,7 +86,14 @@ export function planRename({ root, name, appId }) {
   }
   const current = currentName(root)
   if (name === current) throw new Error(`The product is already called ${current}.`)
-  const word = new RegExp(`\\b${current}\\b`, 'gu')
+  // The whole word, but not inside a folder path — `%APPDATA%\Murmur`,
+  // `Murmur\models`, `~/.config/Murmur` keep the name the folder has on disk.
+  // Two exceptions are renamed: the executable, which packaging renames with
+  // the product, and a `Name/1.2.3` product token such as the User-Agent.
+  const word = new RegExp(
+    `(?<![\\\\/])\\b${current}\\b(?!\\\\|/(?!\\d))|(?<=[\\\\/])${current}(?=\\.exe\\b)`,
+    'gu'
+  )
   const changes = []
   for (const path of candidates(root)) {
     const file = relative(root, path).split('\\').join('/')

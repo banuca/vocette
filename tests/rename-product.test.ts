@@ -49,6 +49,14 @@ describe('renaming the product (dry run)', () => {
     expect(changed('src/main/index.ts').some((change) => change.before.includes('app.setName'))).toBe(false)
   })
 
+  it('keeps folder paths, but renames the executable and the User-Agent token', () => {
+    for (const change of plan) {
+      expect(change.after).not.toMatch(new RegExp(`APPDATA%\\\\${TARGET}|${TARGET}\\\\models`, 'u'))
+    }
+    expect(plan.some((change) => change.after.includes(`win-unpacked\\${TARGET}.exe`))).toBe(true)
+    expect(plan.some((change) => change.after.includes(`'User-Agent': '${TARGET}/0.4.0'`))).toBe(true)
+  })
+
   it('changes only whole words', () => {
     for (const change of plan) {
       expect(change.after).not.toMatch(new RegExp(`${TARGET}[A-Za-z]`, 'u'))
