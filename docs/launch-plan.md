@@ -75,7 +75,9 @@ Status: `todo` · `building` · `review` · `committed` · `hand-test pass/fail`
 | R5 | Re-arm the keyboard hook after sleep/resume and unlock | Free | committed | 38fdf96 |
 | 15 | Packaging (sherpa-onnx unpack, native check, release build outside synced folder) | — | committed | 1d20c30 |
 | 16 | Docs: README, SECURITY, CHANGELOG, CONTRIBUTING (DCO), platform matrix | — | committed | e06360e, eb8a4a3 |
-| 17 | Website: landing, pricing, privacy, terms, refund | — | committed | (next) |
+| 17 | Website: landing, pricing, privacy, terms, refund | — | committed | 35dfe9b |
+| N | Rename to Vocette (owner's choice, 29 Sep) | — | committed | a981c36, 8b1a6e9 |
+| 18 | Pro as monthly and annual subscriptions (owner, 29 Sep) — brief `docs/briefs/18-subscriptions.md` | Gate | planned, awaiting owner's go-ahead | |
 | S1 | Stretch: learn from corrections | Pro | later | |
 | S2 | Stretch: per-app styles | Pro | later | |
 | S3 | Stretch: command mode (voice-edit selected text) | Pro | later | |
