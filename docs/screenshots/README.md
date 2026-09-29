@@ -3,8 +3,8 @@
 Every transcript here is invented.
 
 The four the README shows — `history.png`, `history-light.png`, `settings.png` and
-`overlay-recording.png` — were captured on 28 September 2026 from the real built app
-(0.5.0 work), with a scratch profile holding invented history, the on-device engine
+`overlay-recording.png` — were captured on 29 September 2026 from the real built app
+(0.5.0, named Vocette), with a scratch profile holding invented history, the on-device engine
 installed, and a fake microphone for the overlay. The rest are captures of the 0.4.0
 renderer with a synthetic bridge, from before the on-device engine, Pro and AI polish;
 they show those screens as they were then.

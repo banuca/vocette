@@ -52,7 +52,7 @@ let microphonePermissionRequested = false
 
 /** What happens to the terms after recognition, on every engine. */
 const VOCABULARY_CORRECTION_NOTE =
-  'Murmur corrects near-misses of these words after it hears you — “data verse” becomes “Dataverse”.'
+  'Vocette corrects near-misses of these words after it hears you — “data verse” becomes “Dataverse”.'
 
 /** How to write a rule. The count that follows it in the note is live. */
 const REPLACEMENTS_HELP =
@@ -69,7 +69,7 @@ const MIC_TEST_DURATION_MS = 8000
  * itself (Wayland) says nothing until it has fired.
  */
 const INSTANT_CAPTURE_NEEDS_KEYS =
-  'This desktop tells Murmur about the shortcut only once it has fired, so listening cannot start any earlier.'
+  'This desktop tells Vocette about the shortcut only once it has fired, so listening cannot start any earlier.'
 
 /** The Transcription card's subtitle; the cloud keeps the key's promise it always made. */
 const LOCAL_SUMMARY = 'Where your speech becomes text.'
@@ -236,7 +236,7 @@ export function renderSettings(
 
       <section class="settings-card">
         <div class="settings-heading">
-          <div><h2>Your words</h2><p>Names, acronyms and product terms Murmur should expect to hear.</p></div>
+          <div><h2>Your words</h2><p>Names, acronyms and product terms Vocette should expect to hear.</p></div>
           <span class="configured-badge" id="vocabulary-badge"></span>
         </div>
         <label class="field field-wide"><span>Vocabulary</span>
@@ -312,7 +312,7 @@ ${polishCardMarkup()}
           <label class="toggle-row" id="row-hotkey"><div><strong>Global shortcut enabled</strong><span>Turn the system-wide shortcut off without quitting the app.</span><small class="capability-note" id="hotkey-note" hidden></small></div><input id="hotkey-enabled" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-instant-capture"><div><strong>Start listening as soon as the shortcut is held</strong><span>Helps catch your first word when you start speaking straight away. The microphone opens once the keys have been held for a moment, and anything captured before recording starts is thrown away unheard if you were pressing a different shortcut.</span><small class="capability-note" id="instant-capture-note" hidden></small></div><input id="instant-capture" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-auto-paste"><div><strong>Paste automatically</strong><span>Copy the transcript and send ${escapeHtml(context.platform.pasteLabel)} to the app you were using.</span><small class="capability-note" id="auto-paste-note" hidden></small></div><input id="auto-paste" type="checkbox" /><i></i></label>
-          <label class="toggle-row" id="row-restore-clipboard"><div><strong>Put my clipboard back</strong><span>After pasting, Murmur restores what you had copied. Turn off to keep each transcript on the clipboard.</span><small class="capability-note" id="restore-clipboard-note" hidden></small></div><input id="restore-clipboard" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-restore-clipboard"><div><strong>Put my clipboard back</strong><span>After pasting, Vocette restores what you had copied. Turn off to keep each transcript on the clipboard.</span><small class="capability-note" id="restore-clipboard-note" hidden></small></div><input id="restore-clipboard" type="checkbox" /><i></i></label>
           ${pasteLastRow}
           <label class="toggle-row"><div><strong>Remove filler words</strong><span>Drops “um”, “uh”, stutters like “I I”, and a filler “like” or “you know” set off by commas. Your own words are never rewritten.</span></div><input id="remove-fillers" type="checkbox" /><i></i></label>
           <label class="toggle-row"><div><strong>Follow spoken corrections</strong><span>Say “scratch that” to drop the last sentence, or fix a word as you go: “Tuesday, no sorry, Wednesday” becomes “Wednesday”. English.</span></div><input id="spoken-corrections" type="checkbox" /><i></i></label>
@@ -478,7 +478,7 @@ ${polishCardMarkup()}
       const count =
         terms.length === 0 ? 'No terms' : terms.length === 1 ? '1 term' : `${terms.length} terms`
       // Never claim saved state for text that has not been saved: the green
-      // badge means "this is what Murmur will send", not "this is typed".
+      // badge means "this is what Vocette will send", not "this is typed".
       vocabularyBadge.textContent = vocabularyDirty ? `${count} — unsaved` : count
       vocabularyBadge.className = `configured-badge ${
         terms.length > 0 && !vocabularyDirty ? 'is-configured' : ''
@@ -553,7 +553,7 @@ ${polishCardMarkup()}
     } else {
       const count =
         rules.length === 0 ? 'No rules yet' : rules.length === 1 ? '1 rule' : `${rules.length} rules`
-      const full = rules.length >= MAX_REPLACEMENT_RULES ? ', the most Murmur will use' : ''
+      const full = rules.length >= MAX_REPLACEMENT_RULES ? ', the most Vocette will use' : ''
       text = `${REPLACEMENTS_HELP} ${count}${full}${skipped ? ` — ${skipped}` : ''}.`
     }
     // textContent, not innerHTML: the rules are user input, and `=>` must

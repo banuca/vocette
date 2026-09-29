@@ -1,10 +1,10 @@
 /**
- * The on-device speech model Murmur can download.
+ * The on-device speech model Vocette can download.
  *
  * Every byte count and hash here was verified locally against the files the
  * URLs serve (docs/research/engine-spike.md). The URLs name a commit, never
  * `main`, so a later upload to the repository can neither change nor break
- * what an installed copy of Murmur fetches: a file that no longer matches its
+ * what an installed copy of Vocette fetches: a file that no longer matches its
  * hash is refused, not loaded.
  */
 import { PARAKEET_V3_INFO } from '../../shared/speech-model'

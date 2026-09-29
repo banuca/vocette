@@ -3,7 +3,7 @@
   "version": "0.5.0",
   "description": "Dictation that runs on your PC: hold a shortcut, speak, and your words are typed where you are",
   "main": "./out/main/index.js",
-  "author": "Murmur contributors",
+  "author": "Vocette contributors",
   "license": "MIT",
   "private": false,
   "engines": {

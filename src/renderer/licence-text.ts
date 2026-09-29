@@ -18,7 +18,7 @@ import type { LicenceStatus } from '../shared/types'
  */
 
 export function planStatusLine(status: Pick<LicenceStatus, 'plan' | 'trialDaysLeft'>): string {
-  if (status.plan === 'pro') return 'Pro — thank you for supporting Murmur'
+  if (status.plan === 'pro') return 'Pro — thank you for supporting Vocette'
   if (status.plan === 'free') return 'Free — everything you need, for good'
   const days = status.trialDaysLeft
   return `Pro trial — ${days} ${days === 1 ? 'day' : 'days'} left`
@@ -38,7 +38,7 @@ export function buyLabel(status: Pick<LicenceStatus, 'checkoutAvailable' | 'pric
 export function activationNote(status: Pick<LicenceStatus, 'deviceLabel'>): string {
   return (
     `Activating sends your key and a device label (“${status.deviceLabel}”) to Polar, our ` +
-    'payment provider, once. Murmur never checks again.'
+    'payment provider, once. Vocette never checks again.'
   )
 }
 
@@ -90,7 +90,7 @@ export function replacementsPlanNote(plan: Plan, rules: number): string | null {
 
 /** History's one notice, shown once the trial has ended, until it is dismissed. */
 export const TRIAL_END_NOTICE =
-  'Your Pro trial has ended. Murmur keeps working as it did — AI polish and lists longer ' +
+  'Your Pro trial has ended. Vocette keeps working as it did — AI polish and lists longer ' +
   `than ${FREE_VOCABULARY_TERMS} terms or ${FREE_REPLACEMENT_RULES} rules are part of Pro.`
 
 /** The right-hand column of the plans: what Pro adds. */

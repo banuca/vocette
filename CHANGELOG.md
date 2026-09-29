@@ -5,12 +5,21 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
-## [0.5.0] — 2026-09-28
+## [0.5.0] — unreleased
 
-Murmur now transcribes on your PC by default — no key, no account — and gains a
+Vocette now transcribes on your PC by default — no key, no account — and gains a
 30-day Pro trial, a one-off Pro licence, AI polish, snippets, instant capture,
 Esc to cancel, a measured wait on every dictation, an opt-in update check and a
 Windows release build that is checked before it is trusted.
+
+### Changed — Murmur is now Vocette
+
+- The product is renamed **Vocette**: window titles, the tray, messages, the installer
+  (`Vocette-0.5.0-win-x64.exe`, installing `Vocette.exe`), the website and the documents.
+  Your settings, history and downloaded speech model stay exactly where they were — the
+  folders on disk keep the name `Murmur`, so nothing has to be moved or downloaded again.
+  The app id is now `app.vocette`, so Vocette installs beside an older Murmur or Voice
+  Hotkey rather than over it.
 
 ### Added
 
@@ -66,11 +75,11 @@ Windows release build that is checked before it is trusted.
   an English sentence welded onto a French prompt shifts the decoder.
 - `keywords` is only sent to OpenAI itself, never to a custom endpoint that may
   reject an unknown field — and if a request carrying it is rejected anyway,
-  Murmur retries once with the terms in the prompt instead, so an unverified
+  Vocette retries once with the terms in the prompt instead, so an unverified
   parameter can cost one request some accuracy but cannot break dictation.
 
 - **Your words, spelled right on every engine.** After recognition, and before
-  cleanup, Murmur corrects near-misses of your terms on this computer: “ITUT” and
+  cleanup, Vocette corrects near-misses of your terms on this computer: “ITUT” and
   “I T U T” become “ITU-T”, “data verse” becomes “Dataverse”, and “Kirinda”,
   “Kiranda” and “Kurindi” become “Kirinde”. It runs for the on-device engine,
   which takes no prompt to bias, and for cloud models, which still miss. A common
@@ -100,7 +109,7 @@ Windows release build that is checked before it is trusted.
   the clipboard, so whatever you had copied was gone. Now the clipboard is only
   borrowed: after the paste, what you had copied — text, formatting, an image — is
   put back about ¾ s later. A file list copied in Explorer, or an application's own
-  private format, cannot be restored. When Murmur does not paste (clipboard-only
+  private format, cannot be restored. When Vocette does not paste (clipboard-only
   delivery, focus moved, an elevated window) the transcript stays on the clipboard as
   before. On by default; **Put my clipboard back** in Settings turns it off. The
   overlay now says **Pasted** rather than “Copied and pasted”, which stopped being
@@ -110,8 +119,8 @@ Windows release build that is checked before it is trusted.
   elevation checks as a dictation: for a paste that went to the wrong place. If
   another app already owns the combination, Settings says so. It is deliberately not
   in the tray menu — opening the menu takes focus away from the window you want it in.
-- **A retry is copied, not pasted.** Retry is pressed in Murmur's own window or tray,
-  so the window in front is Murmur itself; a retried take used to be pasted there (into
+- **A retry is copied, not pasted.** Retry is pressed in Vocette's own window or tray,
+  so the window in front is Vocette itself; a retried take used to be pasted there (into
   whatever field had focus) and, with the clipboard given back, could end up only in
   History. It now goes to the clipboard, like a take started from the window.
 - **A busy service is retried once, and Retry is in the window.** A rate limit (429),
@@ -138,7 +147,7 @@ Windows release build that is checked before it is trusted.
   nothing is transcribed or stored, and no overlay appears, though the system's
   microphone indicator may flash briefly. With the on-device engine, the speech model
   starts loading at the same moment. **Start listening as soon as the shortcut is
-  held** (Settings → Recording, on by default) turns it off. It needs a keyboard Murmur
+  held** (Settings → Recording, on by default) turns it off. It needs a keyboard Vocette
   can watch, so on Wayland, or wherever the keyboard hook cannot start, the switch is
   disabled and says why.
 - **Is it hearing me? A live level in the overlay.** While you record, five small bars
@@ -177,8 +186,8 @@ Windows release build that is checked before it is trusted.
   Nothing is deleted when Pro lapses — a longer list keeps every line, only its first
   part is used, and the note under each box says so. A new **Pro** page shows the plan,
   **Buy Pro** (Polar's checkout, in the browser) and a **Licence key** field: **Activate**
-  sends the key and a device label (“Murmur on Windows · 7F3A”) to Polar once — no
-  credentials, no API-version pin — and Murmur never checks again; the buyer details in
+  sends the key and a device label (“Vocette on Windows · 7F3A”) to Polar once — no
+  credentials, no API-version pin — and Vocette never checks again; the buyer details in
   Polar's answer are discarded, never logged. **Release this PC** frees a device slot,
   and without a connection **Remove from this PC anyway** clears it here, saying the slot
   stays in use. The key is encrypted by the operating system where it can be, and kept
@@ -187,7 +196,7 @@ Windows release build that is checked before it is trusted.
   good. A cloud request still carries at most 100 keywords. Purchases stay closed (“Pro
   purchases open soon”) until the Polar values in `src/shared/product.ts` are filled in.
 - **A server of your own needs no key.** whisper.cpp's server, Speaches or a corporate
-  Whisper deployment often has no key to give, yet Murmur refused to record without one.
+  Whisper deployment often has no key to give, yet Vocette refused to record without one.
   Now, with an **API endpoint** set in Settings → Transcription, the key is optional: the
   badge reads “No key needed for this server”, Record works, and the request goes out
   with no `Authorization` header at all, rather than an empty one. OpenAI itself, used
@@ -209,7 +218,7 @@ Windows release build that is checked before it is trusted.
   transcribed, kept or pasted. The overlay says so — “Press Left Ctrl + Left Shift to
   finish · Esc to cancel” — and a chord too long to fit beside it is called “the shortcut”
   so the Esc part is never cut off. Esc with a modifier is left alone (Ctrl + Shift + Esc
-  is Task Manager), as is a take held to talk and one already being transcribed. Murmur
+  is Task Manager), as is a take held to talk and one already being transcribed. Vocette
   only watches the key, so the app in front sees the same Esc; Settings says so. Where the
   keyboard is not watched (a Wayland desktop) or the shortcut is off, Esc is not offered.
 
@@ -225,7 +234,7 @@ Windows release build that is checked before it is trusted.
   works either way. A check is one request to GitHub for the latest version number —
   nothing about you or your dictation is sent — and it runs at most once a day on its own,
   a minute after startup at the earliest. It says “You have the latest version (0.4.0).”,
-  “Murmur 0.6.0 is available.” with a **Download** link to the release page, or why it
+  “Vocette 0.6.0 is available.” with a **Download** link to the release page, or why it
   could not check. An update on offer adds one line to the tray menu and a dot beside
   About; there are no dialogs or notifications, and nothing is downloaded or installed.
 
@@ -248,7 +257,7 @@ Windows release build that is checked before it is trusted.
 
 - **The shortcut keeps working after sleep and the lock screen.** Windows can drop the
   keyboard hook while the PC is away, and the key-ups of Win + L happen where no hook can
-  see them, so the shortcut could go dead until Murmur was restarted. The hook is now put
+  see them, so the shortcut could go dead until Vocette was restarted. The hook is now put
   back, with nothing held, when the PC wakes or is unlocked. A take still recording when
   the PC sleeps or locks is finished rather than lost, and the microphone does not stay
   open behind the lock screen; what was said is kept on the clipboard and in History, and
@@ -273,7 +282,7 @@ Windows release build that is checked before it is trusted.
   engine. The overlay says “No speech heard — nothing was sent.” for a moment, as a
   neutral note rather than an error, and nothing is pasted, kept in History or offered
   for Retry. The bar is low on purpose — a take counts as silent only when every 30 ms of
-  it stays below about −56 dBFS — so a whisper still goes through, and a recording Murmur
+  it stays below about −56 dBFS — so a whisper still goes through, and a recording Vocette
   cannot decode is still sent as before.
 
 ## [0.4.0] — 2026-09-11

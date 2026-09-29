@@ -1,7 +1,7 @@
 import { TRIAL_END_NOTICE } from './licence-text'
 
 /**
- * The one reminder Murmur ever gives about Pro: a card at the head of History
+ * The one reminder Vocette ever gives about Pro: a card at the head of History
  * once the trial has ended, saying that nothing the user relies on changes.
  * It has two buttons — See Pro and Dismiss — and once dismissed it is gone
  * for good. There is no countdown before it and nothing after it.

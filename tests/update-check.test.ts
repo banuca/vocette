@@ -83,7 +83,7 @@ describe('fetchLatestRelease', () => {
     expect(init?.method).toBe('GET')
     expect(init?.headers).toEqual({
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'Murmur/0.4.0'
+      'User-Agent': 'Vocette/0.4.0'
     })
     // Nothing else goes with it: no body, no credentials.
     expect(init?.body).toBeUndefined()

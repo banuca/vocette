@@ -3,7 +3,7 @@
  *
  * Automatic paste works by putting the transcript on the clipboard and sending
  * the paste chord, which throws away whatever the user had copied. Dictation
- * tools generally leave the transcript there for good. Murmur takes a copy of
+ * tools generally leave the transcript there for good. Vocette takes a copy of
  * the clipboard first, so it can be put back once the paste has landed.
  *
  * Pure logic behind a narrow interface: Electron's `clipboard` satisfies it in

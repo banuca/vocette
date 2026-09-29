@@ -8,7 +8,7 @@ import type {
 import type { ShortcutChord } from '../../shared/shortcuts'
 
 /**
- * The main-process boundary between Murmur and the desktop it runs on.
+ * The main-process boundary between Vocette and the desktop it runs on.
  *
  * Everything platform-specific lives behind this: global shortcuts, the paste
  * target, key injection, permission state, and launch-at-login. The rest of
@@ -119,7 +119,7 @@ export interface PlatformAdapter {
   /**
    * A fresh capability read. Called again whenever the user might have changed
    * something outside the app, because macOS permissions can be revoked while
-   * Murmur is running.
+   * Vocette is running.
    */
   capabilities(context: CapabilityContext): CapabilityMap
 }

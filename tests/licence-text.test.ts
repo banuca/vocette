@@ -24,7 +24,7 @@ describe('the status line', () => {
       'Pro trial — 1 day left'
     )
     expect(planStatusLine(licenceStatus({ plan: 'pro' }))).toBe(
-      'Pro — thank you for supporting Murmur'
+      'Pro — thank you for supporting Vocette'
     )
     expect(planStatusLine(licenceStatus({ plan: 'free' }))).toBe(
       'Free — everything you need, for good'
@@ -51,9 +51,9 @@ describe('the Buy button', () => {
 
 describe('the licence lines', () => {
   it('says what activating sends, and that it happens once', () => {
-    expect(activationNote(licenceStatus({ deviceLabel: 'Murmur on Windows · 7F3A' }))).toBe(
-      'Activating sends your key and a device label (“Murmur on Windows · 7F3A”) to Polar, our ' +
-        'payment provider, once. Murmur never checks again.'
+    expect(activationNote(licenceStatus({ deviceLabel: 'Vocette on Windows · 7F3A' }))).toBe(
+      'Activating sends your key and a device label (“Vocette on Windows · 7F3A”) to Polar, our ' +
+        'payment provider, once. Vocette never checks again.'
     )
   })
 
@@ -97,7 +97,7 @@ describe('the notes under the lists', () => {
 describe('the words about the plans', () => {
   it('give the trial’s end in one notice, word for word', () => {
     expect(TRIAL_END_NOTICE).toBe(
-      'Your Pro trial has ended. Murmur keeps working as it did — AI polish and lists longer ' +
+      'Your Pro trial has ended. Vocette keeps working as it did — AI polish and lists longer ' +
         'than 50 terms or 20 rules are part of Pro.'
     )
   })

@@ -1,4 +1,4 @@
-# Releasing Murmur for Windows
+# Releasing Vocette for Windows
 
 One command builds the release and proves the native parts survived packaging:
 
@@ -16,7 +16,7 @@ Run it on Windows x64 from a clean checkout of the commit you mean to release.
 2. **The gates**: `npm run typecheck`, `npx vitest run`, `npm run lint`,
    `npx electron-vite build`. The first failure stops everything.
 3. **Packages** with electron-builder for Windows x64 into
-   `%LOCALAPPDATA%\murmur-release\<version>` (or `--out <folder>`). Not the repository:
+   `%LOCALAPPDATA%\vocette-release\<version>` (or `--out <folder>`). Not the repository:
    inside the synced Desktop electron-builder fails with `EBUSY`/`EPERM`, and on the
    development machine it also fails renaming its fresh extraction under `%USERPROFILE%`.
 4. **Checks the native packaging** (`scripts/check-native-packaging.mjs`): koffi,
@@ -26,8 +26,8 @@ Run it on Windows x64 from a clean checkout of the commit you mean to release.
 5. **Writes `SHA256SUMS.txt`** for the installer, the zip and the blockmap, and lists the
    artifacts with their sizes.
 
-Output: `murmur-<version>-win-x64.exe` (NSIS installer, per user, no administrator
-rights), `murmur-<version>-win-x64.zip` (portable) and `win-unpacked\`.
+Output: `Vocette-<version>-win-x64.exe` (NSIS installer, per user, no administrator
+rights), `Vocette-<version>-win-x64.zip` (portable) and `win-unpacked\`.
 
 ## Signing
 
@@ -41,7 +41,7 @@ reputation. Two ways to sign:
   allowed to sign with that profile.
 - **A PFX certificate**: set `WIN_CSC_LINK` (or `CSC_LINK`) to the `.pfx` file and
   `CSC_KEY_PASSWORD` to its password. electron-builder signs the installer, the
-  uninstaller and `Murmur.exe`.
+  uninstaller and `Vocette.exe`.
 
 The script prints whether the build it made is signed. Check afterwards with
 `Get-AuthenticodeSignature <file>` in PowerShell.
@@ -61,7 +61,7 @@ The script prints whether the build it made is signed. Check afterwards with
 
 Run with an isolated profile, so nothing touches your own settings or startup entries:
 
-- **Packaged app**: launch `win-unpacked\Murmur.exe` with `MURMUR_PROFILE_DIR` set to a
+- **Packaged app**: launch `win-unpacked\Vocette.exe` with `MURMUR_PROFILE_DIR` set to a
   scratch folder, `MURMUR_MODELS_DIR` set to a folder holding the downloaded model, and the
   fake-microphone flags (`--use-fake-ui-for-media-stream --use-fake-device-for-media-stream
   --use-file-for-fake-audio-capture=<wav>`). Record from the window. The transcript must
@@ -70,7 +70,7 @@ Run with an isolated profile, so nothing touches your own settings or startup en
 - **First run**: launch once with an empty `MURMUR_MODELS_DIR`, press **Download**, see it
   progress, cancel after a few megabytes.
 - **Installer**: back up `%APPDATA%\Murmur`, install silently into a scratch folder
-  (`murmur-<version>-win-x64.exe /S /D=<scratch>`), launch the installed `Murmur.exe` with
-  an isolated profile, uninstall silently (`"<scratch>\Uninstall Murmur.exe" /S`), and
+  (`Vocette-<version>-win-x64.exe /S /D=<scratch>`), launch the installed `Vocette.exe` with
+  an isolated profile, uninstall silently (`"<scratch>\Uninstall Vocette.exe" /S`), and
   confirm `%APPDATA%\Murmur` is unchanged. Uninstalling keeps user data by design
   (`deleteAppDataOnUninstall: false`).

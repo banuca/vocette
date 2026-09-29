@@ -46,7 +46,7 @@ async function mount(): Promise<void> {
   appRoot.innerHTML = `
     <div class="loading-screen">
       <div class="brand-mark" aria-hidden="true"><span></span></div>
-      <p>Opening Murmur…</p>
+      <p>Opening Vocette…</p>
     </div>
   `
 
@@ -68,7 +68,7 @@ async function mount(): Promise<void> {
       window.murmur.getLicenceStatus()
     ])
   } catch (error) {
-    appRoot.innerHTML = `<div class="fatal-error"><h1>Murmur could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
+    appRoot.innerHTML = `<div class="fatal-error"><h1>Vocette could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
     return
   }
 
@@ -87,7 +87,7 @@ async function mount(): Promise<void> {
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true"><span></span></div>
-          <div><strong>Murmur</strong><small>Open dictation</small></div>
+          <div><strong>Vocette</strong><small>Open dictation</small></div>
         </div>
         <nav class="navigation" aria-label="Primary navigation">
           <button class="nav-item active" data-page="history" title="History"><span class="nav-icon">${icon('history')}</span><span>History</span></button>

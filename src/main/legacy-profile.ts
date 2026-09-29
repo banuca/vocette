@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 
 /**
- * Carries a profile across the rename from Voice Hotkey to Murmur.
+ * Carries a profile across the rename from Voice Hotkey to Vocette.
  *
  * The storage folder is named after the application, so renaming it would
  * otherwise orphan the user's settings and transcripts in a directory nothing

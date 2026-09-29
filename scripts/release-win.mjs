@@ -7,7 +7,7 @@
  *      files are not part of the build), unless `--allow-dirty`.
  *   2. Type-checks, tests, lints and bundles, stopping at the first failure.
  *   3. Packages with electron-builder for Windows x64 into `--out`, by default
- *      %LOCALAPPDATA%\murmur-release\<version>. Inside a synced folder (the
+ *      %LOCALAPPDATA%\vocette-release\<version>. Inside a synced folder (the
  *      Desktop) electron-builder fails with EBUSY and EPERM, and on this machine
  *      it also fails renaming its fresh extraction under %USERPROFILE%; under
  *      %LOCALAPPDATA% it does not.
@@ -37,7 +37,11 @@ const option = (name) => {
 const ROOT = resolve(import.meta.dirname, '..')
 const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 const LOCAL = process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local')
-const OUT = resolve(option('out') ?? join(LOCAL, 'murmur-release', version))
+/** The product's name as the app shows it, from src/shared/product.ts. */
+const PRODUCT = /export const PRODUCT_NAME = '([^']+)'/u.exec(
+  readFileSync(join(ROOT, 'src', 'shared', 'product.ts'), 'utf8')
+)?.[1] ?? 'app'
+const OUT = resolve(option('out') ?? join(LOCAL, `${PRODUCT.toLowerCase()}-release`, version))
 
 function run(label, command, commandArgs, env = {}) {
   console.log(`\n▶ ${label}`)

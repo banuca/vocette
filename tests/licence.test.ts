@@ -34,7 +34,7 @@ const REQUEST: ActivationRequest = {
   apiBase: 'https://sandbox-api.polar.sh/',
   orgId: ORG,
   benefitId: BENEFIT,
-  label: 'Murmur on Windows · 7F3A',
+  label: 'Vocette on Windows · 7F3A',
   appVersion: '0.4.0'
 }
 
@@ -130,7 +130,7 @@ describe('activating a key', () => {
     expect(body).toEqual({
       key: KEY,
       organization_id: ORG,
-      label: 'Murmur on Windows · 7F3A',
+      label: 'Vocette on Windows · 7F3A',
       meta: { app_version: '0.4.0' }
     })
     // Only a content type: no Authorization, and no Polar-Version pin, which
@@ -159,7 +159,7 @@ describe('activating a key', () => {
     expect(await client.activate('   \n', REQUEST)).toEqual({ ok: false, error: LICENCE_MESSAGES.empty })
     expect(await client.activate('K'.repeat(201), REQUEST)).toEqual({
       ok: false,
-      error: 'That does not look like a Murmur licence key.'
+      error: 'That does not look like a Vocette licence key.'
     })
     expect(fetch).not.toHaveBeenCalled()
   })
@@ -266,7 +266,7 @@ describe('what an activation that fails says', () => {
         detail:
           'This license key does not support activations. Use the /validate endpoint instead to check license validity.'
       },
-      'This key cannot be activated in Murmur. Contact support.'
+      'This key cannot be activated in Vocette. Contact support.'
     ],
     [
       'an unknown key',
@@ -278,7 +278,7 @@ describe('what an activation that fails says', () => {
       'an API version Polar has removed',
       404,
       { detail: 'Not Found' },
-      'This version of Murmur can no longer activate licences. Update Murmur and try again.'
+      'This version of Vocette can no longer activate licences. Update Vocette and try again.'
     ],
     [
       'a request Polar cannot read',
@@ -287,7 +287,7 @@ describe('what an activation that fails says', () => {
         error: 'RequestValidationError',
         detail: [{ type: 'missing', loc: ['body', 'label'], msg: 'Field required' }]
       },
-      'That does not look like a Murmur licence key.'
+      'That does not look like a Vocette licence key.'
     ],
     ['too many attempts', 429, { detail: 'Too many requests' }, 'Too many attempts. Wait a minute and try again.'],
     ['Polar failing', 503, {}, LICENCE_MESSAGES.unavailable],
@@ -456,10 +456,10 @@ describe('the Polar settings', () => {
 
 describe('the device label', () => {
   it('names the system and this PC’s tag', () => {
-    expect(deviceLabel('windows', '7F3A')).toBe('Murmur on Windows · 7F3A')
-    expect(deviceLabel('macos', 'BEEF')).toBe('Murmur on macOS · BEEF')
-    expect(deviceLabel('linux', '0042')).toBe('Murmur on Linux · 0042')
-    expect(deviceLabel('unknown', '7F3A')).toBe('Murmur · 7F3A')
+    expect(deviceLabel('windows', '7F3A')).toBe('Vocette on Windows · 7F3A')
+    expect(deviceLabel('macos', 'BEEF')).toBe('Vocette on macOS · BEEF')
+    expect(deviceLabel('linux', '0042')).toBe('Vocette on Linux · 0042')
+    expect(deviceLabel('unknown', '7F3A')).toBe('Vocette · 7F3A')
   })
 })
 
@@ -482,7 +482,7 @@ describe('the status the window is told', () => {
       licence: options.licensed ? record : null,
       config,
       trialEndNoticeDismissed: options.dismissed ?? false,
-      deviceLabel: 'Murmur on Windows · 7F3A'
+      deviceLabel: 'Vocette on Windows · 7F3A'
     })
 
   it('describes the trial, with no notice due', () => {
@@ -496,7 +496,7 @@ describe('the status the window is told', () => {
       portalAvailable: false,
       priceLabel: PRO_PRICE_LABEL,
       trialEndNoticeDue: false,
-      deviceLabel: 'Murmur on Windows · 7F3A'
+      deviceLabel: 'Vocette on Windows · 7F3A'
     })
   })
 
@@ -526,7 +526,7 @@ describe('the status the window is told', () => {
       licence: null,
       config: { ...config, orgId: '' },
       trialEndNoticeDismissed: false,
-      deviceLabel: 'Murmur on Windows · 7F3A',
+      deviceLabel: 'Vocette on Windows · 7F3A',
       checkoutUrl: 'https://buy.polar.sh/polar_cl_example',
       portalUrl: '',
       priceLabel: 'CHF 25, once'

@@ -21,7 +21,7 @@ function platformName(context: AppContext): string {
 }
 
 /**
- * The credits Murmur owes: the model's licence asks for its line, word for
+ * The credits Vocette owes: the model's licence asks for its line, word for
  * word from the manifest; the libraries that run it are named with theirs;
  * and SCOWL's permission notice asks for its copyright to be shown.
  */
@@ -35,7 +35,7 @@ export function attributions(): string[] {
 }
 
 const INDEPENDENT =
-  'Murmur is an independent MIT-licensed project with no affiliation to any commercial ' +
+  'Vocette is an independent MIT-licensed project with no affiliation to any commercial ' +
   'dictation product.'
 
 /** Pro's one request, said wherever the notice says what leaves this computer. */
@@ -55,8 +55,8 @@ export const POLISH_NOTICE =
 
 /** Under the switch, where it is turned on. */
 export const UPDATE_CHECK_EXPLANATION =
-  'Sends one request to GitHub (api.github.com) asking for the latest Murmur version. ' +
-  'Nothing about you or your dictation is sent. Murmur never downloads or installs anything ' +
+  'Sends one request to GitHub (api.github.com) asking for the latest Vocette version. ' +
+  'Nothing about you or your dictation is sent. Vocette never downloads or installs anything ' +
   'by itself.'
 
 /**
@@ -69,7 +69,7 @@ export function privacyNotice(engine: TranscriptionEngine, polish = false): stri
   if (engine === 'local') {
     return (
       `${INDEPENDENT} Your audio is transcribed on this PC and never leaves it, and ` +
-      'neither does the vocabulary you set in Settings. The only thing Murmur downloads is ' +
+      'neither does the vocabulary you set in Settings. The only thing Vocette downloads is ' +
       `the speech model, once, from Hugging Face.${polishing} ${PRO_ACTIVATION_NOTICE} ` +
       UPDATE_CHECK_NOTICE
     )
@@ -94,7 +94,7 @@ export function renderAbout(context: AppContext): AboutView {
   context.content.innerHTML = `
     <div class="about-hero">
       <div class="large-brand-mark" aria-hidden="true"><span></span></div>
-      <h2>Murmur</h2>
+      <h2>Vocette</h2>
       <p>Open-source push-to-talk dictation for Windows, macOS and Linux.</p>
       <span class="version-badge">Version ${escapeHtml(context.appInfo.version)}</span>
       <span class="version-badge">${escapeHtml(platformName(context))}</span>

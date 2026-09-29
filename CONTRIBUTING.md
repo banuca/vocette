@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for taking an interest in Murmur! It is a small, deliberately
+Thanks for taking an interest in Vocette! It is a small, deliberately
 boring codebase: plain TypeScript, no UI framework, no global state beyond the
 two JSON stores. The goal is a dictation tool anyone can read in an afternoon
 and trust.
@@ -128,7 +128,7 @@ exercised by whoever wrote it.
 
 ## Sign your commits (Developer Certificate of Origin)
 
-Murmur is sold as well as given away, so every contribution needs a clear
+Vocette is sold as well as given away, so every contribution needs a clear
 right to include it. By signing off a commit you certify the
 [Developer Certificate of Origin](https://developercertificate.org/): that you
 wrote the change, or otherwise have the right to submit it under the project's

@@ -156,7 +156,7 @@ export const LANGUAGE_OPTIONS = [
  *
  * `session` means the key was never written to disk — the only honest option
  * where the operating system has no storage fit to hold a credential. It is
- * gone when Murmur quits, and the interface says so.
+ * gone when Vocette quits, and the interface says so.
  */
 export type ApiKeySource = 'none' | 'stored' | 'session'
 
@@ -320,7 +320,7 @@ export interface LicenceStatus {
   priceLabel: string
   /** The trial has ended and its one notice has not been dismissed. */
   trialEndNoticeDue: boolean
-  /** What activation names this PC to Polar: "Murmur on Windows · 7F3A". */
+  /** What activation names this PC to Polar: "Vocette on Windows · 7F3A". */
   deviceLabel: string
 }
 

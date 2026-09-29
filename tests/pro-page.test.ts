@@ -213,8 +213,8 @@ describe('the Pro page', () => {
   it('says what activating sends, before anything is sent', async () => {
     const { at } = await makeHarness(licenceStatus({ plan: 'trial' }))
     expect(at('#licence-note').textContent).toBe(
-      'Activating sends your key and a device label (“Murmur on Windows · 7F3A”) to Polar, our ' +
-        'payment provider, once. Murmur never checks again.'
+      'Activating sends your key and a device label (“Vocette on Windows · 7F3A”) to Polar, our ' +
+        'payment provider, once. Vocette never checks again.'
     )
     expect(at('#licence-entry').hidden).toBe(false)
     expect(at('#licence-active').hidden).toBe(true)
@@ -241,7 +241,7 @@ describe('the Pro page', () => {
     expect(harness.activateLicence).toHaveBeenCalledWith(' MURMUR-KEY ')
     expect(harness.at('#licence-key').value).toBe('')
     expect(harness.at('#licence-feedback').textContent).toBe(
-      'Pro is active on this PC. Thank you for supporting Murmur.'
+      'Pro is active on this PC. Thank you for supporting Vocette.'
     )
     expect(harness.applyLicence).toHaveBeenCalledWith(
       expect.objectContaining({ plan: 'pro', licence: LICENSED.licence })
@@ -284,7 +284,7 @@ describe('the Pro page', () => {
 
   it('shows the active licence, and the portal only once it is configured', async () => {
     const withPortal = await makeHarness(licenceStatus({ plan: 'pro', ...LICENSED }))
-    expect(withPortal.at('#pro-status').textContent).toBe('Pro — thank you for supporting Murmur')
+    expect(withPortal.at('#pro-status').textContent).toBe('Pro — thank you for supporting Vocette')
     expect(withPortal.at('#manage-purchase').hidden).toBe(false)
     withPortal.at('#manage-purchase').emit('click')
     expect(withPortal.openExternal).toHaveBeenCalledWith('customer-portal')

@@ -197,7 +197,7 @@ describe('the clipboard switches', () => {
     const { content } = await makeHarness()
     const html = content.innerHTML
     expect(html).toContain(
-      '<strong>Put my clipboard back</strong><span>After pasting, Murmur restores what you had copied. Turn off to keep each transcript on the clipboard.</span>'
+      '<strong>Put my clipboard back</strong><span>After pasting, Vocette restores what you had copied. Turn off to keep each transcript on the clipboard.</span>'
     )
     expect(html).toContain(
       '<strong>Paste last dictation with Alt + Shift + V</strong><span>Handy when a paste went to the wrong place.</span>'

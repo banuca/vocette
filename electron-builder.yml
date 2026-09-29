@@ -1,6 +1,6 @@
-appId: dev.murmur.app
-productName: Murmur
-copyright: Copyright © 2026 Murmur contributors
+appId: app.vocette
+productName: Vocette
+copyright: Copyright © 2026 Vocette contributors
 
 directories:
   output: dist
@@ -43,8 +43,8 @@ win:
     - target: zip
       arch: [x64]
   icon: resources/icon.png
-  artifactName: ${name}-${version}-win-${arch}.${ext}
-  # Never asks for administrator rights: Murmur installs per user and runs as
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+  # Never asks for administrator rights: Vocette installs per user and runs as
   # the user, which is also what keeps its keyboard hook out of elevated apps.
   requestedExecutionLevel: asInvoker
   # Signing: set WIN_CSC_LINK (or CSC_LINK) and CSC_KEY_PASSWORD to a PFX and
@@ -62,7 +62,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Murmur
+  shortcutName: Vocette
   # Uninstalling keeps settings, history and the speech model: a reinstall
   # picks up where the user left off. They are removed by hand, and the
   # website's FAQ says where.
@@ -77,7 +77,7 @@ mac:
       arch: [arm64, x64]
   icon: resources/icon.png
   category: public.app-category.productivity
-  artifactName: ${name}-${version}-mac-${arch}.${ext}
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
   # The hardened runtime is what notarisation requires. The two memory
   # entitlements are Electron's; library validation has to be relaxed because
   # koffi dlopens system frameworks for the foreground checks.
@@ -90,7 +90,7 @@ mac:
     # Input Monitoring are granted from their own privacy panes and show no
     # custom text; the app links to those panes instead.
     NSMicrophoneUsageDescription: >-
-      Murmur records from your microphone only while you hold or press your
+      Vocette records from your microphone only while you hold or press your
       dictation shortcut, and sends that recording to the transcription provider
       you configured.
   # Signing and notarisation are configured but deliberately not credentialled.
@@ -101,7 +101,7 @@ mac:
   notarize: false
 
 dmg:
-  artifactName: ${name}-${version}-mac-${arch}.${ext}
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
 
 linux:
   target:
@@ -111,15 +111,15 @@ linux:
       arch: [x64]
   icon: resources/icon.png
   category: Utility;AudioVideo;
-  maintainer: Murmur contributors
+  maintainer: Vocette contributors
   synopsis: Push-to-talk dictation with your own transcription API key
-  artifactName: ${name}-${version}-linux-${arch}.${ext}
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
   # The desktop file name has to match `app.setDesktopName` in the main
   # process, or the Wayland global-shortcut portal cannot identify the app.
   executableName: murmur
   desktop:
     entry:
-      Name: Murmur
+      Name: Vocette
       Comment: Push-to-talk dictation
       Categories: Utility;AudioVideo;
       # Electron derives WM_CLASS from the executable name; without this the

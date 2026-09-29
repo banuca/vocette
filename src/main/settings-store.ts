@@ -46,7 +46,7 @@ export const SETTINGS_VERSION = 5
 /**
  * A Pro licence activated on this PC: what releasing it later needs, and what
  * the Pro page shows. Nothing else from Polar's answer is kept — it names the
- * buyer, and none of that is Murmur's business.
+ * buyer, and none of that is Vocette's business.
  *
  * `encryptedKey` holds the key encrypted by the operating system wherever
  * that is possible. Where it is not, it holds the key as typed, and
@@ -117,7 +117,7 @@ export interface StoredSettings {
   trialStartedAt: string | null
   /** The one notice that the trial has ended has been dismissed, for good. */
   trialEndNoticeDismissed: boolean
-  /** Names this PC in the activation label: the 7F3A of "Murmur on Windows · 7F3A". */
+  /** Names this PC in the activation label: the 7F3A of "Vocette on Windows · 7F3A". */
   deviceTag: string
   licence: StoredLicence | null
   /** The daily update check. Off unless the user switches it on on the About page. */

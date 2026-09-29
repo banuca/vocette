@@ -200,7 +200,7 @@ export function renderPro(context: AppContext): ProView {
       pending = false
       if (result.ok) {
         keyInput.value = ''
-        say('Pro is active on this PC. Thank you for supporting Murmur.', 'good')
+        say('Pro is active on this PC. Thank you for supporting Vocette.', 'good')
       } else {
         say(result.error, 'error')
       }

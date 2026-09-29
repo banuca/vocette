@@ -1,5 +1,5 @@
 /**
- * What the operating system will and will not let Murmur do.
+ * What the operating system will and will not let Vocette do.
  *
  * This crosses the IPC bridge, so it is deliberately plain data: a state, a
  * sentence a person can act on, and — when one exists — the settings pane that

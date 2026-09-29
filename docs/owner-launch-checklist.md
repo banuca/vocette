@@ -4,24 +4,27 @@ Everything that only you can do before the first sale, in the order to do it. Ea
 says where to click. Nothing here is done by the app or by Claude.
 
 Status of the product itself: built and verified feature by feature on branch `launch`
-(see `docs/launch-plan.md` §7); `main` has not moved. The guided hand test comes first.
+(see `docs/launch-plan.md` §7); `main` has not moved. **Pro is being changed from a one-off
+licence to monthly and annual subscriptions; section 2 is rewritten when that lands.**
+The guided hand test comes after it.
 
 ## 1. Before anything is public
 
-1. **Confirm you may sell it.** You work at ITU. Check your employment terms (or ask HR /
-   legal) that a personal side project built in your own time, on your own equipment, is
-   yours to sell. Get the answer in writing. *This comes before everything else.*
-2. **Pick the name.** Shortlist in `docs/research/naming.md` (recommended: **Vocette**;
-   runner-up **Quietword**). Before choosing, search the trademark registers for your
-   markets (Swiss IGE Swissreg, EUIPO eSearch, USPTO) and check the domain is free.
-3. **Rename the product** once chosen, on a clean tree:
-   `node scripts/rename-product.mjs "Vocette" app.vocette --dry-run` (read the list), then
-   the same without `--dry-run`, then `npm test`, then commit. The profile and model
-   folders keep their current names on purpose.
-4. **Decide the price.** Currently `US$29, once, for up to 3 PCs`
-   (`PRO_PRICE_LABEL` in `src/shared/product.ts`; the price itself is set in Polar).
-5. **Decide the copyright holder.** `LICENSE` says "Murmur contributors". For a product you
-   sell, it should probably be your own name or your company's. Change the line in
+1. ~~Confirm you may sell it.~~ **Done** — ITU has confirmed (29 September 2026).
+2. ~~Pick the name.~~ **Done** — **Vocette**; the code is renamed on `launch` (the profile
+   and model folders keep the name `Murmur` on disk, on purpose).
+3. **Register the domains now, before anything named Vocette is pushed or shown in
+   public:** `vocette.com` and `vocette.app` (and `getvocette.com`; optionally `vocette.io`,
+   `vocette.ai` and the typo `vosette.com`). All were unregistered on 25 September. The
+   `launch` branch is only on this PC, so nothing public mentions Vocette yet.
+4. **Trade mark:** ask an attorney for a clearance search on VOCETTE in classes 9 and 42
+   (CH, EU, UK, US, including sound-alikes); if clear, file in Switzerland first, then
+   the EU, UK and US through the Madrid system. See `docs/research/naming.md`.
+5. **Rename the GitHub repository** from `murmur` to `vocette` when you publish
+   (Settings → General → Repository name; GitHub redirects the old address). Then change
+   `UPDATE_REPOSITORY` in `src/shared/product.ts` to `banuca/vocette`.
+6. **Decide the copyright holder.** `LICENSE` says "Vocette contributors". For a product
+   you sell, it should probably be your own name or your company's. Change the line in
    `LICENSE` and `copyright:` in `electron-builder.yml`.
 
 ## 2. Polar (payments and licence keys)

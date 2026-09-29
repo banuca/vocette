@@ -39,7 +39,7 @@ export function loadCommonWords(): Promise<CommonWordTest> {
       return (word: string): boolean => words.has(word)
     })
     .catch((error: unknown) => {
-      console.error('Murmur could not read its common-word list:', error)
+      console.error('Vocette could not read its common-word list:', error)
       return EVERY_WORD_IS_COMMON
     })
   return loading

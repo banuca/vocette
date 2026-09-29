@@ -20,7 +20,7 @@ export type { DesktopServices } from './desktop'
 export type { PlatformAdapter, ShortcutBackend, TargetTracker } from './types'
 
 const UNSUPPORTED =
-  'Murmur has no system integration for this operating system yet. ' +
+  'Vocette has no system integration for this operating system yet. ' +
   'Recording from the window, transcription, the clipboard and history all work.'
 
 /**

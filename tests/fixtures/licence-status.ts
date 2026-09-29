@@ -15,7 +15,7 @@ export function licenceStatus(overrides: Partial<LicenceStatus> = {}): LicenceSt
     portalAvailable: true,
     priceLabel: 'US$29, once, for up to 3 PCs',
     trialEndNoticeDue: false,
-    deviceLabel: 'Murmur on Windows · 7F3A',
+    deviceLabel: 'Vocette on Windows · 7F3A',
     ...overrides
   }
 }

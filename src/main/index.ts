@@ -223,15 +223,15 @@ function broadcastStatus(status: WorkflowStatus): void {
   // The tray tooltip mirrors the workflow so the state is visible even with
   // the overlay off-screen.
   const tooltipByPhase: Record<WorkflowStatus['phase'], string> = {
-    idle: 'Murmur',
-    starting: 'Murmur — starting microphone…',
-    recording: 'Murmur — listening…',
-    processing: 'Murmur — transcribing…',
+    idle: 'Vocette',
+    starting: 'Vocette — starting microphone…',
+    recording: 'Vocette — listening…',
+    processing: 'Vocette — transcribing…',
     // The outcome in its own words: after a paste the clipboard is given
     // back, so "copied to clipboard" is no longer true of every success.
-    success: `Murmur — ${status.message}`,
-    cancelled: 'Murmur — dictation cancelled',
-    error: `Murmur — ${status.detail ?? 'dictation failed'}`
+    success: `Vocette — ${status.message}`,
+    cancelled: 'Vocette — dictation cancelled',
+    error: `Vocette — ${status.detail ?? 'dictation failed'}`
   }
   tray?.setToolTip(tooltipByPhase[status.phase])
 
@@ -357,7 +357,7 @@ function entitlement(): Entitlement {
   })
 }
 
-/** "Murmur on Windows · 7F3A": how activation names this PC to Polar. */
+/** "Vocette on Windows · 7F3A": how activation names this PC to Polar. */
 function thisDeviceLabel(): string {
   return deviceLabel(platform.id, settingsStore.getInternal().deviceTag)
 }
@@ -386,7 +386,7 @@ async function activateLicence(rawKey: string): Promise<LicenceActivation> {
   if (settingsStore.licenceRecord()) return refuse('Pro is already active on this PC.')
   // Every activation takes a device slot, so a second click must not send a
   // second request.
-  if (licenceRequestInFlight) return refuse('Murmur is already talking to Polar. Wait a moment.')
+  if (licenceRequestInFlight) return refuse('Vocette is already talking to Polar. Wait a moment.')
   const config = licenceConfig(process.env)
   if (!purchasesConfigured(config)) return refuse(LICENCE_MESSAGES.notConfigured)
 
@@ -433,7 +433,7 @@ async function releaseLicence(): Promise<LicenceRelease> {
   })
   const record = settingsStore.licenceRecord()
   if (!record) return { ok: true, status: licenceStatus() }
-  if (licenceRequestInFlight) return refuse('Murmur is already talking to Polar. Wait a moment.', false)
+  if (licenceRequestInFlight) return refuse('Vocette is already talking to Polar. Wait a moment.', false)
 
   let key: string
   try {
@@ -558,7 +558,7 @@ async function stopModelDownload(): Promise<void> {
 /** The speech-engine utility process. Lives beside index.js in the build. */
 function spawnEngineWorker(): WorkerHandle {
   const child = utilityProcess.fork(join(__dirname, 'engine-worker.js'), [], {
-    serviceName: 'Murmur speech engine'
+    serviceName: 'Vocette speech engine'
   })
   return {
     postMessage: (message) => child.postMessage(message),
@@ -616,12 +616,12 @@ function reportStartupRetentionFailure(error: unknown): void {
     .showMessageBox({
       type: 'warning',
       title: 'History retention needs attention',
-      message: 'Murmur started, but expired transcript history could not be removed.',
+      message: 'Vocette started, but expired transcript history could not be removed.',
       detail:
         `${storageFailureReason(error)}\n\n` +
         'The cleanup was not confirmed complete, and part of it may already have been ' +
         'applied. Expired transcripts may still be on disk and can reappear the next ' +
-        'time Murmur starts. Murmur may not be able to save new transcripts ' +
+        'time Vocette starts. Vocette may not be able to save new transcripts ' +
         'either, so treat anything dictated in this session as unsaved. Dictation, the ' +
         'clipboard and auto-paste are unaffected.' +
         `\n\n${RETENTION_RETRY_ADVICE}`
@@ -756,7 +756,7 @@ async function createWindows(): Promise<void> {
     minWidth: 860,
     minHeight: 620,
     show: false,
-    title: 'Murmur',
+    title: 'Vocette',
     backgroundColor: '#f4f6fb',
     icon,
     webPreferences: { ...sharedPreferences, preload }
@@ -826,7 +826,7 @@ function broadcastTheme(): void {
 function applyLaunchAtLogin(enabled: boolean): void {
   // An isolated profile — a test run, or a second copy run side by side —
   // keeps its own preference but never adds or removes the startup entry of
-  // the Murmur this computer actually starts.
+  // the Vocette this computer actually starts.
   if (profileOverride) return
   platform.setLaunchAtLogin(enabled)
 }
@@ -843,7 +843,7 @@ function platformStatus(): PlatformStatus {
 
 /**
  * Re-reads what the operating system will allow and tells the window if it
- * changed. macOS permissions can be granted or revoked while Murmur is
+ * changed. macOS permissions can be granted or revoked while Vocette is
  * running, so a snapshot taken at startup is not something to trust for the
  * rest of the session.
  */
@@ -951,7 +951,7 @@ function applyPasteLastShortcut(enabled: boolean): void {
 function shortcutHintLabel(): string {
   const settings = settingsStore.getInternal()
   if (!globalShortcutUsable(capabilities)) {
-    return 'Open Murmur and press Record'
+    return 'Open Vocette and press Record'
   }
   return effectiveRecordingMode(settings.recordingMode, capabilities) === 'toggle'
     ? `Press ${shortcutLabel()} to start and stop`
@@ -1048,7 +1048,7 @@ function rebuildTrayMenu(): void {
       }
     },
     {
-      label: 'Quit Murmur',
+      label: 'Quit Vocette',
       click: () => {
         isQuitting = true
         app.quit()
@@ -1067,7 +1067,7 @@ function launchAtLoginLabel(): string {
 
 function createTray(): void {
   tray = new Tray(nativeImage.createFromPath(resourcePath('tray.png')))
-  tray.setToolTip('Murmur')
+  tray.setToolTip('Vocette')
   tray.on('click', () => showMain('history'))
   rebuildTrayMenu()
 }
@@ -1393,7 +1393,7 @@ function registerIpc(): void {
   // purchase email. The Pro page says so before offering this.
   ipcMain.handle('licence:remove-local', (event): LicenceStatus => {
     if (!fromMain(event)) throw new Error('Forbidden.')
-    if (licenceRequestInFlight) throw new Error('Murmur is already talking to Polar. Wait a moment.')
+    if (licenceRequestInFlight) throw new Error('Vocette is already talking to Polar. Wait a moment.')
     if (settingsStore.licenceRecord()) {
       settingsStore.clearLicence()
       broadcastLicenceStatus()
@@ -1453,7 +1453,7 @@ function registerIpc(): void {
 async function bootstrap(): Promise<void> {
   const userData = app.getPath('userData')
   // Before either store opens: the profile folder is named after the app, so
-  // the rename from Murmur would otherwise leave the user's settings and
+  // the rename from Vocette would otherwise leave the user's settings and
   // transcripts in a directory nothing reads. Failures are reported, never
   // thrown — a profile that could not be copied must still open a window.
   const migration = migrateLegacyProfile({
@@ -1588,7 +1588,7 @@ async function bootstrap(): Promise<void> {
   if (warnings.length) {
     dialog.showMessageBox({
       type: 'warning',
-      title: 'Murmur recovered your data',
+      title: 'Vocette recovered your data',
       message: 'Some saved data could not be read.',
       detail: warnings.join('\n\n')
     })
@@ -1597,8 +1597,8 @@ async function bootstrap(): Promise<void> {
   if (migration.error) {
     dialog.showMessageBox({
       type: 'warning',
-      title: 'Murmur',
-      message: 'Your previous Murmur settings could not be copied across.',
+      title: 'Vocette',
+      message: 'Your previous Vocette settings could not be copied across.',
       detail:
         `${migration.error}
 
@@ -1611,8 +1611,8 @@ Nothing was deleted: the old profile is still in ` +
     // named after the application and cannot follow a rename.
     dialog.showMessageBox({
       type: 'info',
-      title: 'Murmur',
-      message: 'Murmur is now Murmur.',
+      title: 'Vocette',
+      message: 'Vocette is now Vocette.',
       detail:
         'Your settings and transcript history have been carried across. Your saved ' +
         'API key could not be: it is held by this system under the old application ' +
@@ -1644,7 +1644,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showMain('history'))
   app.whenReady().then(bootstrap).catch((error: unknown) => {
     dialog.showErrorBox(
-      'Murmur could not start',
+      'Vocette could not start',
       error instanceof Error ? error.message : 'An unexpected startup error occurred.'
     )
     app.quit()
@@ -1675,5 +1675,5 @@ app.on('before-quit', (event) => {
   })
 })
 
-// Murmur lives in the tray; closing the window must not quit it.
+// Vocette lives in the tray; closing the window must not quit it.
 app.on('window-all-closed', () => {})

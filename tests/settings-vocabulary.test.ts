@@ -267,7 +267,7 @@ describe('the vocabulary card', () => {
     box.value = 'Kirinde\nITU-T\nDataverse'
     box.emit('input')
     expect(at('#vocabulary-badge').textContent).toBe('3 terms — unsaved')
-    // The green badge means "this is what Murmur will send", so unsaved text
+    // The green badge means "this is what Vocette will send", so unsaved text
     // must not wear it.
     expect(at('#vocabulary-badge').className).not.toContain('is-configured')
   })
@@ -381,14 +381,14 @@ describe('the replacements box', () => {
     expect(at('#replacements-note').textContent).toContain('1 rule — 2 lines ignored:')
   })
 
-  it('says so when the list reaches the most Murmur will use', async () => {
+  it('says so when the list reaches the most Vocette will use', async () => {
     const many = Array.from(
       { length: MAX_REPLACEMENT_RULES + 5 },
       (_, i) => `word${i} => W${i}`
     ).join('\n')
     const { at } = await makeHarness({ replacements: many })
     expect(at('#replacements-note').textContent).toContain(
-      `${MAX_REPLACEMENT_RULES} rules, the most Murmur will use.`
+      `${MAX_REPLACEMENT_RULES} rules, the most Vocette will use.`
     )
   })
 
@@ -428,7 +428,7 @@ describe('the replacements box', () => {
  */
 describe('the vocabulary note and the correction', () => {
   const CORRECTION =
-    'Murmur corrects near-misses of these words after it hears you — ' +
+    'Vocette corrects near-misses of these words after it hears you — ' +
     '“data verse” becomes “Dataverse”.'
 
   it('describes only the correction for the on-device engine, and claims nothing is sent', async () => {

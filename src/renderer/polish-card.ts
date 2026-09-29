@@ -59,7 +59,7 @@ export function polishCardMarkup(): string {
           </label>
           <label class="field"><span>Wait at most</span><select id="polish-budget">${budgets}</select></label>
         </div>
-        <small class="field-note">If polishing takes longer, Murmur pastes your text unpolished and says so.</small>
+        <small class="field-note">If polishing takes longer, Vocette pastes your text unpolished and says so.</small>
         <div class="polish-test-row">
           <button class="secondary-button" id="polish-test" type="button">Test</button>
           <small class="connection-result" id="polish-test-result" aria-live="polite" hidden></small>

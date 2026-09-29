@@ -99,8 +99,8 @@ describe('never turning a real word into a term', () => {
   })
 
   it('never reads a longer word that holds the whole term as a near miss', () => {
-    expect(fix('MurmurAI is live', ['Murmur'])).toBe('MurmurAI is live')
-    expect(fix('the Murmure app', ['Murmur'])).toBe('the Murmure app')
+    expect(fix('MurmurAI is live', ['Vocette'])).toBe('MurmurAI is live')
+    expect(fix('the Murmure app', ['Vocette'])).toBe('the Murmure app')
   })
 
   it('leaves web addresses, email addresses and paths exactly as written', () => {
@@ -255,7 +255,7 @@ describe('robustness', () => {
   })
 
   it('handles 100 terms against a 300-word transcript quickly', () => {
-    const names = ['Kirinde', 'Dataverse', 'Parakeet', 'Murmur', 'Sherpa']
+    const names = ['Kirinde', 'Dataverse', 'Parakeet', 'Vocette', 'Sherpa']
     const terms = Array.from({ length: 100 }, (_, index) => `${names[index % 5]}${index}`)
     const sentence =
       'please send the draft to Kirinda before friday and open data verse for the ' +
@@ -277,7 +277,7 @@ describe('robustness', () => {
 
   it("handles Pro's 500 terms against a 300-word transcript in reasonable time", () => {
     // Pro keeps up to 500 terms in use, and the correction sees all of them.
-    const names = ['Kirinde', 'Dataverse', 'Parakeet', 'Murmur', 'Sherpa']
+    const names = ['Kirinde', 'Dataverse', 'Parakeet', 'Vocette', 'Sherpa']
     const terms = Array.from({ length: 500 }, (_, index) => `${names[index % 5]}${index}`)
     const sentence =
       'please send the draft to Kirinda before friday and open data verse for the ' +

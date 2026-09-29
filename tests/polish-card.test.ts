@@ -117,7 +117,7 @@ describe('the AI polish card', () => {
     expect(html).toContain('LM Studio on this PC')
     expect(html).toContain('<option value="custom">Custom</option>')
     expect(html).toContain('<option value="4000">4 s</option>')
-    expect(html).toContain('If polishing takes longer, Murmur pastes your text unpolished and says so.')
+    expect(html).toContain('If polishing takes longer, Vocette pastes your text unpolished and says so.')
   })
 
   it('shows what is saved, and names the preset it belongs to', () => {

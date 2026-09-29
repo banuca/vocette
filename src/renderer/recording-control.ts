@@ -13,7 +13,7 @@ import type { WorkflowStatus } from '../shared/types'
  * It is the entry point that always works. A global shortcut can be missing,
  * refused or impossible depending on the desktop; a button in a window the
  * user is already looking at cannot be. Recording started here is delivered to
- * the clipboard, because the window in front is Murmur itself.
+ * the clipboard, because the window in front is Vocette itself.
  *
  * The whole state is derived by a pure function, so every combination of
  * phase, capability and setup state is testable without a browser.

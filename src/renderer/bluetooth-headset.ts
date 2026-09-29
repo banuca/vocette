@@ -4,7 +4,7 @@
  * Classic Bluetooth cannot carry stereo sound and a headset's microphone at
  * the same time. Opening the microphone moves the headset to its hands-free
  * profile, and whatever the user is listening to drops to mono, call-quality
- * sound until the microphone closes again. Murmur cannot change that; it can
+ * sound until the microphone closes again. Vocette cannot change that; it can
  * say so where the microphone is chosen, so the drop is not a mystery.
  *
  * A web page is never told how a device is connected — a microphone has an

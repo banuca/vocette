@@ -27,7 +27,7 @@ npm run release:win   # see docs/release.md
 
 ## What the app can do
 
-Murmur asks the operating system for a few things that are worth
+Vocette asks the operating system for a few things that are worth
 understanding before you run it. What it is granted differs by platform, and
 what it does when it is refused is the same everywhere: it says so and carries
 on with the Record button and the clipboard.
@@ -42,7 +42,7 @@ explicitly; the app links to the pane and works from its own window until you
 do.
 
 On Wayland there is no hook at all. The compositor does not permit one, and
-Murmur does not try to obtain one by other means — no privileged input
+Vocette does not try to obtain one by other means — no privileged input
 daemon, no `uinput` group, no running as root. It registers a start/stop
 shortcut with the desktop portal instead.
 
@@ -94,7 +94,7 @@ This is the complete list. Each one happens only when stated.
 2. **Pro licence** — only when the user presses **Activate** or **Release this
    PC**: one POST to `api.polar.sh` (`/v1/customer-portal/license-keys/activate`
    or `/deactivate`) carrying the licence key, Polar's organisation id, a device
-   label ("Murmur on Windows · 7F3A") and the app version — or, to release, the
+   label ("Vocette on Windows · 7F3A") and the app version — or, to release, the
    key and the activation id. No Authorization header. The buyer's name and email
    in Polar's reply are discarded; only the activation id, the benefit id, a
    masked key and the date are kept. The key itself is stored with `safeStorage`
@@ -136,7 +136,7 @@ on, audio and text never leave the computer.
   is also zeroed once the request completes.
 - Transcript text is stored locally in the app's own data folder — on Windows
   `%APPDATA%\Murmur\history.json`,
-  beside the `.bak` and `.tmp` recovery copies Murmur manages for it.
+  beside the `.bak` and `.tmp` recovery copies Vocette manages for it.
   Deleting an entry, clearing history, and a retention pass that does remove
   expired entries all scrub those copies before reporting success.
 - A `history.json` that cannot be parsed is preserved as
@@ -161,7 +161,7 @@ on, audio and text never leave the computer.
   key is not written at all.** On Linux without an unlocked keyring,
   `safeStorage` falls back to a backend called `basic_text`, which encrypts
   with a hard-coded key. That is obfuscation, not encryption, and calling it
-  encrypted would be a lie. Murmur refuses to save there and instead
+  encrypted would be a lie. Vocette refuses to save there and instead
   offers a clearly labelled **session-only key**: held in main-process memory,
   never written to disk, never exposed through public settings or diagnostics,
   and gone when the app quits. Unlocking a keyring and saving again is the

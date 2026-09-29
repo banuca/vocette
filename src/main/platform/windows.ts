@@ -11,10 +11,10 @@ import {
 
 const NO_HOOK =
   'The keyboard hook could not start, so system-wide shortcuts are off. ' +
-  'You can still record from the Murmur window.'
+  'You can still record from the Vocette window.'
 
 const NO_TARGET_CHECK =
-  'Murmur could not check which window has focus, so it copies the ' +
+  'Vocette could not check which window has focus, so it copies the ' +
   'transcript instead of pasting it.'
 
 /**

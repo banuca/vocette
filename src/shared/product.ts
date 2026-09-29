@@ -1,5 +1,5 @@
 /**
- * What Murmur sells, and the limits Free and Pro differ by.
+ * What Vocette sells, and the limits Free and Pro differ by.
  *
  * Everyone gets Pro for the first 30 days. After that, anyone who has not
  * bought it keeps a Free version that is genuinely good: dictation of any
@@ -16,7 +16,7 @@
  * those overrides never reach the renderer.
  */
 
-export const PRODUCT_NAME = 'Murmur'
+export const PRODUCT_NAME = 'Vocette'
 /** Shown on the Buy button. Owner to confirm before release. */
 export const PRO_PRICE_LABEL = 'US$29, once, for up to 3 PCs'
 export const TRIAL_DAYS = 30

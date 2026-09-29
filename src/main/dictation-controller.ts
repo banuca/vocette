@@ -49,7 +49,7 @@ const PASTE_DELAY_MS = 80
  */
 const CLIPBOARD_RESTORE_MS = 750
 /**
- * The longest Murmur waits for the user to let go of Ctrl, Shift, Alt or the
+ * The longest Vocette waits for the user to let go of Ctrl, Shift, Alt or the
  * Windows key before sending its own Ctrl + V. Pressed straight after Alt +
  * Shift + V, those keys are still down for a moment, and a paste sent into
  * them arrives as Ctrl + Alt + Shift + V — which pastes nothing.
@@ -73,7 +73,7 @@ export type SoundKind = 'start' | 'success' | 'error'
 /**
  * Where a dictation was started from.
  *
- * It decides delivery. A take started from the Murmur window has no
+ * It decides delivery. A take started from the Vocette window has no
  * external target — this app has focus — so it is delivered to the clipboard
  * and nothing is typed anywhere. Only a take started by the global shortcut
  * has a target worth capturing and verifying.
@@ -464,7 +464,7 @@ export class DictationController {
 
     // What any shortcut take captures at its start, and nothing the user can
     // see. The status on screen, its timer and a kept retry take are all left
-    // exactly as they are, in case this press was never meant for Murmur.
+    // exactly as they are, in case this press was never meant for Vocette.
     this.deps.captureForeground()
     this.currentRequestId = randomUUID()
     this.clearDictationTimers()
@@ -824,9 +824,9 @@ export class DictationController {
     this.abandonProvisional()
     // A fresh id invalidates any stale recorder events still in flight.
     this.currentRequestId = randomUUID()
-    // Every Retry is pressed in Murmur's own window or tray menu, so whatever
-    // has focus now is Murmur, not the app the take was dictated for.
-    // Capturing it would paste the transcript into Murmur itself — and, with
+    // Every Retry is pressed in Vocette's own window or tray menu, so whatever
+    // has focus now is Vocette, not the app the take was dictated for.
+    // Capturing it would paste the transcript into Vocette itself — and, with
     // the clipboard given back afterwards, leave it only in History. A retry
     // is therefore delivered to the clipboard, like a take started from the
     // window, for the user to paste where they meant it to go. The retained

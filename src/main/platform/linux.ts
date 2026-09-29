@@ -17,10 +17,10 @@ import {
 
 const NO_HOOK =
   'The keyboard hook could not start, so system-wide shortcuts are off. ' +
-  'You can still record from the Murmur window.'
+  'You can still record from the Vocette window.'
 
 const NO_X11_TARGET_CHECK =
-  'Murmur could not ask the X server which window has focus, so it ' +
+  'Vocette could not ask the X server which window has focus, so it ' +
   'copies the transcript instead of pasting it.'
 
 const WAYLAND_NO_HOLD =
@@ -28,7 +28,7 @@ const WAYLAND_NO_HOLD =
   'not possible here. The shortcut starts and stops recording instead.'
 
 const WAYLAND_NO_TARGET =
-  'Wayland does not tell applications which window has focus, so Murmur ' +
+  'Wayland does not tell applications which window has focus, so Vocette ' +
   'cannot check where a paste would land. The transcript is copied to your ' +
   'clipboard instead.'
 

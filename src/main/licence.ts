@@ -36,19 +36,19 @@ export const MAX_LICENCE_KEY_CHARS = 200
 /** Every sentence the licence flow can show, so the tests hold them to the letter. */
 export const LICENCE_MESSAGES = {
   empty: 'Enter your licence key first.',
-  notAKey: 'That does not look like a Murmur licence key.',
+  notAKey: 'That does not look like a Vocette licence key.',
   activationLimit:
     'This key is already active on its maximum number of PCs. Release it on another PC, ' +
     'or manage your devices from your purchase email.',
   revoked: 'This licence key has been revoked or disabled.',
   expired: 'This licence key has expired.',
-  noActivations: 'This key cannot be activated in Murmur. Contact support.',
+  noActivations: 'This key cannot be activated in Vocette. Contact support.',
   notRecognised: 'That licence key was not recognised. Check it and try again.',
-  outdated: 'This version of Murmur can no longer activate licences. Update Murmur and try again.',
+  outdated: 'This version of Vocette can no longer activate licences. Update Vocette and try again.',
   rateLimited: 'Too many attempts. Wait a minute and try again.',
   wrongProduct: 'That key is for a different product.',
   unreachable: 'Could not reach Polar. Activation needs an internet connection once.',
-  notConfigured: 'Pro purchases are not open yet in this version of Murmur.',
+  notConfigured: 'Pro purchases are not open yet in this version of Vocette.',
   unavailable: 'Polar is not answering properly right now. Try again in a few minutes.',
   releaseUnreachable:
     'Could not reach Polar, so this PC was not released. Check your internet connection and try again.'
@@ -69,7 +69,7 @@ export interface LicenceConfig {
 }
 
 export interface ActivationRequest extends LicenceConfig {
-  /** Names this PC in the buyer's Polar portal: "Murmur on Windows · 7F3A". */
+  /** Names this PC in the buyer's Polar portal: "Vocette on Windows · 7F3A". */
   label: string
   appVersion: string
 }
@@ -149,7 +149,7 @@ export class LicenceClient {
 
   /**
    * Activates a key on this PC: one request, and an answer that is accepted
-   * only if it says the key is granted, for Murmur Pro, and not expired.
+   * only if it says the key is granted, for Vocette Pro, and not expired.
    */
   async activate(rawKey: string, request: ActivationRequest): Promise<ActivationResult> {
     // Trimmed, because a pasted key often brings a space or a line break
@@ -320,7 +320,7 @@ export function purchasesConfigured(config: LicenceConfig): boolean {
   return config.orgId !== '' && config.benefitId !== ''
 }
 
-/** "Murmur on Windows · 7F3A": the label Polar shows the buyer for this PC. */
+/** "Vocette on Windows · 7F3A": the label Polar shows the buyer for this PC. */
 export function deviceLabel(platform: string, tag: string): string {
   const names: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' }
   const name = names[platform]

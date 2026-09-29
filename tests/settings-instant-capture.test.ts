@@ -248,7 +248,7 @@ describe('the "Start listening as soon as the shortcut is held" switch', () => {
     expect(at('#instant-capture').disabled).toBe(true)
     expect(at('#instant-capture-note').hidden).toBe(false)
     expect(at('#instant-capture-note').textContent).toBe(
-      'This desktop tells Murmur about the shortcut only once it has fired, so listening cannot start any earlier.'
+      'This desktop tells Vocette about the shortcut only once it has fired, so listening cannot start any earlier.'
     )
     // The shortcut itself still works there, so its own row says nothing.
     expect(at('#hotkey-note').hidden).toBe(true)
@@ -262,7 +262,7 @@ describe('the "Start listening as soon as the shortcut is held" switch', () => {
   it('gives the shortcut’s own reason where there is no shortcut at all', async () => {
     const reason =
       'The keyboard hook could not start, so system-wide shortcuts are off. ' +
-      'You can still record from the Murmur window.'
+      'You can still record from the Vocette window.'
     const noHook = await makeHarness({
       platform: platform('windows', {
         globalHold: unavailable(reason),
@@ -277,7 +277,7 @@ describe('the "Start listening as soon as the shortcut is held" switch', () => {
     )
     vi.unstubAllGlobals()
 
-    const permission = 'Murmur needs Input Monitoring permission to see the shortcut.'
+    const permission = 'Vocette needs Input Monitoring permission to see the shortcut.'
     const macos = await makeHarness({
       platform: platform('macos', {
         globalHold: needsPermission(permission, 'input-monitoring'),

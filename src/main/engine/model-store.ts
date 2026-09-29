@@ -277,7 +277,7 @@ export class ModelStore {
 
   private manifest(id: string): ModelManifest {
     const manifest = this.manifests.find((candidate) => candidate.id === id)
-    if (!manifest) throw new ModelStoreError('That speech model is not one Murmur knows.')
+    if (!manifest) throw new ModelStoreError('That speech model is not one Vocette knows.')
     return manifest
   }
 

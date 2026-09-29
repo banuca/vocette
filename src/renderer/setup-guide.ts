@@ -58,7 +58,7 @@ export function setupSteps(input: SetupInput): SetupStep[] {
       id: 'model',
       title: 'Download the speech model',
       detail:
-        'Murmur transcribes on this PC, so your voice never leaves it. The model is ' +
+        'Vocette transcribes on this PC, so your voice never leaves it. The model is ' +
         `${formatMegabytes(engine.model.totalBytes)} and downloads once.`,
       action: null,
       blocking: true
@@ -80,7 +80,7 @@ export function setupSteps(input: SetupInput): SetupStep[] {
   if (input.microphone === 'denied') {
     steps.push({
       id: 'microphone',
-      title: 'Allow Murmur to use your microphone',
+      title: 'Allow Vocette to use your microphone',
       detail: 'Microphone access is blocked, so no audio can be recorded.',
       action: { kind: 'open-pane', pane: 'microphone', label: 'Open privacy settings' },
       blocking: true
@@ -97,7 +97,7 @@ export function setupSteps(input: SetupInput): SetupStep[] {
   if (listening?.pane) {
     steps.push({
       id: 'input-monitoring',
-      title: 'Let Murmur see your shortcut',
+      title: 'Let Vocette see your shortcut',
       detail: listening.reason,
       action: { kind: 'open-pane', pane: listening.pane, label: 'Open permission settings' },
       blocking: false
@@ -108,7 +108,7 @@ export function setupSteps(input: SetupInput): SetupStep[] {
   if (paste.state === 'needs-permission' && paste.pane) {
     steps.push({
       id: 'accessibility',
-      title: 'Let Murmur paste for you',
+      title: 'Let Vocette paste for you',
       detail: paste.reason,
       action: { kind: 'open-pane', pane: paste.pane, label: 'Open permission settings' },
       blocking: false
@@ -148,5 +148,5 @@ export function setupIsBlocking(steps: readonly SetupStep[]): boolean {
 export function setupHeading(steps: readonly SetupStep[]): string {
   return steps.some((step) => step.id === 'model' || step.id === 'transcription')
     ? 'Get started'
-    : 'Finish setting up Murmur'
+    : 'Finish setting up Vocette'
 }

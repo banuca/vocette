@@ -223,8 +223,8 @@ describe('the Updates section', () => {
       UPDATE_CHECK_EXPLANATION
     )
     expect(UPDATE_CHECK_EXPLANATION).toBe(
-      'Sends one request to GitHub (api.github.com) asking for the latest Murmur version. ' +
-        'Nothing about you or your dictation is sent. Murmur never downloads or installs ' +
+      'Sends one request to GitHub (api.github.com) asking for the latest Vocette version. ' +
+        'Nothing about you or your dictation is sent. Vocette never downloads or installs ' +
         'anything by itself.'
     )
     expect(getUpdateStatus).toHaveBeenCalledTimes(1)
@@ -265,7 +265,7 @@ describe('the Updates section', () => {
     const { content, context, openExternal } = render('local', available)
     renderAbout(context)
     await flush()
-    expect(content.querySelector('#update-result')?.textContent).toBe('Murmur 0.6.0 is available.')
+    expect(content.querySelector('#update-result')?.textContent).toBe('Vocette 0.6.0 is available.')
     const download = content.querySelector('#open-release')
     expect(download?.hidden).toBe(false)
     download?.listeners.forEach((listener) => listener())

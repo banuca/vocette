@@ -1344,7 +1344,7 @@ describe('errors and retry', () => {
     expect(deps.transcribe).toHaveBeenCalledTimes(2)
     expect(deps.writeClipboard).toHaveBeenCalledWith('On the second try.')
     expect(deps.paste).not.toHaveBeenCalled()
-    // Retry is pressed in Murmur's own window or tray, so the result goes to
+    // Retry is pressed in Vocette's own window or tray, so the result goes to
     // the clipboard for the user to paste where they meant it to go.
     expect(deps.broadcastStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ phase: 'success', message: 'Copied to clipboard' })
@@ -1354,10 +1354,10 @@ describe('errors and retry', () => {
     expect([...audio]).toEqual([0, 0, 0])
   })
 
-  it('never pastes a retry into whatever has focus, which is Murmur itself', async () => {
+  it('never pastes a retry into whatever has focus, which is Vocette itself', async () => {
     const { controller, deps, beginRecording } = makeHarness()
     // The window in front when Retry is pressed checks out as a valid target —
-    // it is Murmur's own window — and still nothing may be typed into it.
+    // it is Vocette's own window — and still nothing may be typed into it.
     deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
     deps.transcribe
       .mockRejectedValueOnce(new Error('The transcription service is temporarily unavailable.'))

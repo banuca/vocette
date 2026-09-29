@@ -2,7 +2,7 @@
  * What to do with the keyboard hook when the user comes back from a sleep or
  * the lock screen. Windows can drop a low-level hook while the PC is away, and
  * the key-ups of Win + L are made where no hook can see them, so either way
- * the shortcut can go dead until Murmur restarts. Putting the hook back with
+ * the shortcut can go dead until Vocette restarts. Putting the hook back with
  * nothing held cures both.
  */
 

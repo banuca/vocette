@@ -23,11 +23,11 @@ export interface SecureStorageAssessment {
 }
 
 const NO_ENCRYPTION =
-  'This system has no working secure storage, so Murmur will not write ' +
+  'This system has no working secure storage, so Vocette will not write ' +
   'your API key to disk. You can use a key for this session only.'
 
 const PLAINTEXT_BACKEND =
-  'Your desktop has no unlocked keyring, so Murmur would only be able to ' +
+  'Your desktop has no unlocked keyring, so Vocette would only be able to ' +
   'obfuscate your API key rather than encrypt it. It will not write the key to ' +
   'disk. You can use a key for this session only, or unlock a keyring ' +
   '(GNOME Keyring, KWallet) and try again.'

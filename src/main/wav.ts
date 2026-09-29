@@ -3,10 +3,10 @@
  * one of the same shape for Test connection.
  *
  * The speech addon ships WAV readers of its own, but inside Electron they
- * throw "External buffers are not allowed" (the V8 memory cage), so Murmur
+ * throw "External buffers are not allowed" (the V8 memory cage), so Vocette
  * parses the file here and hands the engine an ordinary `Float32Array`.
  *
- * Only what Murmur's own recorder and common tools write is accepted: a
+ * Only what Vocette's own recorder and common tools write is accepted: a
  * RIFF/WAVE file holding 16-bit PCM, mono or stereo. Anything else returns
  * null so the caller can say plainly that the recording could not be read,
  * rather than transcribe noise.

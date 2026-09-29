@@ -105,7 +105,7 @@ describe('setupSteps', () => {
       id: 'model',
       title: 'Download the speech model',
       detail:
-        'Murmur transcribes on this PC, so your voice never leaves it. The model is 670 MB ' +
+        'Vocette transcribes on this PC, so your voice never leaves it. The model is 670 MB ' +
         'and downloads once.',
       // The download happens on the step itself, not somewhere it points to.
       action: null,
@@ -302,6 +302,6 @@ describe('setupHeading', () => {
         })
       })
     )
-    expect(setupHeading(steps)).toBe('Finish setting up Murmur')
+    expect(setupHeading(steps)).toBe('Finish setting up Vocette')
   })
 })

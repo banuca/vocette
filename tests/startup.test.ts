@@ -111,7 +111,7 @@ async function startApp(options: {
   /** The saved API endpoint; empty, as by default, is OpenAI. */
   apiEndpoint?: string
   modelState?: StoredModelState
-  /** Another application already owns every system shortcut Murmur asks for. */
+  /** Another application already owns every system shortcut Vocette asks for. */
   acceleratorTaken?: boolean
   /** When the stored trial began; null is a profile the store has not yet dated. */
   trialStartedAt?: string | null
@@ -670,7 +670,7 @@ describe('bootstrap', () => {
     // And the warning reached the UI, naming the real cause and the retry.
     expect(app.messageBoxes).toHaveLength(1)
     const warning = app.messageBoxes[0]
-    expect(warning?.message).toContain('Murmur started')
+    expect(warning?.message).toContain('Vocette started')
     expect(warning?.detail).toContain('ENOSPC: no space left on device')
     expect(warning?.detail).toContain('may still be on disk')
     expect(warning?.detail).toContain('save your retention setting again')
@@ -726,7 +726,7 @@ describe('bootstrap', () => {
     const app = await startApp({ settingsConstructorError: new Error('settings.json is a directory') })
 
     expect(app.errorBoxes).toEqual([
-      { title: 'Murmur could not start', content: 'settings.json is a directory' }
+      { title: 'Vocette could not start', content: 'settings.json is a directory' }
     ])
     expect(app.quitCalls()).toBe(1)
     expect(app.windowOptions).toEqual([])
@@ -1208,7 +1208,7 @@ describe('the on-device engine', () => {
     expect(app.trayLabels()[0]).toBe('Add your API key in Settings before recording.')
   })
 
-  it('stops the engine when Murmur quits', async () => {
+  it('stops the engine when Vocette quits', async () => {
     const app = await startApp({ engine: 'local', modelState: 'installed' })
     app.quit()
     expect(app.engine.dispose).toHaveBeenCalled()
@@ -1396,7 +1396,7 @@ describe('Pro over IPC', () => {
       licence: null,
       purchasesConfigured: true,
       trialEndNoticeDue: false,
-      deviceLabel: 'Murmur on Windows · 7F3A'
+      deviceLabel: 'Vocette on Windows · 7F3A'
     })
     const shown = JSON.stringify(status)
     for (const secret of ['org-under-test', 'benefit-under-test', 'sandbox']) {
@@ -1419,7 +1419,7 @@ describe('Pro over IPC', () => {
     const result = (await app.invoke('licence:activate', true, 'MURMUR-KEY')) as LicenceActivation
     expect(result).toMatchObject({
       ok: false,
-      error: 'Pro purchases are not open yet in this version of Murmur.'
+      error: 'Pro purchases are not open yet in this version of Vocette.'
     })
     expect(app.polarRequests()).toEqual([])
     expect((app.invoke('licence:status', true) as LicenceStatus).purchasesConfigured).toBe(false)
@@ -1439,7 +1439,7 @@ describe('Pro over IPC', () => {
     expect(JSON.parse(String(request?.init.body))).toEqual({
       key: 'MURMUR-KEY',
       organization_id: 'org-under-test',
-      label: 'Murmur on Windows · 7F3A',
+      label: 'Vocette on Windows · 7F3A',
       meta: { app_version: '0.3.2' }
     })
     expect(request?.init.headers).toEqual({ 'Content-Type': 'application/json' })
@@ -1942,7 +1942,7 @@ describe('AI polish', () => {
 })
 
 describe('an isolated profile', () => {
-  it('never touches the startup entry of the Murmur this computer starts', async () => {
+  it('never touches the startup entry of the Vocette this computer starts', async () => {
     vi.stubEnv('MURMUR_PROFILE_DIR', 'C:/scratch/profile-under-test')
     const app = await startApp()
     expect(app.loginItems).toEqual([])
