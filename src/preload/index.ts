@@ -83,6 +83,7 @@ const api = {
   activateLicence: (key: string): Promise<LicenceActivation> =>
     ipcRenderer.invoke('licence:activate', key),
   releaseLicence: (): Promise<LicenceRelease> => ipcRenderer.invoke('licence:deactivate'),
+  checkSubscription: (): Promise<LicenceStatus> => ipcRenderer.invoke('licence:check-now'),
   removeLicenceLocally: (): Promise<LicenceStatus> => ipcRenderer.invoke('licence:remove-local'),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check-now'),

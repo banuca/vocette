@@ -2,7 +2,8 @@ import {
   FREE_REPLACEMENT_RULES,
   FREE_VOCABULARY_TERMS,
   PRO_REPLACEMENT_RULES,
-  PRO_VOCABULARY_TERMS
+  PRO_VOCABULARY_TERMS,
+  SUBSCRIPTION_GRACE_DAYS
 } from '../shared/product'
 import type { Plan } from '../shared/entitlement'
 import type { LicenceStatus } from '../shared/types'
@@ -17,11 +18,17 @@ import type { LicenceStatus } from '../shared/types'
  * would not change anything for.
  */
 
-export function planStatusLine(status: Pick<LicenceStatus, 'plan' | 'trialDaysLeft'>): string {
+export function planStatusLine(
+  status: Pick<LicenceStatus, 'plan' | 'trialDaysLeft' | 'licence'>
+): string {
   if (status.plan === 'pro') return 'Pro — thank you for supporting Vocette'
-  if (status.plan === 'free') return 'Free — everything you need, for good'
-  const days = status.trialDaysLeft
-  return `Pro trial — ${days} ${days === 1 ? 'day' : 'days'} left`
+  if (status.plan === 'trial') {
+    const days = status.trialDaysLeft
+    return `Pro trial — ${days} ${days === 1 ? 'day' : 'days'} left`
+  }
+  if (status.licence?.standing === 'unconfirmed') return 'Pro is paused until your subscription is confirmed'
+  if (status.licence?.standing === 'ended') return 'Free — your Pro subscription has ended'
+  return 'Free — everything you need, for good'
 }
 
 /** The sidebar's quiet suffix: only during the trial, never on Free or Pro. */
@@ -29,16 +36,41 @@ export function trialBadge(status: Pick<LicenceStatus, 'plan' | 'trialDaysLeft'>
   return status.plan === 'trial' ? `Trial · ${status.trialDaysLeft}d` : null
 }
 
-/** The Buy button, which is disabled until the owner has set up a checkout. */
-export function buyLabel(status: Pick<LicenceStatus, 'checkoutAvailable' | 'priceLabel'>): string {
-  return status.checkoutAvailable ? `Buy Pro — ${status.priceLabel}` : 'Pro purchases open soon'
+/** The two Subscribe buttons, each disabled until the owner has set up its checkout. */
+export function subscribeLabels(
+  status: Pick<
+    LicenceStatus,
+    | 'monthlyCheckoutAvailable'
+    | 'yearlyCheckoutAvailable'
+    | 'monthlyPriceLabel'
+    | 'yearlyPriceLabel'
+    | 'yearlySavingLabel'
+  >
+): { monthly: string; yearly: string } {
+  return {
+    monthly: status.monthlyCheckoutAvailable
+      ? `Monthly — ${status.monthlyPriceLabel}`
+      : 'Monthly — opens soon',
+    yearly: status.yearlyCheckoutAvailable
+      ? `Yearly — ${status.yearlyPriceLabel} · ${status.yearlySavingLabel}`
+      : 'Yearly — opens soon'
+  }
+}
+
+/** Said under the plans: what one subscription covers, and how to stop it. */
+export function plansNote(status: Pick<LicenceStatus, 'devices'>): string {
+  return (
+    `One subscription covers up to ${status.devices} PCs. Cancel any time; Pro stays on until ` +
+    'the end of the period you have paid for.'
+  )
 }
 
 /** Said under the key field before anything is sent. */
 export function activationNote(status: Pick<LicenceStatus, 'deviceLabel'>): string {
   return (
     `Activating sends your key and a device label (“${status.deviceLabel}”) to Polar, our ` +
-    'payment provider, once. Vocette never checks again.'
+    'payment provider. While you are subscribed, Vocette asks Polar once a day whether the ' +
+    'subscription is still active, and sends nothing else.'
   )
 }
 
@@ -59,10 +91,45 @@ export function longDate(iso: string): string {
   }).format(date)
 }
 
-export function activeLicenceLine(licence: { displayKey: string; activatedAt: string }): string {
-  const date = longDate(licence.activatedAt)
-  const ending = `Pro is active on this PC · key ending ${keyEnding(licence.displayKey)}`
-  return date ? `${ending} · activated ${date}` : ending
+/** "today", "yesterday", "12 days ago". */
+export function daysAgo(iso: string, now: number): string {
+  const then = new Date(iso)
+  if (Number.isNaN(then.getTime())) return ''
+  const startOf = (time: number): number => {
+    const day = new Date(time)
+    day.setHours(0, 0, 0, 0)
+    return day.getTime()
+  }
+  const days = Math.round((startOf(now) - startOf(then.getTime())) / 86_400_000)
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  return `${days} days ago`
+}
+
+/** The line under "Your subscription", for a key activated on this PC. */
+export function subscriptionLine(
+  licence: NonNullable<LicenceStatus['licence']>,
+  now: number
+): string {
+  const key = `key ending ${keyEnding(licence.displayKey)}`
+  if (licence.standing === 'ended') {
+    return (
+      `Your subscription has ended (${key}). Subscribe again and this key works again — ` +
+      'press Check now once you have.'
+    )
+  }
+  if (licence.standing === 'unconfirmed') {
+    return (
+      `Your subscription has not been confirmed for ${SUBSCRIPTION_GRACE_DAYS} days, so Pro is ` +
+      'paused. Connect to the internet and press Check now.'
+    )
+  }
+  const confirmed = daysAgo(licence.confirmedAt, now)
+  const line = `Subscription active on this PC · ${key} · confirmed ${confirmed}`
+  // Only once a check has been missed: the usual case says nothing more.
+  if (confirmed === 'today' || confirmed === 'yesterday') return line
+  const left = licence.graceDaysLeft
+  return `${line}. Pro keeps working for ${left} more ${left === 1 ? 'day' : 'days'} without a check.`
 }
 
 /**

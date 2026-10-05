@@ -8,7 +8,7 @@ All notable changes to this project are documented here. This project adheres to
 ## [0.5.0] — unreleased
 
 Vocette now transcribes on your PC by default — no key, no account — and gains a
-30-day Pro trial, a one-off Pro licence, AI polish, snippets, instant capture,
+30-day Pro trial, Pro as a monthly or yearly subscription, AI polish, snippets, instant capture,
 Esc to cancel, a measured wait on every dictation, an opt-in update check and a
 Windows release build that is checked before it is trusted.
 
@@ -184,11 +184,18 @@ Windows release build that is checked before it is trusted.
   restore, paste last, Retry and history. Pro is for power users: 500 vocabulary terms in
   use instead of 50, 200 replacement rules instead of 20, and AI polish when it ships.
   Nothing is deleted when Pro lapses — a longer list keeps every line, only its first
-  part is used, and the note under each box says so. A new **Pro** page shows the plan,
-  **Buy Pro** (Polar's checkout, in the browser) and a **Licence key** field: **Activate**
-  sends the key and a device label (“Vocette on Windows · 7F3A”) to Polar once — no
-  credentials, no API-version pin — and Vocette never checks again; the buyer details in
-  Polar's answer are discarded, never logged. **Release this PC** frees a device slot,
+  part is used, and the note under each box says so. Pro is a subscription, **US$5 a
+  month or US$50 a year**, for up to three PCs. A new **Pro** page shows the plan, the two
+  plans (Polar's checkout, in the browser) and a **Your subscription** field: **Activate**
+  sends the key and a device label (“Vocette on Windows · 7F3A”) to Polar — no
+  credentials, no API-version pin — and from then on, at most once a day, Vocette asks
+  Polar whether the subscription is still active (**Check now** asks at once). Cancelled,
+  Pro lasts to the end of the paid period, then Vocette carries on as Free, keeping the
+  key: subscribing again makes it work again. Offline, Pro keeps working for 30 days
+  after the last confirmation, then pauses until a check succeeds. If Polar no longer
+  knows this PC — released in the Polar account, or the key changed — the key is removed
+  here and the page says why. The buyer details in Polar's answers are discarded, never
+  logged. **Release this PC** frees a device slot,
   and without a connection **Remove from this PC anyway** clears it here, saying the slot
   stays in use. The key is encrypted by the operating system where it can be, and kept
   plain, marked as such, where it cannot. The sidebar shows “Trial · 23d” during the

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   entitlementFor,
+  graceDaysLeft,
   planReplacements,
   planVocabulary,
   replacementRuleLimit,
+  subscriptionStanding,
   vocabularyTermLimit
 } from '../src/shared/entitlement'
 import {
@@ -18,8 +20,8 @@ const DAY = 86_400_000
 const START = Date.parse('2026-09-25T09:00:00.000Z')
 const STARTED = new Date(START).toISOString()
 
-const at = (offsetMs: number, licensed = false) =>
-  entitlementFor({ trialStartedAt: STARTED, licensed, now: START + offsetMs })
+const at = (offsetMs: number, subscribed = false) =>
+  entitlementFor({ trialStartedAt: STARTED, subscribed, now: START + offsetMs })
 
 describe('the trial', () => {
   it('lasts thirty days and starts with all of them left', () => {
@@ -64,7 +66,7 @@ describe('the trial', () => {
   it('treats a start date it cannot read as a trial starting now', () => {
     const now = START + 90 * DAY
     for (const trialStartedAt of ['yesterday', '', 'not a date', null]) {
-      const result = entitlementFor({ trialStartedAt, licensed: false, now })
+      const result = entitlementFor({ trialStartedAt, subscribed: false, now })
       expect(result.plan).toBe('trial')
       expect(result.trialDaysLeft).toBe(30)
       expect(result.trialEndsAt).toBe(new Date(now + 30 * DAY).toISOString())
@@ -73,19 +75,19 @@ describe('the trial', () => {
 
   it('does not crash on a date at the edge of what a clock can hold', () => {
     const edge = '+275760-09-13T00:00:00.000Z'
-    const result = entitlementFor({ trialStartedAt: edge, licensed: false, now: START })
+    const result = entitlementFor({ trialStartedAt: edge, subscribed: false, now: START })
     expect(result.plan).toBe('trial')
     expect(result.trialDaysLeft).toBe(30)
     expect(result.trialEndsAt).toBeNull()
   })
 })
 
-describe('a licence', () => {
+describe('a subscription', () => {
   it('is Pro, during the trial and after it', () => {
     const expected = { plan: 'pro', pro: true, trialDaysLeft: 0, trialEndsAt: null }
     expect(at(0, true)).toEqual(expected)
     expect(at(45 * DAY, true)).toEqual(expected)
-    expect(entitlementFor({ trialStartedAt: null, licensed: true, now: START })).toEqual(expected)
+    expect(entitlementFor({ trialStartedAt: null, subscribed: true, now: START })).toEqual(expected)
   })
 })
 
@@ -122,5 +124,36 @@ describe('the plan limits', () => {
   it('change nothing for a list inside the Free limit', () => {
     expect(planVocabulary('Kirinde\nITU-T', false)).toEqual(['Kirinde', 'ITU-T'])
     expect(planReplacements('itu => ITU', false)).toEqual([{ spoken: 'itu', written: 'ITU' }])
+  })
+})
+
+describe('where a subscription stands', () => {
+  const confirmed = (daysAgo: number) => new Date(START - daysAgo * DAY).toISOString()
+
+  it('is active while confirmed within thirty days, then unconfirmed', () => {
+    expect(subscriptionStanding(null, START)).toBe('none')
+    expect(subscriptionStanding({ subscription: 'active', confirmedAt: confirmed(0) }, START)).toBe('active')
+    expect(subscriptionStanding({ subscription: 'active', confirmedAt: confirmed(30) }, START)).toBe('active')
+    expect(subscriptionStanding({ subscription: 'active', confirmedAt: confirmed(30.01) }, START)).toBe(
+      'unconfirmed'
+    )
+  })
+
+  it('is ended once Polar says so, however recent the last confirmation', () => {
+    expect(subscriptionStanding({ subscription: 'ended', confirmedAt: confirmed(0) }, START)).toBe('ended')
+  })
+
+  it('treats a clock set back as recent, never as a reason to pause Pro', () => {
+    expect(subscriptionStanding({ subscription: 'active', confirmedAt: confirmed(-5) }, START)).toBe('active')
+    expect(graceDaysLeft(confirmed(-5), START)).toBe(30)
+  })
+
+  it('counts the grace days left, rounded up', () => {
+    expect(graceDaysLeft(confirmed(0), START)).toBe(30)
+    expect(graceDaysLeft(confirmed(0.001), START)).toBe(30)
+    expect(graceDaysLeft(confirmed(12.5), START)).toBe(18)
+    expect(graceDaysLeft(confirmed(30), START)).toBe(0)
+    expect(graceDaysLeft(confirmed(31), START)).toBe(0)
+    expect(graceDaysLeft('not a date', START)).toBe(0)
   })
 })

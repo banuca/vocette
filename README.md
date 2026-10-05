@@ -4,7 +4,7 @@ Dictation for Windows that runs on your PC. Hold a shortcut, speak, let go — y
 
 - **On this PC, by default.** Speech is transcribed on your computer by NVIDIA's Parakeet v3 model (25 European languages). No account and no API key: once the 670 MB model is downloaded, nothing you say leaves your computer, and dictation needs no internet connection. On the laptop it is developed on, the text is ready about half a second after you let go.
 - **Or a cloud provider of your choice.** OpenAI, Groq, Azure or any OpenAI-compatible server, with your own key — or a server of your own that needs none.
-- **Free, and genuinely good.** Everyone gets Pro free for 30 days. After that, Free keeps everything dictation needs, for good. Pro, a one-off purchase, is for power users: long vocabulary and snippet lists, and AI polish.
+- **Free, and genuinely good.** Everyone gets Pro free for 30 days. After that, Free keeps everything dictation needs, for good. Pro — US$5 a month or US$50 a year — is for power users: long vocabulary and snippet lists, and AI polish.
 
 ![History](docs/screenshots/history.png)
 
@@ -66,7 +66,7 @@ Everyone gets Pro free for their first 30 days. After that, Free keeps everythin
 | Replacements and snippets in use | 20 | 200 |
 | AI polish — your dictation rewritten as Clean, Professional, Casual or Notes | — | ✓ |
 
-Nothing is deleted when Pro lapses: a longer list keeps every line, only its first part is used, and the note under each box says so. Pro is a one-off purchase through Polar, the payment provider, for up to three PCs. **Activate** on the Pro page sends your key and a device label (“Vocette on Windows · 7F3A”) to Polar once, and Vocette never checks it again; **Release this PC** frees a device slot for another one.
+Pro is a subscription — **US$5 a month or US$50 a year** (two months free) — through Polar, the payment provider, for up to three PCs. Cancel any time in your Polar account: Pro stays on until the end of the period you paid for, then Vocette carries on as Free. Nothing is deleted when Pro lapses: a longer list keeps every line, only its first part is used, and the note under each box says so. **Activate** on the Pro page sends your key and a device label (“Vocette on Windows · 7F3A”) to Polar; after that, while you are subscribed, Vocette asks Polar once a day whether the subscription is still active. Offline, Pro keeps working for 30 days after the last answer. If you subscribe again after cancelling, the same key works again. **Release this PC** frees a device slot for another one.
 
 ## Your API key
 
@@ -187,7 +187,7 @@ Every network request Vocette can make, and when:
 1. **The speech model**, once, from `huggingface.co` (a pinned commit, SHA-256 checked), when you press **Download**.
 2. **Cloud transcription**, only if you chose **Cloud**: each recording and your vocabulary go to the endpoint you configured, with your key.
 3. **AI polish**, only if you switched it on (Pro): the text of each dictation — never the audio — with your instructions and vocabulary, to the provider you chose.
-4. **Pro**, only when you press **Activate** or **Release this PC**: your licence key and a device label to Polar.
+4. **Pro**, only with a licence key activated: your key and a device label to Polar when you press **Activate**, then a check of your subscription at most once a day.
 5. **The update check**, only if you switched it on or press **Check now**: one request to GitHub for the latest version number.
 
 Nothing else: no telemetry, no analytics, no crash reporting. With the on-device engine and nothing else switched on, nothing you say ever leaves your computer.
@@ -200,7 +200,7 @@ Nothing else: no telemetry, no analytics, no crash reporting. With the on-device
 - The API key is encrypted at rest by the operating system and scoped to your user account — or, where that is not possible, kept for the session only and never written at all.
 - The foreground checks read a window handle and an elevation or secure-input flag. No window contents, titles or input are read, and nothing is stored.
 - Before an automatic paste, what is on your clipboard is copied into memory so it can be put back afterwards. It is held only until then, and is never written to disk or sent anywhere.
-- Activating Pro sends your licence key, a device label and the app version to Polar (US), once, when you press **Activate**; **Release this PC** sends the key again to free the slot. Nothing else about Pro is ever sent, and the buyer details Polar returns are discarded.
+- Activating Pro sends your licence key, a device label and the app version to Polar (US) when you press **Activate**. While a key is activated, Vocette asks Polar at most once a day whether its subscription is still active, sending the key and this PC's activation; **Check now** on the Pro page does the same at once, and **Release this PC** sends the key to free the slot. Nothing else about Pro is ever sent, and the buyer details Polar returns are discarded.
 - AI polish (Pro) is off until you switch it on in **Settings → AI polish**. Then the text of each dictation — never the audio — is sent to the provider you chose there, with your extra instructions and your vocabulary terms, and nothing else. Choose **Ollama on this PC** or **LM Studio on this PC** to keep it on your computer. Its key is encrypted like the transcription key; the OpenAI preset borrows your OpenAI transcription key only when transcription goes to OpenAI too.
 - Checking for updates is off until you switch it on in **About**. Then — and whenever you press **Check now** — Vocette sends one request to GitHub (`api.github.com`) for the latest version number, at most once a day on its own. Nothing about you or your dictation is sent, and nothing is ever downloaded or installed automatically.
 - No telemetry, no analytics, no automatic updates.

@@ -1218,7 +1218,10 @@ describe('the licence', () => {
       activationId: activated.activationId,
       benefitId: activated.benefitId,
       displayKey: '****-E304DA',
-      activatedAt: '2026-09-25T13:48:13.251Z'
+      activatedAt: '2026-09-25T13:48:13.251Z',
+      // Activation is Polar confirming the subscription.
+      subscription: 'active',
+      confirmedAt: '2026-09-25T13:48:13.251Z'
     })
   })
 
@@ -1296,7 +1299,20 @@ describe('the licence', () => {
       displayKey: '****-E304DA',
       activatedAt: activated.activatedAt
     }
-    expect(normaliseSettings({ licence: record }).licence).toEqual(record)
+    // A record from before subscriptions counts as confirmed when it was activated.
+    expect(normaliseSettings({ licence: record }).licence).toEqual({
+      ...record,
+      subscription: 'active',
+      confirmedAt: activated.activatedAt
+    })
+    expect(
+      normaliseSettings({
+        licence: { ...record, subscription: 'ended', confirmedAt: '2026-10-01T08:00:00.000Z' }
+      }).licence
+    ).toMatchObject({ subscription: 'ended', confirmedAt: '2026-10-01T08:00:00.000Z' })
+    expect(
+      normaliseSettings({ licence: { ...record, subscription: 'paused', confirmedAt: 'never' } }).licence
+    ).toMatchObject({ subscription: 'active', confirmedAt: activated.activatedAt })
     expect(normaliseSettings({}).licence).toBeNull()
     expect(normaliseSettings({ licence: 'MURMUR-KEY' }).licence).toBeNull()
     expect(normaliseSettings({ licence: { ...record, keyStorage: 'rot13' } }).licence).toBeNull()
@@ -1305,5 +1321,49 @@ describe('the licence', () => {
     const partial: Record<string, unknown> = { ...record }
     delete partial.benefitId
     expect(normaliseSettings({ licence: partial }).licence).toBeNull()
+  })
+})
+
+describe('the subscription behind the licence', () => {
+  const activated = {
+    key: 'VOCETTE-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA',
+    activationId: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe',
+    benefitId: '32a8eda4-56cf-4a94-8228-792d324a519e',
+    displayKey: '****-E304DA',
+    activatedAt: '2026-09-25T13:48:13.251Z'
+  }
+
+  it('moves the confirmation on when a check finds it active, and survives a restart', () => {
+    const store = new SettingsStore(file)
+    store.saveLicence(activated)
+    store.recordSubscriptionCheck('active', '2026-10-05T10:00:00.000Z')
+    expect(new SettingsStore(file).licenceRecord()).toMatchObject({
+      subscription: 'active',
+      confirmedAt: '2026-10-05T10:00:00.000Z'
+    })
+  })
+
+  it('keeps the key and the last confirmation when a check finds it ended', () => {
+    const store = new SettingsStore(file)
+    store.saveLicence(activated)
+    store.recordSubscriptionCheck('ended', '2026-10-05T10:00:00.000Z')
+    const reopened = new SettingsStore(file)
+    expect(reopened.licenceRecord()).toMatchObject({
+      subscription: 'ended',
+      confirmedAt: activated.activatedAt
+    })
+    expect(reopened.getLicenceKey()).toBe(activated.key)
+    // Subscribing again brings it straight back.
+    reopened.recordSubscriptionCheck('active', '2026-10-06T10:00:00.000Z')
+    expect(reopened.licenceRecord()?.subscription).toBe('active')
+  })
+
+  it('does nothing without a licence, or with a date it cannot read', () => {
+    const store = new SettingsStore(file)
+    store.recordSubscriptionCheck('active', '2026-10-05T10:00:00.000Z')
+    expect(store.licenceRecord()).toBeNull()
+    store.saveLicence(activated)
+    store.recordSubscriptionCheck('active', 'later')
+    expect(store.licenceRecord()?.confirmedAt).toBe(activated.activatedAt)
   })
 })

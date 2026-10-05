@@ -206,8 +206,9 @@
             </div>
             <div class="plan plan-pro">
               <h3>Pro</h3>
-              <!-- Owner: confirm the price; it must match src/shared/product.ts and the Polar product. -->
-              <p class="price"><strong>US$29</strong>, once, for up to 3 PCs</p>
+              <!-- Owner: the prices must match src/shared/product.ts and the two Polar products. -->
+              <p class="price"><strong>US$5</strong> a month, or <strong>US$50</strong> a year</p>
+              <p class="price-note">Two months free with the yearly plan · up to 3 PCs · cancel any time</p>
               <ul>
                 <li>Everything in Free</li>
                 <li>AI polish: clean, professional, casual or notes — and the original is always kept</li>
@@ -215,11 +216,16 @@
                 <li>Up to 200 replacements and snippets</li>
                 <li>Support by email</li>
               </ul>
-              <!-- Owner: replace # with the Polar checkout link. -->
-              <a class="button button-primary" href="#">Buy Pro</a>
+              <!-- Owner: replace each # with its Polar checkout link. -->
+              <div class="plan-actions">
+                <a class="button button-primary" href="#">Yearly — US$50</a>
+                <a class="button button-quiet" href="#">Monthly — US$5</a>
+              </div>
               <p class="note">
                 AI polish uses a language model you choose — one that runs on your PC, or your
-                own account with a provider. 30-day refund, no questions.
+                own account with a provider. Your first payment is refundable within 30 days,
+                no questions. Cancel any time and Pro stays on until the end of the period you
+                paid for.
               </p>
             </div>
           </div>
@@ -268,8 +274,9 @@
           <details>
             <summary>Does it work offline?</summary>
             <p>
-              Yes, once the speech model has been downloaded. Activating Pro needs one
-              connection; after that Vocette never checks again.
+              Yes, once the speech model has been downloaded. With Pro, Vocette asks the
+              payment provider once a day whether your subscription is still active; offline,
+              Pro keeps working for 30 days after the last answer.
             </p>
           </details>
           <details>
@@ -293,7 +300,11 @@
           </details>
           <details>
             <summary>Can I get a refund?</summary>
-            <p>Yes — within 30 days, for any reason. See the <a href="refund.html">refund policy</a>.</p>
+            <p>
+              Yes — your first payment, within 30 days, for any reason. Cancelling stops the next
+              renewal, and Pro stays on until the end of the period you paid for. See the
+              <a href="refund.html">refund policy</a>.
+            </p>
           </details>
           <details>
             <summary>Is it open source?</summary>

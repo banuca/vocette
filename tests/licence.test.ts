@@ -14,8 +14,7 @@ import { entitlementFor } from '../src/shared/entitlement'
 import {
   POLAR_API_BASE,
   POLAR_ORGANIZATION_ID,
-  POLAR_PRO_BENEFIT_ID,
-  PRO_PRICE_LABEL
+  POLAR_PRO_BENEFIT_IDS
 } from '../src/shared/product'
 
 /**
@@ -33,7 +32,7 @@ const NOW = Date.parse('2026-09-25T13:48:13.000Z')
 const REQUEST: ActivationRequest = {
   apiBase: 'https://sandbox-api.polar.sh/',
   orgId: ORG,
-  benefitId: BENEFIT,
+  benefitIds: [BENEFIT],
   label: 'Vocette on Windows · 7F3A',
   appVersion: '0.4.0'
 }
@@ -170,7 +169,7 @@ describe('activating a key', () => {
       ok: false,
       error: LICENCE_MESSAGES.notConfigured
     })
-    expect(await client.activate(KEY, { ...REQUEST, benefitId: '' })).toEqual({
+    expect(await client.activate(KEY, { ...REQUEST, benefitIds: [] })).toEqual({
       ok: false,
       error: LICENCE_MESSAGES.notConfigured
     })
@@ -189,7 +188,7 @@ describe('activating a key', () => {
     const { client } = harness(() => json(200, granted({ status: 'revoked' })))
     expect(await client.activate(KEY, REQUEST)).toEqual({
       ok: false,
-      error: 'This licence key has been revoked or disabled.'
+      error: 'This licence key is not active: its subscription has ended, or it was disabled.'
     })
   })
 
@@ -241,7 +240,7 @@ describe('what an activation that fails says', () => {
       'the activation limit',
       403,
       { error: 'NotPermitted', detail: 'License key activation limit already reached' },
-      'This key is already active on its maximum number of PCs. Release it on another PC, or manage your devices from your purchase email.'
+      'This key is already active on its maximum number of PCs. Release it on another PC, or manage your devices in your Polar account.'
     ],
     [
       'a revoked or disabled key',
@@ -250,7 +249,7 @@ describe('what an activation that fails says', () => {
         error: 'NotPermitted',
         detail: 'License key is no longer active. This license key can not be activated.'
       },
-      'This licence key has been revoked or disabled.'
+      'This licence key is not active: its subscription has ended, or it was disabled.'
     ],
     [
       'an expired key',
@@ -308,7 +307,7 @@ describe('what an activation that fails says', () => {
     })
     expect(await client.activate(KEY, REQUEST)).toEqual({
       ok: false,
-      error: 'Could not reach Polar. Activation needs an internet connection once.'
+      error: 'Could not reach Polar. Activation needs an internet connection.'
     })
   })
 
@@ -339,7 +338,7 @@ describe('what an activation that fails says', () => {
 })
 
 describe('releasing this PC', () => {
-  const config = { apiBase: 'https://sandbox-api.polar.sh', orgId: ORG, benefitId: BENEFIT }
+  const config = { apiBase: 'https://sandbox-api.polar.sh', orgId: ORG, benefitIds: [BENEFIT] }
 
   it('sends the key, the organisation and the activation, and no credentials', async () => {
     const { client, sent } = harness(() => new Response(null, { status: 204 }))
@@ -419,7 +418,7 @@ describe('the Polar settings', () => {
     expect(licenceConfig({})).toEqual({
       apiBase: POLAR_API_BASE,
       orgId: POLAR_ORGANIZATION_ID,
-      benefitId: POLAR_PRO_BENEFIT_ID
+      benefitIds: POLAR_PRO_BENEFIT_IDS
     })
     expect(POLAR_API_BASE).toBe('https://api.polar.sh')
   })
@@ -434,8 +433,13 @@ describe('the Polar settings', () => {
     ).toEqual({
       apiBase: 'https://sandbox-api.polar.sh',
       orgId: 'sandbox-org',
-      benefitId: 'sandbox-benefit'
+      benefitIds: ['sandbox-benefit']
     })
+    // One benefit per product: both are accepted.
+    expect(licenceConfig({ MURMUR_POLAR_BENEFIT_ID: ' monthly-benefit , yearly-benefit ' }).benefitIds).toEqual([
+      'monthly-benefit',
+      'yearly-benefit'
+    ])
   })
 
   it('ignores an override that is not https, or is blank', () => {
@@ -447,10 +451,10 @@ describe('the Polar settings', () => {
   })
 
   it('count as configured only with both an organisation and a benefit', () => {
-    const base = { apiBase: POLAR_API_BASE, orgId: ORG, benefitId: BENEFIT }
+    const base = { apiBase: POLAR_API_BASE, orgId: ORG, benefitIds: [BENEFIT] }
     expect(purchasesConfigured(base)).toBe(true)
     expect(purchasesConfigured({ ...base, orgId: '' })).toBe(false)
-    expect(purchasesConfigured({ ...base, benefitId: '' })).toBe(false)
+    expect(purchasesConfigured({ ...base, benefitIds: [] })).toBe(false)
   })
 })
 
@@ -465,25 +469,37 @@ describe('the device label', () => {
 
 describe('the status the window is told', () => {
   const START = '2026-09-25T09:00:00.000Z'
-  const config = { apiBase: POLAR_API_BASE, orgId: ORG, benefitId: BENEFIT }
-  const record = {
+  const DAY = 86_400_000
+  const config = { apiBase: POLAR_API_BASE, orgId: ORG, benefitIds: [BENEFIT] }
+  const record = (patch: Partial<{ subscription: 'active' | 'ended'; confirmedAt: string }> = {}) => ({
     activationId: ACTIVATION,
     benefitId: BENEFIT,
     displayKey: '****-E304DA',
-    activatedAt: '2026-09-25T13:48:13.251Z'
-  }
-  const status = (options: { days: number; licensed?: boolean; dismissed?: boolean }) =>
-    licenceStatusFor({
-      entitlement: entitlementFor({
-        trialStartedAt: START,
-        licensed: options.licensed ?? false,
-        now: Date.parse(START) + options.days * 86_400_000
-      }),
-      licence: options.licensed ? record : null,
+    activatedAt: '2026-09-25T13:48:13.251Z',
+    subscription: 'active' as const,
+    confirmedAt: '2026-09-25T13:48:13.251Z',
+    ...patch
+  })
+  const status = (options: {
+    days: number
+    licence?: ReturnType<typeof record> | null
+    dismissed?: boolean
+  }) => {
+    const now = Date.parse(START) + options.days * DAY
+    const licence = options.licence ?? null
+    const subscribed =
+      licence !== null &&
+      licence.subscription === 'active' &&
+      now - Date.parse(licence.confirmedAt) <= 30 * DAY
+    return licenceStatusFor({
+      entitlement: entitlementFor({ trialStartedAt: START, subscribed, now }),
+      licence,
       config,
       trialEndNoticeDismissed: options.dismissed ?? false,
-      deviceLabel: 'Vocette on Windows · 7F3A'
+      deviceLabel: 'Vocette on Windows · 7F3A',
+      now
     })
+  }
 
   it('describes the trial, with no notice due', () => {
     expect(status({ days: 7 })).toEqual({
@@ -491,10 +507,16 @@ describe('the status the window is told', () => {
       trialDaysLeft: 23,
       trialEndsAt: '2026-10-25T09:00:00.000Z',
       licence: null,
+      checking: false,
+      checkMessage: null,
       purchasesConfigured: true,
-      checkoutAvailable: false,
+      monthlyCheckoutAvailable: false,
+      yearlyCheckoutAvailable: false,
       portalAvailable: false,
-      priceLabel: PRO_PRICE_LABEL,
+      monthlyPriceLabel: 'US$5 a month',
+      yearlyPriceLabel: 'US$50 a year',
+      yearlySavingLabel: 'two months free',
+      devices: 3,
       trialEndNoticeDue: false,
       deviceLabel: 'Vocette on Windows · 7F3A'
     })
@@ -508,35 +530,150 @@ describe('the status the window is told', () => {
     })
   })
 
-  it('never makes it due with a licence, and shows only the masked key and the date', () => {
-    const licensed = status({ days: 31, licensed: true })
-    expect(licensed).toMatchObject({
+  it('shows an active subscription with its masked key, and never the identifiers', () => {
+    const shown = status({ days: 31, licence: record({ confirmedAt: '2026-10-25T08:00:00.000Z' }) })
+    expect(shown).toMatchObject({
       plan: 'pro',
       trialEndNoticeDue: false,
-      licence: { displayKey: '****-E304DA', activatedAt: '2026-09-25T13:48:13.251Z' }
+      licence: {
+        displayKey: '****-E304DA',
+        activatedAt: '2026-09-25T13:48:13.251Z',
+        standing: 'active',
+        confirmedAt: '2026-10-25T08:00:00.000Z',
+        // Confirmed 25 hours before: 28 days and 23 hours of the 30 are left.
+        graceDaysLeft: 29
+      }
     })
-    expect(JSON.stringify(licensed)).not.toContain(ACTIVATION)
-    expect(JSON.stringify(licensed)).not.toContain(BENEFIT)
-    expect(JSON.stringify(licensed)).not.toContain(ORG)
+    expect(JSON.stringify(shown)).not.toContain(ACTIVATION)
+    expect(JSON.stringify(shown)).not.toContain(BENEFIT)
+    expect(JSON.stringify(shown)).not.toContain(ORG)
   })
 
-  it('says whether the checkout and the portal are there to open', () => {
+  it('drops to Free when the subscription has ended, or has gone unconfirmed too long', () => {
+    const ended = status({ days: 40, licence: record({ subscription: 'ended' }) })
+    expect(ended).toMatchObject({ plan: 'free', licence: { standing: 'ended', graceDaysLeft: 0 } })
+    // Someone who subscribed is not told their trial has ended.
+    expect(ended.trialEndNoticeDue).toBe(false)
+
+    const unconfirmed = status({ days: 40, licence: record({ confirmedAt: START }) })
+    expect(unconfirmed).toMatchObject({ plan: 'free', licence: { standing: 'unconfirmed' } })
+  })
+
+  it('keeps a subscription unconfirmed for a while on Pro, counting the grace days down', () => {
+    const offline = status({ days: 20, licence: record({ confirmedAt: START }) })
+    expect(offline).toMatchObject({ plan: 'pro', licence: { standing: 'active', graceDaysLeft: 10 } })
+  })
+
+  it('says whether the checkouts and the portal are there to open, and what a check said', () => {
     const shown = licenceStatusFor({
-      entitlement: entitlementFor({ trialStartedAt: START, licensed: false, now: Date.parse(START) }),
+      entitlement: entitlementFor({ trialStartedAt: START, subscribed: false, now: Date.parse(START) }),
       licence: null,
       config: { ...config, orgId: '' },
       trialEndNoticeDismissed: false,
       deviceLabel: 'Vocette on Windows · 7F3A',
-      checkoutUrl: 'https://buy.polar.sh/polar_cl_example',
-      portalUrl: '',
-      priceLabel: 'CHF 25, once'
+      now: Date.parse(START),
+      checking: true,
+      checkMessage: LICENCE_MESSAGES.released,
+      monthlyCheckoutUrl: 'https://buy.polar.sh/polar_cl_monthly',
+      yearlyCheckoutUrl: '',
+      portalUrl: ''
     })
     expect(shown).toMatchObject({
       purchasesConfigured: false,
-      checkoutAvailable: true,
+      monthlyCheckoutAvailable: true,
+      yearlyCheckoutAvailable: false,
       portalAvailable: false,
-      priceLabel: 'CHF 25, once'
+      checking: true,
+      checkMessage: LICENCE_MESSAGES.released
     })
-    expect(JSON.stringify(shown)).not.toContain('polar_cl_example')
+    expect(JSON.stringify(shown)).not.toContain('polar_cl_monthly')
+  })
+})
+
+describe('checking a subscription', () => {
+  const config = { apiBase: 'https://sandbox-api.polar.sh', orgId: ORG, benefitIds: [BENEFIT] }
+  const thisPc = { activationId: ACTIVATION, benefitId: BENEFIT }
+
+  /** Polar's 200 to a validation: the key, customer and all. */
+  function validated(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    const key = granted().license_key as Record<string, unknown>
+    return { ...key, activation: { id: ACTIVATION, label: REQUEST.label }, ...overrides }
+  }
+
+  it('sends the key, the organisation, this PC and its benefit — nothing else, no credentials', async () => {
+    const { client, sent } = harness(() => json(200, validated()))
+    expect(await client.check(`  ${KEY}\n`, thisPc, config)).toEqual({ outcome: 'active' })
+    const { url, init, body } = sent()
+    expect(url).toBe('https://sandbox-api.polar.sh/v1/customer-portal/license-keys/validate')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(body).toEqual({
+      key: KEY,
+      organization_id: ORG,
+      activation_id: ACTIVATION,
+      benefit_id: BENEFIT
+    })
+  })
+
+  it('reads the subscription as ended when the key is revoked, disabled or expired', async () => {
+    for (const answer of [
+      json(200, validated({ status: 'revoked' })),
+      json(200, validated({ status: 'disabled' })),
+      json(200, validated({ expires_at: '2026-09-01T00:00:00.000Z' })),
+      json(404, { error: 'ResourceNotFound', detail: 'License key is no longer active.' }),
+      json(404, { error: 'ResourceNotFound', detail: 'License key has expired.' })
+    ]) {
+      const { client } = harness(() => answer)
+      expect(await client.check(KEY, thisPc, config)).toEqual({ outcome: 'ended' })
+    }
+  })
+
+  it('reads a bare "Not found" as this PC released, or the key changed', async () => {
+    const { client } = harness(() => json(404, { error: 'ResourceNotFound', detail: 'Not found' }))
+    expect(await client.check(KEY, thisPc, config)).toEqual({ outcome: 'released' })
+  })
+
+  it('learns nothing from an answer that is not about the subscription', async () => {
+    const cases: Array<[Response | null, string]> = [
+      [new Response('<html>Not Found</html>', { status: 404 }), LICENCE_MESSAGES.outdated],
+      [json(404, { error: 'ResourceNotFound', detail: 'License key does not match given benefit.' }), LICENCE_MESSAGES.wrongProduct],
+      [json(200, { unexpected: true }), LICENCE_MESSAGES.outdated],
+      [json(429, {}), LICENCE_MESSAGES.rateLimited],
+      [json(503, {}), LICENCE_MESSAGES.checkUnavailable],
+      [json(418, {}), 'Polar could not check the subscription (HTTP 418). Vocette tries again later.'],
+      [null, LICENCE_MESSAGES.checkUnreachable]
+    ]
+    for (const [answer, error] of cases) {
+      const { client } = harness(() => {
+        if (!answer) throw new TypeError('fetch failed')
+        return answer
+      })
+      expect(await client.check(KEY, thisPc, config)).toEqual({ outcome: 'unknown', error })
+    }
+  })
+
+  it('keeps none of the buyer details from the answer', async () => {
+    const { client } = harness(() => json(200, validated()))
+    const result = JSON.stringify(await client.check(KEY, thisPc, config))
+    for (const personal of ['buyer@example.com', 'Ada Buyer', 'Rue du Lac', KEY]) {
+      expect(result).not.toContain(personal)
+    }
+  })
+
+  it('asks nothing without an organisation', async () => {
+    const { client, fetch } = harness(() => json(200, validated()))
+    expect(await client.check(KEY, thisPc, { ...config, orgId: '' })).toEqual({
+      outcome: 'unknown',
+      error: LICENCE_MESSAGES.notConfigured
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('activating with two plans', () => {
+  it('accepts a key for either benefit, and keeps the one it was granted for', async () => {
+    const { client } = harness(() => json(200, granted({ benefit_id: 'yearly-benefit' })))
+    const result = await client.activate(KEY, { ...REQUEST, benefitIds: [BENEFIT, 'yearly-benefit'] })
+    expect(result).toMatchObject({ ok: true, benefitId: 'yearly-benefit' })
   })
 })

@@ -4,9 +4,8 @@ Everything that only you can do before the first sale, in the order to do it. Ea
 says where to click. Nothing here is done by the app or by Claude.
 
 Status of the product itself: built and verified feature by feature on branch `launch`
-(see `docs/launch-plan.md` §7); `main` has not moved. **Pro is being changed from a one-off
-licence to monthly and annual subscriptions; section 2 is rewritten when that lands.**
-The guided hand test comes after it.
+(see `docs/launch-plan.md` §7); `main` has not moved. Pro is a subscription: US$5 a month
+or US$50 a year. The guided hand test comes next.
 
 ## 1. Before anything is public
 
@@ -29,20 +28,30 @@ The guided hand test comes after it.
 
 ## 2. Polar (payments and licence keys)
 
-Polar is the merchant of record: it sells Pro to the buyer, handles VAT, and issues the
-licence keys the app activates.
+Polar is the merchant of record: it sells the Pro subscriptions, handles VAT, charges
+renewals, and issues the licence keys the app activates and checks daily.
 
 1. Sign up at **polar.sh** and create an organisation. Complete the payout details
    (Settings → Payouts) so money can reach you.
 2. **The licence-key benefit:** Products → Benefits (`polar.sh/to/dashboard/products/benefits`)
    → **+ New Benefit** → Type **License Keys**.
-   - Prefix: `VOCETTE` (or the chosen name).
-   - Expiry: **none**.
+   - Prefix: `VOCETTE`.
+   - Expiry: **none** (a subscription's key follows the subscription by itself).
    - **Activation limit: 3**, and allow customers to deactivate devices themselves.
      Without an activation limit, activation in the app fails.
-3. **The product:** Products → **New product** → **One-time** price, US$29 (or your price)
-   → Automated Benefits → attach the licence-key benefit.
-   - Never remove the benefit from the product later: that revokes every key.
+3. **The two products** — Polar has one product per billing interval:
+   - Products → **New product** → **Subscription**, **monthly**, US$5 → name "Vocette Pro
+     (monthly)" → Automated Benefits → attach the licence-key benefit.
+   - The same again, **yearly**, US$50 → "Vocette Pro (yearly)" → attach **the same**
+     benefit. One shared benefit means switching plans keeps the same key. (If Polar
+     will not let one benefit sit on both, make one per product and list both ids in
+     step 7.)
+   - Never remove the benefit from a product later: that revokes its customers' keys.
+   - Leave Polar's own trial off: the app already gives everyone 30 days of Pro, with
+     no card.
+   - Settings → Subscriptions (or Billing): choose the **grace period for failed
+     payments** — 7 days recommended. Polar retries a failed renewal after 2, 5, 7 and 7
+     days before ending a subscription.
 4. **The EU withdrawal acknowledgement** (Polar's checkout does not collect it):
    Settings → **Custom Fields** → **Checkbox**, wording:
    *"I ask for Vocette Pro to be supplied immediately and I acknowledge that I lose my
@@ -50,24 +59,30 @@ licence keys the app activates.
    Then on the product: Checkout Fields → add it → mark **Required**.
    *Have a lawyer with EU consumer-law experience look at this; see
    `docs/research/licensing.md` §7.*
-5. **The refund policy:** the website's (`site/refund.html`) is 30 days, no questions —
-   more generous than the EU's 14-day withdrawal right. Put the same sentence in the
-   product description, and be ready to honour it: a refunded key is revoked in Polar, but
-   a PC that already activated it keeps Pro, because the app never checks again.
-6. **The checkout link:** Products → **Checkout Links** → **New Link** → select the product.
-   Copy the URL.
+5. **The refund policy** (`site/refund.html`): the first payment of a subscription is
+   refundable within 30 days, no questions; later renewals are not, but cancelling stops
+   the next one. Put the same sentences in both product descriptions. A refund revokes
+   the key, and the app notices at its next daily check.
+6. **The checkout links:** Products → **Checkout Links** → **New Link** → the monthly
+   product; then another for the yearly one. Copy both URLs.
 7. **The ids the app needs** — paste into `src/shared/product.ts`:
-   - `CHECKOUT_URL` — the checkout link from step 6.
-   - `CUSTOMER_PORTAL_URL` — `https://polar.sh/<your-org-slug>/portal`.
+   - `CHECKOUT_URL_MONTHLY` and `CHECKOUT_URL_YEARLY` — the two links from step 6.
+   - `CUSTOMER_PORTAL_URL` — `https://polar.sh/<your-org-slug>/portal` (customers cancel,
+     switch plans and change cards there).
    - `POLAR_ORGANIZATION_ID` — Settings → **Organization** → **Identifier** (Copy).
-   - `POLAR_PRO_BENEFIT_ID` — the licence-key benefit's id, from the benefit's own page
-     (where exactly Polar shows it has not been checked on screen; the API also lists it).
-   Commit. Until these are filled in, the app says purchases open soon and the licence
+   - `POLAR_PRO_BENEFIT_IDS` — the licence-key benefit's id, e.g. `['…']` (two ids if each
+     product has its own), from the benefit's own page (where exactly Polar shows it has
+     not been checked on screen; the API also lists it).
+   - If you change the prices, change `PRO_MONTHLY_PRICE_LABEL` and
+     `PRO_YEARLY_PRICE_LABEL` to match.
+   Commit. Until these are filled in, the app says subscriptions open soon and the licence
    field is disabled.
 8. **Test a purchase in Polar's sandbox first** (`sandbox.polar.sh`, same steps), with the
    app pointed at it: set `MURMUR_POLAR_API_BASE=https://sandbox-api.polar.sh`,
    `MURMUR_POLAR_ORG_ID` and `MURMUR_POLAR_BENEFIT_ID` to the sandbox values before
-   launching. Buy with Stripe's test card, activate in the app, release the PC.
+   launching. Subscribe with Stripe's test card, activate in the app, press **Check now**;
+   then cancel in the sandbox and confirm the app drops to Free, at its next check, once
+   the subscription has ended.
 
 ## 3. Website
 

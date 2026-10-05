@@ -179,12 +179,15 @@ async function startApp(options: {
     apiEndpoint: options.apiEndpoint ?? DEFAULT_SETTINGS.apiEndpoint,
     ...options.polish
   }
+  // Confirmed a minute ago, so Pro holds and no check is due.
   let licence: Record<string, string> | null = options.licensed
     ? {
         activationId: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe',
         benefitId: 'benefit-under-test',
         displayKey: '****-E304DA',
-        activatedAt: '2026-09-25T13:48:13.251Z'
+        activatedAt: '2026-09-25T13:48:13.251Z',
+        subscription: 'active',
+        confirmedAt: new Date(Date.now() - 60_000).toISOString()
       }
     : null
   const savedLicences: Array<Record<string, unknown>> = []
@@ -379,7 +382,14 @@ async function startApp(options: {
       saveLicence = (input: Record<string, string>): void => {
         savedLicences.push(input)
         const { key: _key, ...record } = input
-        licence = record
+        licence = { ...record, subscription: 'active', confirmedAt: input.activatedAt ?? '' }
+      }
+      recordSubscriptionCheck = (result: 'active' | 'ended', at: string): void => {
+        if (!licence) return
+        licence =
+          result === 'active'
+            ? { ...licence, subscription: 'active', confirmedAt: at }
+            : { ...licence, subscription: 'ended' }
       }
       clearLicence = (): void => {
         licenceClears += 1
@@ -1419,7 +1429,7 @@ describe('Pro over IPC', () => {
     const result = (await app.invoke('licence:activate', true, 'MURMUR-KEY')) as LicenceActivation
     expect(result).toMatchObject({
       ok: false,
-      error: 'Pro purchases are not open yet in this version of Vocette.'
+      error: 'Pro subscriptions are not open yet in this version of Vocette.'
     })
     expect(app.polarRequests()).toEqual([])
     expect((app.invoke('licence:status', true) as LicenceStatus).purchasesConfigured).toBe(false)
@@ -1432,7 +1442,13 @@ describe('Pro over IPC', () => {
 
     expect(result.ok).toBe(true)
     expect(result.status.plan).toBe('pro')
-    expect(result.status.licence).toEqual({ displayKey: '****-E304DA', activatedAt: expect.any(String) })
+    expect(result.status.licence).toEqual({
+      displayKey: '****-E304DA',
+      activatedAt: expect.any(String),
+      standing: 'active',
+      confirmedAt: expect.any(String),
+      graceDaysLeft: 30
+    })
     expect(app.polarRequests()).toHaveLength(1)
     const [request] = app.polarRequests()
     expect(request?.url).toBe('https://sandbox-api.polar.sh/v1/customer-portal/license-keys/activate')
@@ -1951,5 +1967,88 @@ describe('an isolated profile', () => {
   it('does set it for the ordinary profile', async () => {
     const app = await startApp()
     expect(app.loginItems).toEqual([{ openAtLogin: false }])
+  })
+})
+
+describe('the subscription check', () => {
+  const configure = (): void => {
+    vi.stubEnv('MURMUR_POLAR_API_BASE', 'https://sandbox-api.polar.sh')
+    vi.stubEnv('MURMUR_POLAR_ORG_ID', 'org-under-test')
+    vi.stubEnv('MURMUR_POLAR_BENEFIT_ID', 'benefit-under-test')
+  }
+  const reply = (status: number, body: unknown): Response =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+  it('answers Check now only from the main window, and sends nothing without a licence', async () => {
+    configure()
+    const app = await startApp({ polarReply: () => reply(200, { status: 'granted' }) })
+    await expect(Promise.resolve().then(() => app.invoke('licence:check-now', false))).rejects.toThrow(
+      'Forbidden.'
+    )
+    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
+    expect(status.licence).toBeNull()
+    expect(app.polarRequests()).toEqual([])
+  })
+
+  it('asks Polar with the key, the organisation, this PC and its benefit, and keeps Pro', async () => {
+    configure()
+    const app = await startApp({
+      licensed: true,
+      polarReply: () => reply(200, { status: 'granted', expires_at: null })
+    })
+    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
+    expect(app.polarRequests()).toHaveLength(1)
+    const [request] = app.polarRequests()
+    expect(request?.url).toBe('https://sandbox-api.polar.sh/v1/customer-portal/license-keys/validate')
+    expect(JSON.parse(String(request?.init.body))).toEqual({
+      key: 'MURMUR-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA',
+      organization_id: 'org-under-test',
+      activation_id: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe',
+      benefit_id: 'benefit-under-test'
+    })
+    expect(status).toMatchObject({ plan: 'pro', licence: { standing: 'active' }, checking: false })
+  })
+
+  it('drops to Free when the subscription has ended, keeping the key for a new one', async () => {
+    configure()
+    const app = await startApp({
+      licensed: true,
+      trialStartedAt: new Date(Date.now() - 60 * 86_400_000).toISOString(),
+      polarReply: () => reply(404, { error: 'ResourceNotFound', detail: 'License key is no longer active.' })
+    })
+    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
+    expect(status).toMatchObject({ plan: 'free', licence: { standing: 'ended' }, trialEndNoticeDue: false })
+    expect(app.licenceCleared()).toBe(0)
+    const pushed = app
+      .sentToMain()
+      .filter((message) => message.channel === 'licence:changed')
+      .at(-1)?.payload as LicenceStatus
+    expect(pushed).toMatchObject({ plan: 'free', licence: { standing: 'ended' } })
+  })
+
+  it('forgets the licence when Polar no longer knows this PC, and says why', async () => {
+    configure()
+    const app = await startApp({
+      licensed: true,
+      polarReply: () => reply(404, { error: 'ResourceNotFound', detail: 'Not found' })
+    })
+    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
+    expect(app.licenceCleared()).toBe(1)
+    expect(status.licence).toBeNull()
+    expect(status.checkMessage).toBe(
+      'This PC was released, or its key was changed, in your Polar account. Enter your licence ' +
+        'key to activate it again.'
+    )
+  })
+
+  it('keeps Pro when Polar cannot be reached, and says it will try again', async () => {
+    configure()
+    const app = await startApp({ licensed: true })
+    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
+    expect(status).toMatchObject({
+      plan: 'pro',
+      licence: { standing: 'active' },
+      checkMessage: 'Could not reach Polar to confirm your subscription. Vocette tries again later.'
+    })
   })
 })

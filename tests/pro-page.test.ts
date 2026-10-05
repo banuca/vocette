@@ -24,9 +24,21 @@ const PLATFORM: PlatformStatus = {
   }
 }
 
+const CONFIRMED_TODAY = new Date().toISOString()
+
 const LICENSED = {
-  licence: { displayKey: '****-E304DA', activatedAt: '2026-09-25T13:48:13.251Z' }
-} as const
+  licence: {
+    displayKey: '****-E304DA',
+    activatedAt: '2026-09-25T13:48:13.251Z',
+    standing: 'active',
+    confirmedAt: CONFIRMED_TODAY,
+    graceDaysLeft: 30
+  }
+} satisfies Partial<LicenceStatus>
+
+const ENDED = {
+  licence: { ...LICENSED.licence, standing: 'ended', graceDaysLeft: 0 }
+} satisfies Partial<LicenceStatus>
 
 class FakeElement {
   innerHTML = ''
@@ -63,7 +75,10 @@ const SELECTORS = [
   '#pro-adds',
   '#free-forever',
   '#pro-buy',
-  '#buy-pro',
+  '#subscribe-monthly',
+  '#subscribe-yearly',
+  '#plans-note',
+  '#check-subscription',
   '#licence-summary',
   '#licence-entry',
   '#licence-key',
@@ -81,6 +96,7 @@ const SELECTORS = [
 
 interface BridgeAnswers {
   activate?: (key: string) => Promise<LicenceActivation>
+  check?: () => Promise<LicenceStatus>
   release?: () => Promise<LicenceRelease>
   removeLocally?: () => Promise<LicenceStatus>
   confirm?: boolean
@@ -136,11 +152,14 @@ async function makeHarness(status: LicenceStatus, answers: BridgeAnswers = {}) {
   const removeLicenceLocally = vi.fn(
     answers.removeLocally ?? (async (): Promise<LicenceStatus> => licenceStatus({ plan: 'free' }))
   )
+  const checkSubscription = vi.fn(
+    answers.check ?? (async (): Promise<LicenceStatus> => licenceStatus({ plan: 'pro', ...LICENSED }))
+  )
   const openExternal = vi.fn(async () => undefined)
   const confirm = vi.fn(() => answers.confirm ?? true)
 
   vi.stubGlobal('window', {
-    murmur: { activateLicence, releaseLicence, removeLicenceLocally, openExternal },
+    murmur: { activateLicence, releaseLicence, removeLicenceLocally, checkSubscription, openExternal },
     confirm
   })
   vi.stubGlobal('document', { createElement: () => new FakeElement() })
@@ -164,6 +183,7 @@ async function makeHarness(status: LicenceStatus, answers: BridgeAnswers = {}) {
     activateLicence,
     releaseLicence,
     removeLicenceLocally,
+    checkSubscription,
     openExternal,
     confirm
   }
@@ -175,7 +195,7 @@ afterEach(() => {
 })
 
 describe('the Pro page', () => {
-  it('shows the trial, what Pro adds, what stays free, and the price', async () => {
+  it('shows the trial, what Pro adds, what stays free, and the two plans', async () => {
     const { at } = await makeHarness(licenceStatus({ plan: 'trial', trialDaysLeft: 23 }))
     expect(at('#pro-status').textContent).toBe('Pro trial — 23 days left')
     expect(at('#pro-adds').children.map((item) => item.textContent)).toEqual([
@@ -184,8 +204,14 @@ describe('the Pro page', () => {
       'AI polish: your dictation rewritten in the style you choose, with your own provider or a model on this PC'
     ])
     expect(at('#free-forever').children).toHaveLength(4)
-    expect(at('#buy-pro').textContent).toBe('Buy Pro — US$29, once, for up to 3 PCs')
-    expect(at('#buy-pro').disabled).toBe(false)
+    expect(at('#subscribe-yearly').textContent).toBe('Yearly — US$50 a year · two months free')
+    expect(at('#subscribe-monthly').textContent).toBe('Monthly — US$5 a month')
+    expect(at('#subscribe-yearly').disabled).toBe(false)
+    expect(at('#subscribe-monthly').disabled).toBe(false)
+    expect(at('#plans-note').textContent).toBe(
+      'One subscription covers up to 3 PCs. Cancel any time; Pro stays on until the end of the ' +
+        'period you have paid for.'
+    )
     expect(at('#pro-buy').hidden).toBe(false)
   })
 
@@ -194,27 +220,31 @@ describe('the Pro page', () => {
     expect(at('#pro-status').textContent).toBe('Free — everything you need, for good')
   })
 
-  it('disables Buy, and says purchases open soon, until there is a checkout', async () => {
+  it('disables each plan, and says it opens soon, until it has a checkout', async () => {
     const { at, openExternal } = await makeHarness(
-      licenceStatus({ plan: 'trial', checkoutAvailable: false })
+      licenceStatus({ plan: 'trial', monthlyCheckoutAvailable: false, yearlyCheckoutAvailable: false })
     )
-    expect(at('#buy-pro').textContent).toBe('Pro purchases open soon')
-    expect(at('#buy-pro').disabled).toBe(true)
-    at('#buy-pro').emit('click')
+    expect(at('#subscribe-monthly').textContent).toBe('Monthly — opens soon')
+    expect(at('#subscribe-yearly').textContent).toBe('Yearly — opens soon')
+    expect(at('#subscribe-monthly').disabled).toBe(true)
+    at('#subscribe-monthly').emit('click')
+    at('#subscribe-yearly').emit('click')
     expect(openExternal).not.toHaveBeenCalled()
   })
 
-  it('opens the checkout through its allow-listed name', async () => {
+  it('opens each checkout through its allow-listed name', async () => {
     const { at, openExternal } = await makeHarness(licenceStatus({ plan: 'free' }))
-    at('#buy-pro').emit('click')
-    expect(openExternal).toHaveBeenCalledWith('checkout')
+    at('#subscribe-monthly').emit('click')
+    at('#subscribe-yearly').emit('click')
+    expect(openExternal.mock.calls).toEqual([['checkout-monthly'], ['checkout-yearly']])
   })
 
   it('says what activating sends, before anything is sent', async () => {
     const { at } = await makeHarness(licenceStatus({ plan: 'trial' }))
     expect(at('#licence-note').textContent).toBe(
       'Activating sends your key and a device label (“Vocette on Windows · 7F3A”) to Polar, our ' +
-        'payment provider, once. Vocette never checks again.'
+        'payment provider. While you are subscribed, Vocette asks Polar once a day whether the ' +
+        'subscription is still active, and sends nothing else.'
     )
     expect(at('#licence-entry').hidden).toBe(false)
     expect(at('#licence-active').hidden).toBe(true)
@@ -241,7 +271,7 @@ describe('the Pro page', () => {
     expect(harness.activateLicence).toHaveBeenCalledWith(' MURMUR-KEY ')
     expect(harness.at('#licence-key').value).toBe('')
     expect(harness.at('#licence-feedback').textContent).toBe(
-      'Pro is active on this PC. Thank you for supporting Vocette.'
+      'Pro is active on this PC. Thank you for subscribing to Vocette.'
     )
     expect(harness.applyLicence).toHaveBeenCalledWith(
       expect.objectContaining({ plan: 'pro', licence: LICENSED.licence })
@@ -249,7 +279,7 @@ describe('the Pro page', () => {
     expect(harness.at('#licence-active').hidden).toBe(false)
     expect(harness.at('#licence-entry').hidden).toBe(true)
     expect(harness.at('#licence-active-line').textContent).toBe(
-      'Pro is active on this PC · key ending E304DA · activated 25 September 2026'
+      'Subscription active on this PC · key ending E304DA · confirmed today'
     )
     // Nothing left to buy.
     expect(harness.at('#pro-buy').hidden).toBe(true)
@@ -332,7 +362,7 @@ describe('the Pro page', () => {
     expect(harness.at('#licence-feedback').textContent).toContain('Could not reach Polar')
     expect(harness.at('#remove-local-row').hidden).toBe(false)
     expect(harness.at('#remove-local-note').textContent).toContain(
-      'The device slot stays in use until you release it from your purchase email.'
+      'The device slot stays in use until you release it in your Polar account.'
     )
 
     harness.at('#remove-local').emit('click')
@@ -342,7 +372,7 @@ describe('the Pro page', () => {
     )
     expect(harness.removeLicenceLocally).toHaveBeenCalledTimes(1)
     expect(harness.at('#licence-feedback').textContent).toBe(
-      'Pro was removed from this PC. Its device slot stays in use until you release it from your purchase email.'
+      'Pro was removed from this PC. Its device slot stays in use until you release it in your Polar account.'
     )
     expect(harness.at('#remove-local-row').hidden).toBe(true)
   })
@@ -369,5 +399,39 @@ describe('the Pro page', () => {
     const { view, at } = await makeHarness(licenceStatus({ plan: 'trial', trialDaysLeft: 1 }))
     view.apply(licenceStatus({ plan: 'free', trialEndNoticeDue: true }))
     expect(at('#pro-status').textContent).toBe('Free — everything you need, for good')
+  })
+
+  it('offers the plans again once a subscription has ended, and says how to get Pro back', async () => {
+    const { at } = await makeHarness(licenceStatus({ plan: 'free', ...ENDED }))
+    expect(at('#pro-status').textContent).toBe('Free — your Pro subscription has ended')
+    expect(at('#pro-buy').hidden).toBe(false)
+    expect(at('#licence-active-line').textContent).toBe(
+      'Your subscription has ended (key ending E304DA). Subscribe again and this key works ' +
+        'again — press Check now once you have.'
+    )
+  })
+
+  it('checks the subscription when asked, and says what it found', async () => {
+    const harness = await makeHarness(licenceStatus({ plan: 'free', ...ENDED }))
+    harness.at('#check-subscription').emit('click')
+    await harness.settle()
+    expect(harness.checkSubscription).toHaveBeenCalledTimes(1)
+    expect(harness.at('#licence-feedback').textContent).toBe('Your subscription is active.')
+    expect(harness.applyLicence).toHaveBeenCalledWith(expect.objectContaining({ plan: 'pro' }))
+    expect(harness.at('#pro-buy').hidden).toBe(true)
+  })
+
+  it('shows why a check could not tell, and disables Check now while one is out', async () => {
+    const message = 'Could not reach Polar to confirm your subscription. Vocette tries again later.'
+    const harness = await makeHarness(licenceStatus({ plan: 'pro', ...LICENSED }), {
+      check: async () => licenceStatus({ plan: 'pro', ...LICENSED, checkMessage: message })
+    })
+    harness.at('#check-subscription').emit('click')
+    await harness.settle()
+    expect(harness.at('#licence-feedback').textContent).toBe(message)
+
+    harness.view.apply(licenceStatus({ plan: 'pro', ...LICENSED, checking: true }))
+    expect(harness.at('#check-subscription').disabled).toBe(true)
+    expect(harness.at('#check-subscription').textContent).toBe('Checking…')
   })
 })

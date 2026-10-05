@@ -4,11 +4,13 @@ import {
   PRO_ADDS,
   TRIAL_END_NOTICE,
   activationNote,
-  activeLicenceLine,
-  buyLabel,
+  daysAgo,
   keyEnding,
   longDate,
   planStatusLine,
+  plansNote,
+  subscribeLabels,
+  subscriptionLine,
   replacementsPlanNote,
   trialBadge,
   vocabularyPlanNote
@@ -30,6 +32,27 @@ describe('the status line', () => {
       'Free — everything you need, for good'
     )
   })
+
+  it('says when a subscription has ended, or is waiting to be confirmed', () => {
+    const licence = {
+      displayKey: '****-E304DA',
+      activatedAt: '2026-09-01T10:00:00.000Z',
+      confirmedAt: '2026-09-01T10:00:00.000Z',
+      graceDaysLeft: 0
+    }
+    expect(planStatusLine(licenceStatus({ plan: 'free', licence: { ...licence, standing: 'ended' } }))).toBe(
+      'Free — your Pro subscription has ended'
+    )
+    expect(
+      planStatusLine(licenceStatus({ plan: 'free', licence: { ...licence, standing: 'unconfirmed' } }))
+    ).toBe('Pro is paused until your subscription is confirmed')
+    // A trial still running says so, whatever an old subscription did.
+    expect(
+      planStatusLine(
+        licenceStatus({ plan: 'trial', trialDaysLeft: 4, licence: { ...licence, standing: 'ended' } })
+      )
+    ).toBe('Pro trial — 4 days left')
+  })
 })
 
 describe('the sidebar suffix', () => {
@@ -40,20 +63,31 @@ describe('the sidebar suffix', () => {
   })
 })
 
-describe('the Buy button', () => {
-  it('carries the price, or says purchases open soon while there is no checkout', () => {
-    expect(buyLabel(licenceStatus({ checkoutAvailable: true }))).toBe(
-      'Buy Pro — US$29, once, for up to 3 PCs'
+describe('the Subscribe buttons', () => {
+  it('carry the prices, or say each opens soon while it has no checkout', () => {
+    expect(subscribeLabels(licenceStatus())).toEqual({
+      monthly: 'Monthly — US$5 a month',
+      yearly: 'Yearly — US$50 a year · two months free'
+    })
+    expect(
+      subscribeLabels(licenceStatus({ monthlyCheckoutAvailable: false, yearlyCheckoutAvailable: false }))
+    ).toEqual({ monthly: 'Monthly — opens soon', yearly: 'Yearly — opens soon' })
+  })
+
+  it('say what one subscription covers, and that cancelling keeps what was paid for', () => {
+    expect(plansNote(licenceStatus())).toBe(
+      'One subscription covers up to 3 PCs. Cancel any time; Pro stays on until the end of the ' +
+        'period you have paid for.'
     )
-    expect(buyLabel(licenceStatus({ checkoutAvailable: false }))).toBe('Pro purchases open soon')
   })
 })
 
 describe('the licence lines', () => {
-  it('says what activating sends, and that it happens once', () => {
+  it('says what activating sends, and that the subscription is checked once a day', () => {
     expect(activationNote(licenceStatus({ deviceLabel: 'Vocette on Windows · 7F3A' }))).toBe(
       'Activating sends your key and a device label (“Vocette on Windows · 7F3A”) to Polar, our ' +
-        'payment provider, once. Vocette never checks again.'
+        'payment provider. While you are subscribed, Vocette asks Polar once a day whether the ' +
+        'subscription is still active, and sends nothing else.'
     )
   })
 
@@ -63,11 +97,45 @@ describe('the licence lines', () => {
     expect(keyEnding('****')).toBe('****')
     expect(longDate('2026-09-25T13:48:13.251Z')).toBe('25 September 2026')
     expect(longDate('not a date')).toBe('')
-    expect(activeLicenceLine({ displayKey: 'ABCD', activatedAt: '2026-09-25T10:00:00.000Z' })).toBe(
-      'Pro is active on this PC · key ending ABCD · activated 25 September 2026'
+  })
+
+  it('says how long ago the subscription was confirmed, in days', () => {
+    const now = new Date(2026, 9, 5, 15, 0).getTime()
+    expect(daysAgo(new Date(2026, 9, 5, 8, 0).toISOString(), now)).toBe('today')
+    expect(daysAgo(new Date(2026, 9, 4, 23, 0).toISOString(), now)).toBe('yesterday')
+    expect(daysAgo(new Date(2026, 8, 23, 9, 0).toISOString(), now)).toBe('12 days ago')
+    expect(daysAgo('not a date', now)).toBe('')
+  })
+
+  it('describes the subscription on this PC, and what a missed check means', () => {
+    const now = new Date(2026, 9, 5, 15, 0).getTime()
+    const base = { displayKey: '****-E304DA', activatedAt: '2026-09-01T10:00:00.000Z' }
+    expect(
+      subscriptionLine(
+        { ...base, standing: 'active', confirmedAt: new Date(2026, 9, 5, 9, 0).toISOString(), graceDaysLeft: 29 },
+        now
+      )
+    ).toBe('Subscription active on this PC · key ending E304DA · confirmed today')
+    expect(
+      subscriptionLine(
+        { ...base, standing: 'active', confirmedAt: new Date(2026, 8, 23, 9, 0).toISOString(), graceDaysLeft: 17 },
+        now
+      )
+    ).toBe(
+      'Subscription active on this PC · key ending E304DA · confirmed 12 days ago. Pro keeps ' +
+        'working for 17 more days without a check.'
     )
-    expect(activeLicenceLine({ displayKey: '****-E304DA', activatedAt: '' })).toBe(
-      'Pro is active on this PC · key ending E304DA'
+    expect(
+      subscriptionLine({ ...base, standing: 'ended', confirmedAt: base.activatedAt, graceDaysLeft: 0 }, now)
+    ).toBe(
+      'Your subscription has ended (key ending E304DA). Subscribe again and this key works ' +
+        'again — press Check now once you have.'
+    )
+    expect(
+      subscriptionLine({ ...base, standing: 'unconfirmed', confirmedAt: base.activatedAt, graceDaysLeft: 0 }, now)
+    ).toBe(
+      'Your subscription has not been confirmed for 30 days, so Pro is paused. Connect to the ' +
+        'internet and press Check now.'
     )
   })
 })

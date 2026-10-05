@@ -568,3 +568,15 @@ kbd {
     transition: filter 120ms ease, box-shadow 120ms ease;
   }
 }
+
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.price-note {
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}

@@ -67,9 +67,16 @@ import {
   entitlementFor,
   planReplacements,
   planVocabulary,
+  subscriptionStanding,
   type Entitlement
 } from '../shared/entitlement'
-import { CHECKOUT_URL, CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
+import {
+  CHECKOUT_URL_MONTHLY,
+  CHECKOUT_URL_YEARLY,
+  CUSTOMER_PORTAL_URL,
+  UPDATE_REPOSITORY
+} from '../shared/product'
+import { SubscriptionChecker } from './subscription-check'
 import { displayVersion } from '../shared/update'
 import {
   autoPasteSupported,
@@ -131,6 +138,7 @@ let capabilities!: CapabilityMap
 let modelStore!: ModelStore
 let localEngine!: LocalEngine
 let licenceClient!: LicenceClient
+let subscriptionChecker!: SubscriptionChecker
 let updateChecker!: UpdateChecker
 /** An activation or a release is on its way to Polar; a second click waits for it. */
 let licenceRequestInFlight = false
@@ -350,10 +358,11 @@ function workflowSettings(): WorkflowSettings {
 
 /** The plan in force right now: read fresh, because the trial ends on its own. */
 function entitlement(): Entitlement {
+  const now = Date.now()
   return entitlementFor({
     trialStartedAt: settingsStore.getInternal().trialStartedAt,
-    licensed: settingsStore.licenceRecord() !== null,
-    now: Date.now()
+    subscribed: subscriptionStanding(settingsStore.licenceRecord(), now) === 'active',
+    now
   })
 }
 
@@ -368,7 +377,10 @@ function licenceStatus(): LicenceStatus {
     licence: settingsStore.licenceRecord(),
     config: licenceConfig(process.env),
     trialEndNoticeDismissed: settingsStore.getInternal().trialEndNoticeDismissed,
-    deviceLabel: thisDeviceLabel()
+    deviceLabel: thisDeviceLabel(),
+    now: Date.now(),
+    checking: subscriptionChecker?.isChecking() ?? false,
+    checkMessage: subscriptionChecker?.lastMessage() ?? null
   })
 }
 
@@ -378,8 +390,9 @@ function broadcastLicenceStatus(): void {
 
 /**
  * Activates a key on this PC. One request to Polar, only when the user asks;
- * nothing about the licence is ever checked again. Answers with a sentence
- * rather than throwing, so the Pro page can show it as it is.
+ * after that the subscription is checked at most once a day (see
+ * `SubscriptionChecker`). Answers with a sentence rather than throwing, so the
+ * Pro page can show it as it is.
  */
 async function activateLicence(rawKey: string): Promise<LicenceActivation> {
   const refuse = (error: string): LicenceActivation => ({ ok: false, error, status: licenceStatus() })
@@ -412,6 +425,8 @@ async function activateLicence(rawKey: string): Promise<LicenceActivation> {
         `Pro was activated, but this PC could not save it: ${storageFailureReason(error)}`
       )
     }
+    // Whatever the last check said was about a licence this PC no longer has.
+    subscriptionChecker.clearMessage()
     broadcastLicenceStatus()
     return { ok: true, status: licenceStatus() }
   } finally {
@@ -1344,7 +1359,8 @@ function registerIpc(): void {
       'api-keys': 'https://platform.openai.com/api-keys',
       'transcription-docs': 'https://developers.openai.com/api/docs/guides/speech-to-text',
       // Empty until the owner fills them in, and then nothing opens.
-      checkout: CHECKOUT_URL,
+      'checkout-monthly': CHECKOUT_URL_MONTHLY,
+      'checkout-yearly': CHECKOUT_URL_YEARLY,
       'customer-portal': CUSTOMER_PORTAL_URL,
       // Only the release page a check has just validated, and only while an
       // update is on offer.
@@ -1384,6 +1400,12 @@ function registerIpc(): void {
       return { ok: false, error: LICENCE_MESSAGES.empty, status: licenceStatus() }
     }
     return activateLicence(key)
+  })
+  // "Check now" on the Pro page: one validation, then the status as it stands.
+  ipcMain.handle('licence:check-now', async (event): Promise<LicenceStatus> => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    await subscriptionChecker.checkNow()
+    return licenceStatus()
   })
   ipcMain.handle('licence:deactivate', async (event): Promise<LicenceRelease> => {
     if (!fromMain(event)) throw new Error('Forbidden.')
@@ -1481,8 +1503,17 @@ async function bootstrap(): Promise<void> {
     // a managed network's proxy and TLS inspection both need.
     fetch: (url, init) => net.fetch(url, init)
   })
-  // The same network stack, for the one activation request a licence needs.
+  // The same network stack, for activation and the daily subscription check.
   licenceClient = new LicenceClient({ fetch: (url, init) => net.fetch(url, init) })
+  subscriptionChecker = new SubscriptionChecker({
+    licence: () => settingsStore.licenceRecord(),
+    key: () => settingsStore.getLicenceKey(),
+    check: (key, record) => licenceClient.check(key, record, licenceConfig(process.env)),
+    record: (result, at) => settingsStore.recordSubscriptionCheck(result, at),
+    release: () => settingsStore.clearLicence(),
+    busy: () => licenceRequestInFlight,
+    onChange: () => broadcastLicenceStatus()
+  })
   updateChecker = new UpdateChecker({
     fetch: (url, init) => net.fetch(url, init),
     repository: UPDATE_REPOSITORY,
@@ -1569,6 +1600,8 @@ async function bootstrap(): Promise<void> {
   powerMonitor.on('unlock-screen', rearmShortcut)
   // Sends nothing now: a minute from here, and only if switched on and due.
   updateChecker.start()
+  // Likewise: a minute from here, and only with a key activated on this PC.
+  subscriptionChecker.start()
   applyPasteLastShortcut(initial.pasteLastShortcut)
   // Starting may have discovered the shortcut cannot be registered at all.
   refreshCapabilities()
@@ -1658,6 +1691,7 @@ app.on('before-quit', (event) => {
   modelDownload?.controller.abort()
   localEngine?.dispose()
   updateChecker?.stop()
+  subscriptionChecker?.stop()
   shortcutController?.stop()
   globalShortcut.unregisterAll()
   captureTimeout = clearTimer(captureTimeout)

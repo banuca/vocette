@@ -15,7 +15,7 @@ is dealt with. Pass/fail recorded here, not in the chat.
 
 | # | Step (what the owner does) | Expected | Covers | Result |
 |---|---|---|---|---|
-| 1 | Run the installer (SmartScreen: More info → Run anyway), default options | Installs per user, Murmur opens on History; sidebar "Pro Trial · 30d" | 15, 11 | |
+| 1 | Run the installer (SmartScreen: More info → Run anyway), default options | Installs per user, Vocette opens on History; sidebar "Pro Trial · 30d" | 15, 11 | |
 | 2 | Settings → Transcription → On this PC → Download | 670 MB downloads with progress, then "Ready" | 7b on the real profile | |
 | 3 | Notepad open, hold Left Ctrl + Left Shift, say a sentence, let go | Text typed into Notepad; overlay "Pasted", the wait at its right | core, 10 | |
 | 4 | Copy a word first; dictate; then Ctrl + V somewhere | Pasting gives the copied word back (clipboard restored) | 4 | |
@@ -30,4 +30,4 @@ is dealt with. Pass/fail recorded here, not in the chat.
 | 13 | About → Check now | "You have the latest version (0.5.0)." | 14 | |
 | 14 | Win + L, unlock, dictate | Shortcut still works | R5 | |
 | 15 | (If willing) AI polish with the OpenAI preset, Professional; dictate a casual sentence | Polished text, "Polished" tag; a question in the dictation is tidied, not answered | 12 (real model) | |
-| 16 | Pro page | Trial days shown; purchases "open soon" | 11 | |
+| 16 | Pro page | Trial days shown; Yearly/Monthly "opens soon" (no Polar links yet); "Your subscription" key field | 11, 18 | |

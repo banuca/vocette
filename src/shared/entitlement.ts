@@ -3,6 +3,7 @@ import {
   FREE_VOCABULARY_TERMS,
   PRO_REPLACEMENT_RULES,
   PRO_VOCABULARY_TERMS,
+  SUBSCRIPTION_GRACE_DAYS,
   TRIAL_DAYS
 } from './product'
 import { parseReplacements, type ReplacementRule } from './replacements'
@@ -10,7 +11,8 @@ import { parseVocabulary } from './vocabulary'
 
 /**
  * Which plan is in force, worked out from two facts and the clock: when this
- * profile's trial began, and whether a licence has been activated on this PC.
+ * profile's trial began, and whether this PC holds a subscription that Polar
+ * has confirmed recently enough (see `subscriptionStanding`).
  *
  * Pure, and asked afresh every time it matters — every dictation, every time
  * the window asks — so the trial ends when it ends, without a restart, and a
@@ -33,10 +35,11 @@ const DAY_MS = 86_400_000
 
 export function entitlementFor(input: {
   trialStartedAt: string | null
-  licensed: boolean
+  /** A subscription confirmed within the grace period: `subscriptionStanding` is 'active'. */
+  subscribed: boolean
   now: number
 }): Entitlement {
-  if (input.licensed) return { plan: 'pro', pro: true, trialDaysLeft: 0, trialEndsAt: null }
+  if (input.subscribed) return { plan: 'pro', pro: true, trialDaysLeft: 0, trialEndsAt: null }
 
   const now = Number.isFinite(input.now) ? input.now : Date.now()
   // A date that cannot be read is treated as a trial starting now: the one
@@ -59,6 +62,38 @@ export function entitlementFor(input: {
     }
   }
   return { plan: 'free', pro: false, trialDaysLeft: 0, trialEndsAt }
+}
+
+/**
+ * Where this PC's subscription stands:
+ * - `none`: no licence key is activated here;
+ * - `active`: Polar confirmed it within the last `SUBSCRIPTION_GRACE_DAYS`;
+ * - `unconfirmed`: not confirmed for longer than that — Pro pauses until a
+ *   check succeeds, because a subscription can end while a PC is offline;
+ * - `ended`: Polar said the subscription has ended. The key is kept, so a new
+ *   subscription brings Pro back at the next check.
+ */
+export type SubscriptionStanding = 'none' | 'active' | 'unconfirmed' | 'ended'
+
+export function subscriptionStanding(
+  licence: { subscription: 'active' | 'ended'; confirmedAt: string } | null,
+  now: number
+): SubscriptionStanding {
+  if (!licence) return 'none'
+  if (licence.subscription === 'ended') return 'ended'
+  const confirmed = Date.parse(licence.confirmedAt)
+  const since = now - confirmed
+  // A clock set back makes `since` negative: that is a recent confirmation,
+  // not an old one, and never a reason to pause what was paid for.
+  if (Number.isFinite(since) && since > SUBSCRIPTION_GRACE_DAYS * DAY_MS) return 'unconfirmed'
+  return Number.isFinite(since) ? 'active' : 'unconfirmed'
+}
+
+/** Days of the grace period left, rounded up like the trial's; 0 once it is spent. */
+export function graceDaysLeft(confirmedAt: string, now: number): number {
+  const since = Math.max(0, now - Date.parse(confirmedAt))
+  if (!Number.isFinite(since)) return 0
+  return Math.max(0, Math.ceil((SUBSCRIPTION_GRACE_DAYS * DAY_MS - since) / DAY_MS))
 }
 
 /** How many vocabulary terms a dictation uses on this plan. */

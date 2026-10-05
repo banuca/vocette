@@ -146,8 +146,8 @@ describe('privacyNotice', () => {
 
   it("says what Pro's activation sends, on either engine, before claiming nothing else leaves", () => {
     expect(PRO_ACTIVATION_NOTICE).toBe(
-      'Activating Pro sends your licence key and a device label to Polar, the payment provider, ' +
-        'once, when you press Activate.'
+      'Pro sends your licence key and a device label to Polar, the payment provider, when you ' +
+        'press Activate, and then asks Polar once a day whether your subscription is still active.'
     )
     expect(privacyNotice('local')).toContain(PRO_ACTIVATION_NOTICE)
     const cloud = privacyNotice('cloud')

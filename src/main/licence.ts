@@ -1,31 +1,36 @@
-import type { Entitlement } from '../shared/entitlement'
+import { graceDaysLeft, subscriptionStanding, type Entitlement } from '../shared/entitlement'
 import {
-  CHECKOUT_URL,
+  CHECKOUT_URL_MONTHLY,
+  CHECKOUT_URL_YEARLY,
   CUSTOMER_PORTAL_URL,
   POLAR_API_BASE,
   POLAR_ORGANIZATION_ID,
-  POLAR_PRO_BENEFIT_ID,
+  POLAR_PRO_BENEFIT_IDS,
   PRODUCT_NAME,
-  PRO_PRICE_LABEL
+  PRO_DEVICES,
+  PRO_MONTHLY_PRICE_LABEL,
+  PRO_YEARLY_PRICE_LABEL,
+  PRO_YEARLY_SAVING_LABEL
 } from '../shared/product'
 import type { LicenceStatus } from '../shared/types'
 import type { LicenceRecord } from './settings-store'
 
 /**
- * Pro licences, through Polar's public licence-key API.
+ * Pro subscriptions, through Polar's public licence-key API.
  *
- * One call activates a key on this PC, and nothing is sent again unless the
- * user releases the PC. These endpoints take no credentials — Polar documents
- * them as safe for a desktop app — so no token is ever shipped. No
- * `Polar-Version` header is sent either: Polar removes a pinned version about
- * nine months after it appears, which would stop an old build activating, so
- * the call uses the current version and reads as little of the answer as it
- * can. See docs/research/licensing.md, §2.5 and §2.6.
+ * One call activates a key on this PC. After that, while a key is activated
+ * here, one call a day asks whether its subscription is still active: Polar
+ * revokes a subscription's key when the subscription ends, and gives the same
+ * key back if the customer subscribes again (docs/briefs/18-subscriptions.md).
+ * These endpoints take no credentials — Polar documents them as safe for a
+ * desktop app — so no token is ever shipped. No `Polar-Version` header is sent
+ * either: Polar removes a pinned version about nine months after it appears,
+ * which would stop an old build working, so the calls use the current version
+ * and read as little of the answer as they can (docs/research/licensing.md).
  *
- * Polar's answer to an activation names the buyer — email, name, billing
- * address. Only the activation id, the benefit id, the key's status and
- * expiry, and its masked form are read from it. It is never logged, and it is
- * not kept.
+ * Polar's answers name the buyer — email, name, billing address. Only the
+ * activation id, the benefit id, the key's status and expiry, and its masked
+ * form are read. None of it is logged, and nothing else is kept.
  */
 
 /** How long one request may take, from sending it to the last byte of the answer. */
@@ -39,19 +44,25 @@ export const LICENCE_MESSAGES = {
   notAKey: 'That does not look like a Vocette licence key.',
   activationLimit:
     'This key is already active on its maximum number of PCs. Release it on another PC, ' +
-    'or manage your devices from your purchase email.',
-  revoked: 'This licence key has been revoked or disabled.',
+    'or manage your devices in your Polar account.',
+  revoked: 'This licence key is not active: its subscription has ended, or it was disabled.',
   expired: 'This licence key has expired.',
   noActivations: 'This key cannot be activated in Vocette. Contact support.',
   notRecognised: 'That licence key was not recognised. Check it and try again.',
   outdated: 'This version of Vocette can no longer activate licences. Update Vocette and try again.',
   rateLimited: 'Too many attempts. Wait a minute and try again.',
   wrongProduct: 'That key is for a different product.',
-  unreachable: 'Could not reach Polar. Activation needs an internet connection once.',
-  notConfigured: 'Pro purchases are not open yet in this version of Vocette.',
+  unreachable: 'Could not reach Polar. Activation needs an internet connection.',
+  notConfigured: 'Pro subscriptions are not open yet in this version of Vocette.',
   unavailable: 'Polar is not answering properly right now. Try again in a few minutes.',
   releaseUnreachable:
-    'Could not reach Polar, so this PC was not released. Check your internet connection and try again.'
+    'Could not reach Polar, so this PC was not released. Check your internet connection and try again.',
+  checkUnreachable:
+    'Could not reach Polar to confirm your subscription. Vocette tries again later.',
+  checkUnavailable: 'Polar did not answer properly. Vocette tries again later.',
+  released:
+    'This PC was released, or its key was changed, in your Polar account. Enter your licence ' +
+    'key to activate it again.'
 } as const
 
 /** A reply this client has no sentence for: said plainly, with the status for support. */
@@ -65,7 +76,8 @@ export interface LicenceConfig {
   /** `https://api.polar.sh`, or the sandbox for testing. */
   apiBase: string
   orgId: string
-  benefitId: string
+  /** The Pro benefit — one shared by both products, or one each. */
+  benefitIds: readonly string[]
 }
 
 export interface ActivationRequest extends LicenceConfig {
@@ -77,6 +89,17 @@ export interface ActivationRequest extends LicenceConfig {
 export type ActivationResult =
   | { ok: true; activationId: string; benefitId: string; displayKey: string }
   | { ok: false; error: string }
+
+/** What a subscription check found. */
+export type CheckResult =
+  /** The key is granted: the subscription is paid up. */
+  | { outcome: 'active' }
+  /** The key is revoked, disabled or expired: the subscription has ended. */
+  | { outcome: 'ended' }
+  /** Polar knows neither this activation nor the key: released, or the key rotated. */
+  | { outcome: 'released' }
+  /** Nothing could be learnt this time; the state stays as it was. */
+  | { outcome: 'unknown'; error: string }
 
 export type ReleaseResult =
   | { released: true }
@@ -157,7 +180,9 @@ export class LicenceClient {
     const key = typeof rawKey === 'string' ? rawKey.trim() : ''
     if (!key) return refused(LICENCE_MESSAGES.empty)
     if (key.length > MAX_LICENCE_KEY_CHARS) return refused(LICENCE_MESSAGES.notAKey)
-    if (!request.orgId || !request.benefitId) return refused(LICENCE_MESSAGES.notConfigured)
+    if (!request.orgId || request.benefitIds.length === 0) {
+      return refused(LICENCE_MESSAGES.notConfigured)
+    }
 
     const reply = await this.post(`${apiRoot(request.apiBase)}/v1/customer-portal/license-keys/activate`, {
       key,
@@ -166,7 +191,66 @@ export class LicenceClient {
       meta: { app_version: request.appVersion }
     })
     if (!reply) return refused(LICENCE_MESSAGES.unreachable)
-    return this.readActivation(reply, key, request.benefitId)
+    return this.readActivation(reply, key, request.benefitIds)
+  }
+
+  /**
+   * Asks whether the subscription behind this PC's key is still active. One
+   * request: the key, the organisation, this PC's activation and its benefit,
+   * nothing else. Never throws; an answer it cannot read changes nothing.
+   */
+  async check(
+    rawKey: string,
+    record: { activationId: string; benefitId: string },
+    config: LicenceConfig
+  ): Promise<CheckResult> {
+    const key = typeof rawKey === 'string' ? rawKey.trim() : ''
+    if (!key || !config.orgId) {
+      return { outcome: 'unknown', error: LICENCE_MESSAGES.notConfigured }
+    }
+    const reply = await this.post(`${apiRoot(config.apiBase)}/v1/customer-portal/license-keys/validate`, {
+      key,
+      organization_id: config.orgId,
+      activation_id: record.activationId,
+      benefit_id: record.benefitId
+    })
+    if (!reply) return { outcome: 'unknown', error: LICENCE_MESSAGES.checkUnreachable }
+    const { status, body } = reply
+    if (status === 200) {
+      if (!body || typeof body.status !== 'string') {
+        return { outcome: 'unknown', error: LICENCE_MESSAGES.outdated }
+      }
+      if (body.status !== 'granted') return { outcome: 'ended' }
+      const expiresAt = body.expires_at
+      if (expiresAt !== null && expiresAt !== undefined) {
+        const at = typeof expiresAt === 'string' ? Date.parse(expiresAt) : Number.NaN
+        if (!(at > this.now())) return { outcome: 'ended' }
+      }
+      return { outcome: 'active' }
+    }
+    if (status === 404) {
+      // Polar's words, from its source. A key that is revoked or expired says
+      // so; an activation or key it does not have is a bare "Not found".
+      const detail = typeof body?.detail === 'string' ? body.detail.toLowerCase() : ''
+      if (detail.includes('no longer active') || detail.includes('expired')) {
+        return { outcome: 'ended' }
+      }
+      if (detail.includes('benefit')) {
+        return { outcome: 'unknown', error: LICENCE_MESSAGES.wrongProduct }
+      }
+      // Only Polar's own "not found" takes Pro off this PC: anything else
+      // shaped like a 404 — a proxy's page, an API version gone — is not news
+      // about the subscription.
+      return body?.error === 'ResourceNotFound'
+        ? { outcome: 'released' }
+        : { outcome: 'unknown', error: LICENCE_MESSAGES.outdated }
+    }
+    if (status === 429) return { outcome: 'unknown', error: LICENCE_MESSAGES.rateLimited }
+    if (status >= 500) return { outcome: 'unknown', error: LICENCE_MESSAGES.checkUnavailable }
+    return {
+      outcome: 'unknown',
+      error: `Polar could not check the subscription (HTTP ${status}). Vocette tries again later.`
+    }
   }
 
   /**
@@ -202,7 +286,11 @@ export class LicenceClient {
     return { released: false, error: unexpectedReply(reply.status, true), canRemoveLocally: true }
   }
 
-  private readActivation(reply: Reply, key: string, benefitId: string): ActivationResult {
+  private readActivation(
+    reply: Reply,
+    key: string,
+    benefitIds: readonly string[]
+  ): ActivationResult {
     const { status, body } = reply
     if (status === 200) {
       const id = body?.id
@@ -212,7 +300,10 @@ export class LicenceClient {
         return refused(LICENCE_MESSAGES.outdated)
       }
       if (licenceKey.status !== 'granted') return refused(LICENCE_MESSAGES.revoked)
-      if (licenceKey.benefit_id !== benefitId) return refused(LICENCE_MESSAGES.wrongProduct)
+      const benefitId = licenceKey.benefit_id
+      if (typeof benefitId !== 'string' || !benefitIds.includes(benefitId)) {
+        return refused(LICENCE_MESSAGES.wrongProduct)
+      }
       const expiresAt = licenceKey.expires_at
       if (expiresAt !== null && expiresAt !== undefined) {
         const at = typeof expiresAt === 'string' ? Date.parse(expiresAt) : Number.NaN
@@ -311,13 +402,22 @@ export function licenceConfig(env: Record<string, string | undefined>): LicenceC
   return {
     apiBase: httpsBase(env.MURMUR_POLAR_API_BASE) ?? POLAR_API_BASE,
     orgId: env.MURMUR_POLAR_ORG_ID?.trim() || POLAR_ORGANIZATION_ID,
-    benefitId: env.MURMUR_POLAR_BENEFIT_ID?.trim() || POLAR_PRO_BENEFIT_ID
+    benefitIds: benefitList(env.MURMUR_POLAR_BENEFIT_ID) ?? POLAR_PRO_BENEFIT_IDS
   }
 }
 
-/** A key can be activated only once both the organisation and the benefit are known. */
+/** "a, b" → ["a", "b"]; null when the variable is not set or holds nothing. */
+function benefitList(value: string | undefined): string[] | null {
+  const ids = (value ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id !== '')
+  return ids.length ? ids : null
+}
+
+/** A key can be activated only once the organisation and a benefit are known. */
 export function purchasesConfigured(config: LicenceConfig): boolean {
-  return config.orgId !== '' && config.benefitId !== ''
+  return config.orgId !== '' && config.benefitIds.length > 0
 }
 
 /** "Vocette on Windows · 7F3A": the label Polar shows the buyer for this PC. */
@@ -334,29 +434,49 @@ export interface LicenceStatusInput {
   config: LicenceConfig
   trialEndNoticeDismissed: boolean
   deviceLabel: string
+  now: number
+  /** A subscription check is on its way. */
+  checking?: boolean
+  /** What the last check had to say, if anything. */
+  checkMessage?: string | null
   /** The product constants unless a test says otherwise. */
-  checkoutUrl?: string
+  monthlyCheckoutUrl?: string
+  yearlyCheckoutUrl?: string
   portalUrl?: string
-  priceLabel?: string
 }
 
 /** What the window is told. No key, no activation id, no Polar identifier. */
 export function licenceStatusFor(input: LicenceStatusInput): LicenceStatus {
-  const { entitlement } = input
+  const { entitlement, licence } = input
+  const standing = subscriptionStanding(licence, input.now)
   return {
     plan: entitlement.plan,
     trialDaysLeft: entitlement.trialDaysLeft,
     trialEndsAt: entitlement.trialEndsAt,
-    licence: input.licence
-      ? { displayKey: input.licence.displayKey, activatedAt: input.licence.activatedAt }
-      : null,
+    licence:
+      licence && standing !== 'none'
+        ? {
+            displayKey: licence.displayKey,
+            activatedAt: licence.activatedAt,
+            standing,
+            confirmedAt: licence.confirmedAt,
+            graceDaysLeft: standing === 'active' ? graceDaysLeft(licence.confirmedAt, input.now) : 0
+          }
+        : null,
+    checking: input.checking ?? false,
+    checkMessage: input.checkMessage ?? null,
     purchasesConfigured: purchasesConfigured(input.config),
-    checkoutAvailable: (input.checkoutUrl ?? CHECKOUT_URL) !== '',
+    monthlyCheckoutAvailable: (input.monthlyCheckoutUrl ?? CHECKOUT_URL_MONTHLY) !== '',
+    yearlyCheckoutAvailable: (input.yearlyCheckoutUrl ?? CHECKOUT_URL_YEARLY) !== '',
     portalAvailable: (input.portalUrl ?? CUSTOMER_PORTAL_URL) !== '',
-    priceLabel: input.priceLabel ?? PRO_PRICE_LABEL,
-    // Free is only ever reached once the trial is over, and a licence is
-    // never on Free, so this is the trial having ended — shown until dismissed.
-    trialEndNoticeDue: entitlement.plan === 'free' && !input.trialEndNoticeDismissed,
+    monthlyPriceLabel: PRO_MONTHLY_PRICE_LABEL,
+    yearlyPriceLabel: PRO_YEARLY_PRICE_LABEL,
+    yearlySavingLabel: PRO_YEARLY_SAVING_LABEL,
+    devices: PRO_DEVICES,
+    // The trial having ended, for someone who never subscribed here — shown
+    // until dismissed. A subscription that ended is the Pro page's to explain.
+    trialEndNoticeDue:
+      entitlement.plan === 'free' && licence === null && !input.trialEndNoticeDismissed,
     deviceLabel: input.deviceLabel
   }
 }

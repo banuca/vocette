@@ -40,8 +40,8 @@ const INDEPENDENT =
 
 /** Pro's one request, said wherever the notice says what leaves this computer. */
 export const PRO_ACTIVATION_NOTICE =
-  'Activating Pro sends your licence key and a device label to Polar, the payment provider, ' +
-  'once, when you press Activate.'
+  'Pro sends your licence key and a device label to Polar, the payment provider, when you ' +
+  'press Activate, and then asks Polar once a day whether your subscription is still active.'
 
 /** The update check's one request, said with the others. */
 export const UPDATE_CHECK_NOTICE =

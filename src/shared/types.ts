@@ -310,14 +310,33 @@ export interface LicenceStatus {
   /** Whole days left in the trial, rounded up; 0 outside it. */
   trialDaysLeft: number
   trialEndsAt: string | null
-  /** The licence on this PC, as the Pro page shows it. */
-  licence: { displayKey: string; activatedAt: string } | null
+  /** The subscription on this PC, as the Pro page shows it; never the key itself. */
+  licence: {
+    displayKey: string
+    activatedAt: string
+    standing: 'active' | 'unconfirmed' | 'ended'
+    /** When Polar last confirmed the subscription. */
+    confirmedAt: string
+    /** Days Pro keeps working if no check succeeds from now; 0 once paused. */
+    graceDaysLeft: number
+  } | null
+  /** A subscription check is on its way to Polar. */
+  checking: boolean
+  /** Why the last check could not tell, or what it found, in a sentence; null when there is nothing to say. */
+  checkMessage: string | null
   /** An organisation and a benefit are configured, so a key can be activated. */
   purchasesConfigured: boolean
-  checkoutAvailable: boolean
+  monthlyCheckoutAvailable: boolean
+  yearlyCheckoutAvailable: boolean
   portalAvailable: boolean
-  /** "US$29, once, for up to 3 PCs". */
-  priceLabel: string
+  /** "US$5 a month". */
+  monthlyPriceLabel: string
+  /** "US$50 a year". */
+  yearlyPriceLabel: string
+  /** "two months free". */
+  yearlySavingLabel: string
+  /** How many PCs one subscription covers. */
+  devices: number
   /** The trial has ended and its one notice has not been dismissed. */
   trialEndNoticeDue: boolean
   /** What activation names this PC to Polar: "Vocette on Windows · 7F3A". */

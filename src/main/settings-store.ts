@@ -65,6 +65,13 @@ export interface StoredLicence {
   /** Polar's masked form of the key, "****-E304DA", or its last four characters. */
   displayKey: string
   activatedAt: string
+  /**
+   * What Polar last said about the subscription behind the key. "ended" keeps
+   * the key, so a new subscription brings Pro back at the next check.
+   */
+  subscription: 'active' | 'ended'
+  /** When Polar last confirmed the subscription as active; activation counts. */
+  confirmedAt: string
 }
 
 /** The licence as the main process may pass it around: no key material. */
@@ -438,7 +445,22 @@ function normaliseLicence(value: unknown): StoredLicence | null {
   if (!encryptedKey || !keyStorage || !activationId || !benefitId || !displayKey || !activatedAt) {
     return null
   }
-  return { encryptedKey, keyStorage, activationId, benefitId, displayKey, activatedAt }
+  // Added with subscriptions: a record without them counts as confirmed when
+  // it was activated, so the next check decides, within the grace period.
+  const confirmedText = text(candidate.confirmedAt)
+  const confirmedAt =
+    confirmedText !== null && !Number.isNaN(Date.parse(confirmedText)) ? confirmedText : activatedAt
+  const subscription = candidate.subscription === 'ended' ? 'ended' : 'active'
+  return {
+    encryptedKey,
+    keyStorage,
+    activationId,
+    benefitId,
+    displayKey,
+    activatedAt,
+    subscription,
+    confirmedAt
+  }
 }
 
 /**
@@ -658,9 +680,28 @@ export class SettingsStore {
       activationId: input.activationId,
       benefitId: input.benefitId,
       displayKey: input.displayKey,
-      activatedAt: input.activatedAt
+      activatedAt: input.activatedAt,
+      // Activation itself is Polar saying the key is granted.
+      subscription: 'active',
+      confirmedAt: input.activatedAt
     }
     const next = { ...this.settings, licence }
+    this.persistence.writeJsonAtomic(this.filePath, next)
+    this.settings = next
+  }
+
+  /**
+   * Keeps what a subscription check found. "active" moves the confirmation to
+   * `at`; "ended" keeps the last confirmation, and the key, as they were.
+   */
+  recordSubscriptionCheck(result: 'active' | 'ended', at: string): void {
+    const licence = this.settings.licence
+    if (!licence || Number.isNaN(Date.parse(at))) return
+    const updated: StoredLicence =
+      result === 'active'
+        ? { ...licence, subscription: 'active', confirmedAt: at }
+        : { ...licence, subscription: 'ended' }
+    const next = { ...this.settings, licence: updated }
     this.persistence.writeJsonAtomic(this.filePath, next)
     this.settings = next
   }

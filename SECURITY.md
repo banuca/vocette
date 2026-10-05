@@ -91,11 +91,16 @@ This is the complete list. Each one happens only when stated.
    use, and a `verified.json` marker records the check. Stored in
    `%LOCALAPPDATA%\Murmur\models` on Windows. Nothing is sent but the requests
    for those files.
-2. **Pro licence** — only when the user presses **Activate** or **Release this
-   PC**: one POST to `api.polar.sh` (`/v1/customer-portal/license-keys/activate`
-   or `/deactivate`) carrying the licence key, Polar's organisation id, a device
-   label ("Vocette on Windows · 7F3A") and the app version — or, to release, the
-   key and the activation id. No Authorization header. The buyer's name and email
+2. **Pro subscription** — only with a licence key activated on this PC. **Activate**:
+   one POST to `api.polar.sh/v1/customer-portal/license-keys/activate` carrying the
+   key, Polar's organisation id, a device label ("Vocette on Windows · 7F3A") and the
+   app version. Then, while the key stays activated, at most one POST a day to
+   `/validate` — a minute after startup when the last confirmation is a day old, and
+   on **Check now** — carrying the key, the organisation id, this PC's activation id
+   and the benefit id; Polar records each validation. **Release this PC**: one POST to
+   `/deactivate` with the key and the activation id. No Authorization header on any
+   of them. A failed check changes nothing: Pro keeps working for 30 days after the
+   last confirmation. The buyer's name and email
    in Polar's reply are discarded; only the activation id, the benefit id, a
    masked key and the date are kept. The key itself is stored with `safeStorage`
    where the OS allows, and otherwise in plain text: it is an entitlement token,
