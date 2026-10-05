@@ -1,8 +1,10 @@
 # Hand test 0.5.0 — running order and record (Claude's notes)
 
-Build under test: `%LOCALAPPDATA%\murmur-release\0.5.0\murmur-0.5.0-win-x64.exe`, commit
-35dfe9b, unsigned. Owner's real profile backed up to
-`C:\Users\KIRINDE\murmur-backups\Murmur-profile-2026-09-28-before-hand-test` (89 files).
+Build under test: `%LOCALAPPDATA%\vocette-release\0.5.0\Vocette-0.5.0-win-x64.exe`, app code
+at commit 6912b56 (4b13e2f changes only the release script's summary line), unsigned.
+Smoke-tested 5 Oct: the packaged app downloads the model (20 s) and dictates with vocabulary
+correction. Owner's real profile backed up to
+`C:\Users\KIRINDE\murmur-backups\Murmur-profile-2026-10-05-before-hand-test` (89 files).
 
 Starting state of the owner's profile: settings v5, a saved OpenAI key, so the upgrade
 keeps the **cloud** engine; 1,389 history entries; hold to talk on Left Ctrl + Left Shift;
