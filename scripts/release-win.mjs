@@ -120,7 +120,7 @@ const lines = []
 for (const artifact of artifacts) lines.push(`${await sha256(artifact.path)}  ${artifact.name}`)
 writeFileSync(join(OUT, 'SHA256SUMS.txt'), `${lines.join('\n')}\n`)
 
-console.log(`\n✔ Murmur ${version} (commit ${commit}${changes ? ', with uncommitted changes' : ''})`)
+console.log(`\n✔ ${PRODUCT} ${version} (commit ${commit}${changes ? ', with uncommitted changes' : ''})`)
 console.log(`  ${signed ? 'Signed with the certificate in WIN_CSC_LINK / CSC_LINK.' : 'Not signed: no certificate was configured. Windows SmartScreen will warn on download.'}`)
 console.log(`  Output: ${OUT}`)
 for (const artifact of artifacts) {
