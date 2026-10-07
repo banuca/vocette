@@ -184,8 +184,10 @@ Windows release build that is checked before it is trusted.
   restore, paste last, Retry and history. Pro is for power users: 500 vocabulary terms in
   use instead of 50, 200 replacement rules instead of 20, and AI polish when it ships.
   Nothing is deleted when Pro lapses — a longer list keeps every line, only its first
-  part is used, and the note under each box says so. Pro is a subscription, **US$5 a
-  month or US$50 a year**, for up to three PCs. A new **Pro** page shows the plan, the two
+  part is used, and the note under each box says so. Pro is a subscription, **US$4.99 a
+  month or US$49 a year**, for up to ten devices, with a launch offer until 31 December
+  2026 for the first 100 subscribers to each plan: 25% off monthly and half price yearly,
+  for as long as they stay subscribed. A new **Pro** page shows the plan, the two
   plans (Polar's checkout, in the browser) and a **Your subscription** field: **Activate**
   sends the key and a device label (“Vocette on Windows · 7F3A”) to Polar — no
   credentials, no API-version pin — and from then on, at most once a day, Vocette asks

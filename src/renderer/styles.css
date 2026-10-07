@@ -2151,6 +2151,23 @@ a:focus-visible {
   margin-top: 14px;
 }
 
+.launch-offer {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--accent-quiet);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* The normal price beside a launch price, quieter than the label. */
+.was-price {
+  margin-left: 6px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
 .licence-active-line {
   margin: 0;
   color: var(--text);

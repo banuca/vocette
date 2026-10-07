@@ -4,7 +4,7 @@ Dictation for Windows that runs on your PC. Hold a shortcut, speak, let go — y
 
 - **On this PC, by default.** Speech is transcribed on your computer by NVIDIA's Parakeet v3 model (25 European languages). No account and no API key: once the 670 MB model is downloaded, nothing you say leaves your computer, and dictation needs no internet connection. On the laptop it is developed on, the text is ready about half a second after you let go.
 - **Or a cloud provider of your choice.** OpenAI, Groq, Azure or any OpenAI-compatible server, with your own key — or a server of your own that needs none.
-- **Free, and genuinely good.** Everyone gets Pro free for 30 days. After that, Free keeps everything dictation needs, for good. Pro — US$5 a month or US$50 a year — is for power users: long vocabulary and snippet lists, and AI polish.
+- **Free, and genuinely good.** Everyone gets Pro free for 30 days. After that, Free keeps everything dictation needs, for good. Pro — US$4.99 a month or US$49 a year — is for power users: long vocabulary and snippet lists, and AI polish.
 
 ![History](docs/screenshots/history.png)
 
@@ -66,7 +66,7 @@ Everyone gets Pro free for their first 30 days. After that, Free keeps everythin
 | Replacements and snippets in use | 20 | 200 |
 | AI polish — your dictation rewritten as Clean, Professional, Casual or Notes | — | ✓ |
 
-Pro is a subscription — **US$5 a month or US$50 a year** (two months free) — through Polar, the payment provider, for up to three PCs. Cancel any time in your Polar account: Pro stays on until the end of the period you paid for, then Vocette carries on as Free. Nothing is deleted when Pro lapses: a longer list keeps every line, only its first part is used, and the note under each box says so. **Activate** on the Pro page sends your key and a device label (“Vocette on Windows · 7F3A”) to Polar; after that, while you are subscribed, Vocette asks Polar once a day whether the subscription is still active. Offline, Pro keeps working for 30 days after the last answer. If you subscribe again after cancelling, the same key works again. **Release this PC** frees a device slot for another one.
+Pro is a subscription — **US$4.99 a month or US$49 a year** (two months free) — through Polar, the payment provider, for up to ten devices. At launch, the first 100 subscribers to each plan pay 25% less on monthly and half price on yearly, for as long as they stay subscribed; the offer closes on 31 December 2026. Cancel any time in your Polar account: Pro stays on until the end of the period you paid for, then Vocette carries on as Free. Nothing is deleted when Pro lapses: a longer list keeps every line, only its first part is used, and the note under each box says so. **Activate** on the Pro page sends your key and a device label (“Vocette on Windows · 7F3A”) to Polar; after that, while you are subscribed, Vocette asks Polar once a day whether the subscription is still active. Offline, Pro keeps working for 30 days after the last answer. If you subscribe again after cancelling, the same key works again. **Release this PC** frees a device slot for another one.
 
 ## Your API key
 

@@ -4,18 +4,18 @@ Everything that only you can do before the first sale, in the order to do it. Ea
 says where to click. Nothing here is done by the app or by Claude.
 
 Status of the product itself: built and verified feature by feature on branch `launch`
-(see `docs/launch-plan.md` §7); `main` has not moved. Pro is a subscription: US$5 a month
-or US$50 a year. The guided hand test comes next.
+(see `docs/launch-plan.md` §7). The 0.5.0 hand test passed 16/16 on 7 October 2026 and
+`launch` is merged into `main` on this PC (not pushed). Pro is a subscription: US$4.99 a
+month or US$49 a year, on up to 10 devices, with the launch offer below.
 
 ## 1. Before anything is public
 
 1. ~~Confirm you may sell it.~~ **Done** — ITU has confirmed (29 September 2026).
 2. ~~Pick the name.~~ **Done** — **Vocette**; the code is renamed on `launch` (the profile
    and model folders keep the name `Murmur` on disk, on purpose).
-3. **Register the domains now, before anything named Vocette is pushed or shown in
-   public:** `vocette.com` and `vocette.app` (and `getvocette.com`; optionally `vocette.io`,
-   `vocette.ai` and the typo `vosette.com`). All were unregistered on 25 September. The
-   `launch` branch is only on this PC, so nothing public mentions Vocette yet.
+3. ~~Register the domain.~~ **Done** — `vocette.com` registered on 7 October 2026. By the
+   owner's choice, `vocette.app` (and `getvocette.com` and the others) wait until there is
+   revenue; until then someone else could register them once the name is public.
 4. **Trade mark:** ask an attorney for a clearance search on VOCETTE in classes 9 and 42
    (CH, EU, UK, US, including sound-alikes); if clear, file in Switzerland first, then
    the EU, UK and US through the Madrid system. See `docs/research/naming.md`.
@@ -31,21 +31,24 @@ or US$50 a year. The guided hand test comes next.
 Polar is the merchant of record: it sells the Pro subscriptions, handles VAT, charges
 renewals, and issues the licence keys the app activates and checks daily.
 
-1. Sign up at **polar.sh** and create an organisation. Complete the payout details
-   (Settings → Payouts) so money can reach you.
+1. ~~Sign up at **polar.sh** and create an organisation.~~ **Done** 7 October 2026 —
+   organisation "Vocette", Software / SaaS, subscription; Polar shows 1 of 7 setup steps
+   complete. Still to do: the payout details (Settings → Payouts) so money can reach you.
+   Polar suggests testing the whole flow with a 100% discount code before going live,
+   which can replace the sandbox test in step 9.
 2. **The licence-key benefit:** Products → Benefits (`polar.sh/to/dashboard/products/benefits`)
    → **+ New Benefit** → Type **License Keys**.
    - Prefix: `VOCETTE`.
    - Expiry: **none** (a subscription's key follows the subscription by itself).
-   - **Activation limit: 3**, and allow customers to deactivate devices themselves.
+   - **Activation limit: 10**, and allow customers to deactivate devices themselves.
      Without an activation limit, activation in the app fails.
 3. **The two products** — Polar has one product per billing interval:
-   - Products → **New product** → **Subscription**, **monthly**, US$5 → name "Vocette Pro
+   - Products → **New product** → **Subscription**, **monthly**, US$4.99 → name "Vocette Pro
      (monthly)" → Automated Benefits → attach the licence-key benefit.
-   - The same again, **yearly**, US$50 → "Vocette Pro (yearly)" → attach **the same**
+   - The same again, **yearly**, US$49 → "Vocette Pro (yearly)" → attach **the same**
      benefit. One shared benefit means switching plans keeps the same key. (If Polar
      will not let one benefit sit on both, make one per product and list both ids in
-     step 7.)
+     step 8.)
    - Never remove the benefit from a product later: that revokes its customers' keys.
    - Leave Polar's own trial off: the app already gives everyone 30 days of Pro, with
      no card.
@@ -63,10 +66,21 @@ renewals, and issues the licence keys the app activates and checks daily.
    refundable within 30 days, no questions; later renewals are not, but cancelling stops
    the next one. Put the same sentences in both product descriptions. A refund revokes
    the key, and the app notices at its next daily check.
-6. **The checkout links:** Products → **Checkout Links** → **New Link** → the monthly
-   product; then another for the yearly one. Copy both URLs.
-7. **The ids the app needs** — paste into `src/shared/product.ts`:
-   - `CHECKOUT_URL_MONTHLY` and `CHECKOUT_URL_YEARLY` — the two links from step 6.
+6. **The launch offer** (owner, 7 October 2026), two discounts, each **Percentage**,
+   duration **Forever**, **Maximum redemptions 100**, ending **1 January 2027 00:00 UTC**
+   (the instant `LAUNCH_OFFER_ENDS_AT` in `src/shared/product.ts`):
+   - "Launch, monthly": **25%**, restricted to the monthly product (US$3.74).
+   - "Launch, yearly": **50%**, restricted to the yearly product (US$24.50).
+   "Forever" keeps the discount on that subscription for as long as it runs. The site's
+   terms say so in one line; the headline says "half price forever" / "25% off forever".
+   The app says "the first 100 subscribers" because it cannot tell when the places are
+   gone; Polar's checkout shows the price that applies.
+7. **The checkout links:** Products → **Checkout Links** → **New Link** → the monthly
+   product, with the monthly launch discount **pinned** to the link so nobody types a code;
+   then the same for the yearly product and its discount. Copy both URLs. After the offer,
+   unpin the discounts from the links: the URLs, and so the app, stay the same.
+8. **The ids the app needs** — paste into `src/shared/product.ts`:
+   - `CHECKOUT_URL_MONTHLY` and `CHECKOUT_URL_YEARLY` — the two links from step 7.
    - `CUSTOMER_PORTAL_URL` — `https://polar.sh/<your-org-slug>/portal` (customers cancel,
      switch plans and change cards there).
    - `POLAR_ORGANIZATION_ID` — Settings → **Organization** → **Identifier** (Copy).
@@ -77,16 +91,18 @@ renewals, and issues the licence keys the app activates and checks daily.
      `PRO_YEARLY_PRICE_LABEL` to match.
    Commit. Until these are filled in, the app says subscriptions open soon and the licence
    field is disabled.
-8. **Test a purchase in Polar's sandbox first** (`sandbox.polar.sh`, same steps), with the
+9. **Test a purchase before going live**: with a 100% discount code in the live store
+   (Polar's own suggestion), or in Polar's sandbox (`sandbox.polar.sh`, same steps), with the
    app pointed at it: set `MURMUR_POLAR_API_BASE=https://sandbox-api.polar.sh`,
    `MURMUR_POLAR_ORG_ID` and `MURMUR_POLAR_BENEFIT_ID` to the sandbox values before
-   launching. Subscribe with Stripe's test card, activate in the app, press **Check now**;
+   launching (`MURMUR_CHECKOUT_URL_MONTHLY` / `_YEARLY` point the buttons at sandbox
+   checkout links). Subscribe with Stripe's test card, activate in the app, press **Check now**;
    then cancel in the sandbox and confirm the app drops to Free, at its next check, once
    the subscription has ended.
 
 ## 3. Website
 
-1. **Domain:** buy the name's domain (e.g. `vocette.app`) at a registrar you trust.
+1. ~~**Domain.**~~ **Done** — `vocette.com` (7 October 2026).
 2. **Hosting:** the site is in `site/`, published by the workflow in
    `.github/workflows/pages.yml`. Repository Settings → **Pages** → Source **GitHub
    Actions** → then **Custom domain** → your domain → **Enforce HTTPS**. At the registrar,

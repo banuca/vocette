@@ -6,6 +6,7 @@ import {
   activationNote,
   daysAgo,
   keyEnding,
+  launchOfferLine,
   longDate,
   planStatusLine,
   plansNote,
@@ -15,7 +16,7 @@ import {
   trialBadge,
   vocabularyPlanNote
 } from '../src/renderer/licence-text'
-import { licenceStatus } from './fixtures/licence-status'
+import { LAUNCH_OFFER, licenceStatus } from './fixtures/licence-status'
 
 describe('the status line', () => {
   it('names the plan in the owner’s words', () => {
@@ -66,18 +67,60 @@ describe('the sidebar suffix', () => {
 describe('the Subscribe buttons', () => {
   it('carry the prices, or say each opens soon while it has no checkout', () => {
     expect(subscribeLabels(licenceStatus())).toEqual({
-      monthly: 'Monthly — US$5 a month',
-      yearly: 'Yearly — US$50 a year · two months free'
+      monthly: 'Monthly — US$4.99 a month',
+      yearly: 'Yearly — US$49 a year · two months free',
+      monthlyWas: null,
+      yearlyWas: null
     })
     expect(
       subscribeLabels(licenceStatus({ monthlyCheckoutAvailable: false, yearlyCheckoutAvailable: false }))
-    ).toEqual({ monthly: 'Monthly — opens soon', yearly: 'Yearly — opens soon' })
+    ).toEqual({
+      monthly: 'Monthly — opens soon',
+      yearly: 'Yearly — opens soon',
+      monthlyWas: null,
+      yearlyWas: null
+    })
+  })
+
+  it('carry the launch prices during the offer, with the normal ones to strike through', () => {
+    expect(subscribeLabels(licenceStatus({ launchOffer: LAUNCH_OFFER }))).toEqual({
+      monthly: 'Monthly — US$3.74 a month',
+      yearly: 'Yearly — US$24.50 a year',
+      monthlyWas: 'US$4.99',
+      yearlyWas: 'US$49'
+    })
+    // A plan with no checkout yet says so, offer or not.
+    expect(
+      subscribeLabels(licenceStatus({ launchOffer: LAUNCH_OFFER, monthlyCheckoutAvailable: false }))
+    ).toEqual({
+      monthly: 'Monthly — opens soon',
+      yearly: 'Yearly — US$24.50 a year',
+      monthlyWas: null,
+      yearlyWas: 'US$49'
+    })
+  })
+
+  it('announce the offer only while it is open and a checkout can take it up', () => {
+    expect(launchOfferLine(licenceStatus({ launchOffer: LAUNCH_OFFER }))).toBe(
+      'Launch offer for the first 100 subscribers, until 31 December 2026: the yearly plan at ' +
+        'half price forever, the monthly plan at 25% off forever.'
+    )
+    expect(launchOfferLine(licenceStatus({ launchOffer: null }))).toBe('')
+    expect(
+      launchOfferLine(
+        licenceStatus({
+          launchOffer: LAUNCH_OFFER,
+          monthlyCheckoutAvailable: false,
+          yearlyCheckoutAvailable: false
+        })
+      )
+    ).toBe('')
   })
 
   it('say what one subscription covers, and that cancelling keeps what was paid for', () => {
     expect(plansNote(licenceStatus())).toBe(
-      'One subscription covers up to 3 PCs. Cancel any time; Pro stays on until the end of the ' +
-        'period you have paid for.'
+      'One subscription covers up to 10 devices. Cancel any time; Pro stays on until the end of ' +
+        'the period you have paid for.'
     )
   })
 })

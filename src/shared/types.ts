@@ -329,13 +329,27 @@ export interface LicenceStatus {
   monthlyCheckoutAvailable: boolean
   yearlyCheckoutAvailable: boolean
   portalAvailable: boolean
-  /** "US$5 a month". */
+  /** "US$4.99 a month". */
   monthlyPriceLabel: string
-  /** "US$50 a year". */
+  /** "US$49 a year". */
   yearlyPriceLabel: string
   /** "two months free". */
   yearlySavingLabel: string
-  /** How many PCs one subscription covers. */
+  /** The launch offer while it can still be taken up; null once it has closed. */
+  launchOffer: {
+    /** "US$3.74 a month". */
+    monthlyPriceLabel: string
+    /** "US$24.50 a year". */
+    yearlyPriceLabel: string
+    /** The normal prices, struck through beside these: "US$4.99", "US$49". */
+    monthlyWas: string
+    yearlyWas: string
+    /** The last day it can be taken up: "31 December 2026". */
+    endsLabel: string
+    /** How many subscribers to each plan get it. */
+    places: number
+  } | null
+  /** How many devices one subscription covers. */
   devices: number
   /** The trial has ended and its one notice has not been dismissed. */
   trialEndNoticeDue: boolean

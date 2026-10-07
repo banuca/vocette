@@ -48,6 +48,7 @@ import { OPENAI_POLISH_ENDPOINT, type PolishOutcome } from '../shared/polish'
 import {
   LICENCE_MESSAGES,
   LicenceClient,
+  checkoutConfig,
   deviceLabel,
   licenceConfig,
   licenceStatusFor,
@@ -70,12 +71,7 @@ import {
   subscriptionStanding,
   type Entitlement
 } from '../shared/entitlement'
-import {
-  CHECKOUT_URL_MONTHLY,
-  CHECKOUT_URL_YEARLY,
-  CUSTOMER_PORTAL_URL,
-  UPDATE_REPOSITORY
-} from '../shared/product'
+import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
 import { SubscriptionChecker } from './subscription-check'
 import { displayVersion } from '../shared/update'
 import {
@@ -372,6 +368,7 @@ function thisDeviceLabel(): string {
 }
 
 function licenceStatus(): LicenceStatus {
+  const checkout = checkoutConfig(process.env)
   return licenceStatusFor({
     entitlement: entitlement(),
     licence: settingsStore.licenceRecord(),
@@ -380,7 +377,10 @@ function licenceStatus(): LicenceStatus {
     deviceLabel: thisDeviceLabel(),
     now: Date.now(),
     checking: subscriptionChecker?.isChecking() ?? false,
-    checkMessage: subscriptionChecker?.lastMessage() ?? null
+    checkMessage: subscriptionChecker?.lastMessage() ?? null,
+    monthlyCheckoutUrl: checkout.monthly,
+    yearlyCheckoutUrl: checkout.yearly,
+    launchOfferEndsAt: checkout.launchOfferEndsAt
   })
 }
 
@@ -1355,12 +1355,13 @@ function registerIpc(): void {
   })
   ipcMain.handle('app:open-external', async (event, target: unknown) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
+    const checkout = checkoutConfig(process.env)
     const targets: Record<string, string> = {
       'api-keys': 'https://platform.openai.com/api-keys',
       'transcription-docs': 'https://developers.openai.com/api/docs/guides/speech-to-text',
       // Empty until the owner fills them in, and then nothing opens.
-      'checkout-monthly': CHECKOUT_URL_MONTHLY,
-      'checkout-yearly': CHECKOUT_URL_YEARLY,
+      'checkout-monthly': checkout.monthly,
+      'checkout-yearly': checkout.yearly,
       'customer-portal': CUSTOMER_PORTAL_URL,
       // Only the release page a check has just validated, and only while an
       // update is on offer.

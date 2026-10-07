@@ -45,23 +45,47 @@ export function subscribeLabels(
     | 'monthlyPriceLabel'
     | 'yearlyPriceLabel'
     | 'yearlySavingLabel'
+    | 'launchOffer'
   >
-): { monthly: string; yearly: string } {
+): { monthly: string; yearly: string; monthlyWas: string | null; yearlyWas: string | null } {
+  // During the launch offer each button carries its launch price, with the
+  // normal one struck through beside it.
+  const offer = status.launchOffer
   return {
     monthly: status.monthlyCheckoutAvailable
-      ? `Monthly — ${status.monthlyPriceLabel}`
+      ? `Monthly — ${offer ? offer.monthlyPriceLabel : status.monthlyPriceLabel}`
       : 'Monthly — opens soon',
     yearly: status.yearlyCheckoutAvailable
-      ? `Yearly — ${status.yearlyPriceLabel} · ${status.yearlySavingLabel}`
-      : 'Yearly — opens soon'
+      ? offer
+        ? `Yearly — ${offer.yearlyPriceLabel}`
+        : `Yearly — ${status.yearlyPriceLabel} · ${status.yearlySavingLabel}`
+      : 'Yearly — opens soon',
+    monthlyWas: status.monthlyCheckoutAvailable && offer ? offer.monthlyWas : null,
+    yearlyWas: status.yearlyCheckoutAvailable && offer ? offer.yearlyWas : null
   }
+}
+
+/**
+ * The launch offer, above the buttons, while it can be taken up and a checkout
+ * is open; empty otherwise. It names the 100 places because the app cannot tell
+ * when they are gone, and Polar's checkout shows the price that applies.
+ */
+export function launchOfferLine(
+  status: Pick<LicenceStatus, 'launchOffer' | 'monthlyCheckoutAvailable' | 'yearlyCheckoutAvailable'>
+): string {
+  const offer = status.launchOffer
+  if (!offer || (!status.monthlyCheckoutAvailable && !status.yearlyCheckoutAvailable)) return ''
+  return (
+    `Launch offer for the first ${offer.places} subscribers, until ${offer.endsLabel}: the ` +
+    'yearly plan at half price forever, the monthly plan at 25% off forever.'
+  )
 }
 
 /** Said under the plans: what one subscription covers, and how to stop it. */
 export function plansNote(status: Pick<LicenceStatus, 'devices'>): string {
   return (
-    `One subscription covers up to ${status.devices} PCs. Cancel any time; Pro stays on until ` +
-    'the end of the period you have paid for.'
+    `One subscription covers up to ${status.devices} devices. Cancel any time; Pro stays on ` +
+    'until the end of the period you have paid for.'
   )
 }
 

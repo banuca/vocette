@@ -20,12 +20,32 @@
 
 export const PRODUCT_NAME = 'Vocette'
 /** Shown on the two Subscribe buttons. They must match the Polar products. */
-export const PRO_MONTHLY_PRICE_LABEL = 'US$5 a month'
-export const PRO_YEARLY_PRICE_LABEL = 'US$50 a year'
+export const PRO_MONTHLY_PRICE_LABEL = 'US$4.99 a month'
+export const PRO_YEARLY_PRICE_LABEL = 'US$49 a year'
+/** Twelve monthly payments are US$59.88; the yearly plan saves a little over two months. */
 export const PRO_YEARLY_SAVING_LABEL = 'two months free'
-/** How many PCs one subscription covers: the licence key's activation limit in Polar. */
-export const PRO_DEVICES = 3
+/** How many devices one subscription covers: the licence key's activation limit in Polar. */
+export const PRO_DEVICES = 10
 export const TRIAL_DAYS = 30
+
+/**
+ * The launch offer: the monthly plan at 25% off and the yearly plan at half
+ * price, for as long as that subscription runs, for the first 100 subscribers
+ * to each plan, until the end of 31 December 2026.
+ *
+ * Polar applies it. The two discounts are pinned to the checkout links, each
+ * has a limit of 100 redemptions, and each ends at this same instant. The app
+ * only shows the offer, and stops showing it at this instant by its own clock;
+ * it cannot tell when the 100 places are gone, which is why the line says
+ * "the first 100". An empty end date takes the offer away.
+ */
+export const LAUNCH_OFFER_ENDS_AT = '2027-01-01T00:00:00Z'
+export const LAUNCH_OFFER_PLACES = 100
+export const LAUNCH_MONTHLY_PRICE_LABEL = 'US$3.74 a month'
+export const LAUNCH_YEARLY_PRICE_LABEL = 'US$24.50 a year'
+/** The normal prices, struck through beside the launch ones. */
+export const PRO_MONTHLY_PRICE = 'US$4.99'
+export const PRO_YEARLY_PRICE = 'US$49'
 
 /**
  * How long Pro keeps working without reaching Polar. A subscription is checked

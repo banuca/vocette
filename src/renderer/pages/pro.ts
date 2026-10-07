@@ -4,6 +4,7 @@ import {
   FREE_FOREVER,
   PRO_ADDS,
   activationNote,
+  launchOfferLine,
   planStatusLine,
   plansNote,
   subscribeLabels,
@@ -56,6 +57,7 @@ export function renderPro(context: AppContext): ProView {
           <div class="pro-plan is-pro"><h3>What Pro adds</h3><ul id="pro-adds"></ul></div>
         </div>
         <div class="pro-buy" id="pro-buy">
+          <p class="launch-offer" id="launch-offer" hidden></p>
           <button class="primary-button" id="subscribe-yearly" type="button"></button>
           <button class="secondary-button" id="subscribe-monthly" type="button"></button>
           <p class="field-note" id="plans-note"></p>
@@ -99,6 +101,7 @@ export function renderPro(context: AppContext): ProView {
   const statusDetail = query<HTMLElement>('#pro-status-detail')
   const monthlyButton = query<HTMLButtonElement>('#subscribe-monthly')
   const yearlyButton = query<HTMLButtonElement>('#subscribe-yearly')
+  const offerLine = query<HTMLElement>('#launch-offer')
   const plansNoteLine = query<HTMLElement>('#plans-note')
   const checkButton = query<HTMLButtonElement>('#check-subscription')
   const summary = query<HTMLElement>('#licence-summary')
@@ -128,6 +131,16 @@ export function renderPro(context: AppContext): ProView {
   }
   fillList('#pro-adds', PRO_ADDS)
   fillList('#free-forever', FREE_FOREVER)
+
+  /** A plan's label, with the normal price struck through beside it during the offer. */
+  const label = (button: HTMLButtonElement, text: string, was: string | null): void => {
+    button.textContent = text
+    if (!was) return
+    const struck = document.createElement('s')
+    struck.className = 'was-price'
+    struck.textContent = was
+    button.append(struck)
+  }
 
   let status = context.licence
   /** A request to Polar is on its way; its buttons wait for the answer. */
@@ -162,12 +175,16 @@ export function renderPro(context: AppContext): ProView {
     if (buyRow) buyRow.hidden = standing === 'active' || standing === 'unconfirmed'
     const labels = subscribeLabels(status)
     if (monthlyButton) {
-      monthlyButton.textContent = labels.monthly
+      label(monthlyButton, labels.monthly, labels.monthlyWas)
       monthlyButton.disabled = !status.monthlyCheckoutAvailable
     }
     if (yearlyButton) {
-      yearlyButton.textContent = labels.yearly
+      label(yearlyButton, labels.yearly, labels.yearlyWas)
       yearlyButton.disabled = !status.yearlyCheckoutAvailable
+    }
+    if (offerLine) {
+      offerLine.textContent = launchOfferLine(status)
+      offerLine.hidden = offerLine.textContent === ''
     }
     if (plansNoteLine) plansNoteLine.textContent = plansNote(status)
 

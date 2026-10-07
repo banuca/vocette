@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   LICENCE_MESSAGES,
   LicenceClient,
+  checkoutConfig,
   deviceLabel,
+  launchOfferFor,
   licenceConfig,
   licenceStatusFor,
   purchasesConfigured,
@@ -12,6 +14,9 @@ import {
 } from '../src/main/licence'
 import { entitlementFor } from '../src/shared/entitlement'
 import {
+  CHECKOUT_URL_MONTHLY,
+  CHECKOUT_URL_YEARLY,
+  LAUNCH_OFFER_ENDS_AT,
   POLAR_API_BASE,
   POLAR_ORGANIZATION_ID,
   POLAR_PRO_BENEFIT_IDS
@@ -240,7 +245,7 @@ describe('what an activation that fails says', () => {
       'the activation limit',
       403,
       { error: 'NotPermitted', detail: 'License key activation limit already reached' },
-      'This key is already active on its maximum number of PCs. Release it on another PC, or manage your devices in your Polar account.'
+      'This key is already active on its maximum number of devices. Release it on another device, or manage your devices in your Polar account.'
     ],
     [
       'a revoked or disabled key',
@@ -467,6 +472,85 @@ describe('the device label', () => {
   })
 })
 
+describe('the launch offer', () => {
+  const END = '2027-01-01T00:00:00Z'
+
+  it('is shown up to the last moment of 31 December, and gone from midnight UTC', () => {
+    const lastMoment = launchOfferFor(Date.parse(END) - 1, END)
+    expect(lastMoment).toEqual({
+      monthlyPriceLabel: 'US$3.74 a month',
+      yearlyPriceLabel: 'US$24.50 a year',
+      monthlyWas: 'US$4.99',
+      yearlyWas: 'US$49',
+      endsLabel: '31 December 2026',
+      places: 100
+    })
+    expect(launchOfferFor(Date.parse(END), END)).toBeNull()
+    expect(launchOfferFor(Date.parse(END) + 86_400_000, END)).toBeNull()
+  })
+
+  it('needs a readable end date', () => {
+    expect(launchOfferFor(Date.parse('2026-10-07T12:00:00Z'), '')).toBeNull()
+    expect(launchOfferFor(Date.parse('2026-10-07T12:00:00Z'), 'some day')).toBeNull()
+  })
+
+  it('ends on the same instant as the Polar discounts are set to', () => {
+    expect(LAUNCH_OFFER_ENDS_AT).toBe(END)
+  })
+
+  it('is part of the status until it closes', () => {
+    const base = {
+      entitlement: entitlementFor({ trialStartedAt: '2026-10-07T09:00:00.000Z', subscribed: false, now: 0 }),
+      licence: null,
+      config: { apiBase: POLAR_API_BASE, orgId: ORG, benefitIds: [BENEFIT] },
+      trialEndNoticeDismissed: false,
+      deviceLabel: 'Vocette on Windows · 7F3A'
+    }
+    expect(
+      licenceStatusFor({ ...base, now: Date.parse('2026-12-31T23:00:00Z') }).launchOffer
+    ).not.toBeNull()
+    expect(licenceStatusFor({ ...base, now: Date.parse('2027-01-01T00:00:00Z') }).launchOffer).toBeNull()
+    // A test run can move the end, as the owner's sandbox check does.
+    expect(
+      licenceStatusFor({
+        ...base,
+        now: Date.parse('2026-10-07T12:00:00Z'),
+        launchOfferEndsAt: '2026-10-01T00:00:00Z'
+      }).launchOffer
+    ).toBeNull()
+  })
+})
+
+describe('the checkout settings', () => {
+  it('are the product constants unless a test run replaces them', () => {
+    expect(checkoutConfig({})).toEqual({
+      monthly: CHECKOUT_URL_MONTHLY,
+      yearly: CHECKOUT_URL_YEARLY,
+      launchOfferEndsAt: LAUNCH_OFFER_ENDS_AT
+    })
+    expect(
+      checkoutConfig({
+        MURMUR_CHECKOUT_URL_MONTHLY: ' https://sandbox.polar.sh/checkout/monthly ',
+        MURMUR_CHECKOUT_URL_YEARLY: 'https://sandbox.polar.sh/checkout/yearly',
+        MURMUR_LAUNCH_OFFER_ENDS_AT: '2026-10-08T00:00:00Z'
+      })
+    ).toEqual({
+      monthly: 'https://sandbox.polar.sh/checkout/monthly',
+      yearly: 'https://sandbox.polar.sh/checkout/yearly',
+      launchOfferEndsAt: '2026-10-08T00:00:00Z'
+    })
+  })
+
+  it('never takes a checkout link that is not https', () => {
+    const config = checkoutConfig({
+      MURMUR_CHECKOUT_URL_MONTHLY: 'http://example.com/checkout',
+      MURMUR_CHECKOUT_URL_YEARLY: 'javascript:alert(1)'
+    })
+    expect(config.monthly).toBe(CHECKOUT_URL_MONTHLY)
+    expect(config.yearly).toBe(CHECKOUT_URL_YEARLY)
+  })
+})
+
 describe('the status the window is told', () => {
   const START = '2026-09-25T09:00:00.000Z'
   const DAY = 86_400_000
@@ -513,10 +597,18 @@ describe('the status the window is told', () => {
       monthlyCheckoutAvailable: false,
       yearlyCheckoutAvailable: false,
       portalAvailable: false,
-      monthlyPriceLabel: 'US$5 a month',
-      yearlyPriceLabel: 'US$50 a year',
+      monthlyPriceLabel: 'US$4.99 a month',
+      yearlyPriceLabel: 'US$49 a year',
       yearlySavingLabel: 'two months free',
-      devices: 3,
+      launchOffer: {
+        monthlyPriceLabel: 'US$3.74 a month',
+        yearlyPriceLabel: 'US$24.50 a year',
+        monthlyWas: 'US$4.99',
+        yearlyWas: 'US$49',
+        endsLabel: '31 December 2026',
+        places: 100
+      },
+      devices: 10,
       trialEndNoticeDue: false,
       deviceLabel: 'Vocette on Windows · 7F3A'
     })

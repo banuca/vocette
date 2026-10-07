@@ -3,12 +3,18 @@ import {
   CHECKOUT_URL_MONTHLY,
   CHECKOUT_URL_YEARLY,
   CUSTOMER_PORTAL_URL,
+  LAUNCH_MONTHLY_PRICE_LABEL,
+  LAUNCH_OFFER_ENDS_AT,
+  LAUNCH_OFFER_PLACES,
+  LAUNCH_YEARLY_PRICE_LABEL,
   POLAR_API_BASE,
   POLAR_ORGANIZATION_ID,
   POLAR_PRO_BENEFIT_IDS,
   PRODUCT_NAME,
   PRO_DEVICES,
+  PRO_MONTHLY_PRICE,
   PRO_MONTHLY_PRICE_LABEL,
+  PRO_YEARLY_PRICE,
   PRO_YEARLY_PRICE_LABEL,
   PRO_YEARLY_SAVING_LABEL
 } from '../shared/product'
@@ -43,8 +49,8 @@ export const LICENCE_MESSAGES = {
   empty: 'Enter your licence key first.',
   notAKey: 'That does not look like a Vocette licence key.',
   activationLimit:
-    'This key is already active on its maximum number of PCs. Release it on another PC, ' +
-    'or manage your devices in your Polar account.',
+    'This key is already active on its maximum number of devices. Release it on another ' +
+    'device, or manage your devices in your Polar account.',
   revoked: 'This licence key is not active: its subscription has ended, or it was disabled.',
   expired: 'This licence key has expired.',
   noActivations: 'This key cannot be activated in Vocette. Contact support.',
@@ -406,6 +412,37 @@ export function licenceConfig(env: Record<string, string | undefined>): LicenceC
   }
 }
 
+export interface CheckoutConfig {
+  monthly: string
+  yearly: string
+  launchOfferEndsAt: string
+}
+
+/**
+ * The two checkout links and the end of the launch offer. Like the Polar
+ * settings, the environment can replace them for a test run: a checkout link
+ * only as an https URL, the end date as written. None of it reaches the window,
+ * which learns only whether each checkout is open.
+ */
+export function checkoutConfig(env: Record<string, string | undefined>): CheckoutConfig {
+  return {
+    monthly: httpsUrl(env.MURMUR_CHECKOUT_URL_MONTHLY) ?? CHECKOUT_URL_MONTHLY,
+    yearly: httpsUrl(env.MURMUR_CHECKOUT_URL_YEARLY) ?? CHECKOUT_URL_YEARLY,
+    launchOfferEndsAt: env.MURMUR_LAUNCH_OFFER_ENDS_AT?.trim() || LAUNCH_OFFER_ENDS_AT
+  }
+}
+
+/** The URL as given when it is https, or null for anything else. */
+function httpsUrl(value: string | undefined): string | null {
+  const raw = value?.trim()
+  if (!raw) return null
+  try {
+    return new URL(raw).protocol === 'https:' ? raw : null
+  } catch {
+    return null
+  }
+}
+
 /** "a, b" → ["a", "b"]; null when the variable is not set or holds nothing. */
 function benefitList(value: string | undefined): string[] | null {
   const ids = (value ?? '')
@@ -443,6 +480,31 @@ export interface LicenceStatusInput {
   monthlyCheckoutUrl?: string
   yearlyCheckoutUrl?: string
   portalUrl?: string
+  launchOfferEndsAt?: string
+}
+
+/**
+ * The launch offer as the Pro page shows it, until the instant it closes;
+ * null after that, or when no end date is set. The last day is named in UTC,
+ * the zone the end instant is written in.
+ */
+export function launchOfferFor(now: number, endsAt: string): LicenceStatus['launchOffer'] {
+  const end = Date.parse(endsAt)
+  if (!endsAt || !Number.isFinite(end) || now >= end) return null
+  const lastDay = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(new Date(end - 1))
+  return {
+    monthlyPriceLabel: LAUNCH_MONTHLY_PRICE_LABEL,
+    yearlyPriceLabel: LAUNCH_YEARLY_PRICE_LABEL,
+    monthlyWas: PRO_MONTHLY_PRICE,
+    yearlyWas: PRO_YEARLY_PRICE,
+    endsLabel: lastDay,
+    places: LAUNCH_OFFER_PLACES
+  }
 }
 
 /** What the window is told. No key, no activation id, no Polar identifier. */
@@ -472,6 +534,7 @@ export function licenceStatusFor(input: LicenceStatusInput): LicenceStatus {
     monthlyPriceLabel: PRO_MONTHLY_PRICE_LABEL,
     yearlyPriceLabel: PRO_YEARLY_PRICE_LABEL,
     yearlySavingLabel: PRO_YEARLY_SAVING_LABEL,
+    launchOffer: launchOfferFor(input.now, input.launchOfferEndsAt ?? LAUNCH_OFFER_ENDS_AT),
     devices: PRO_DEVICES,
     // The trial having ended, for someone who never subscribed here — shown
     // until dismissed. A subscription that ended is the Pro page's to explain.

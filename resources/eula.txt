@@ -4,8 +4,9 @@ Vocette is free and open-source software, released under the MIT licence.
 The full licence text is in the LICENSE file that comes with the program and
 at https://github.com/banuca/murmur/blob/main/LICENSE.
 
-Vocette Pro is an optional one-off purchase that unlocks Pro features on up to
-three PCs. The terms of sale and the refund policy are on the Vocette website.
+Vocette Pro is an optional monthly or yearly subscription that unlocks Pro
+features on up to ten devices. The terms of sale and the refund policy are on the
+Vocette website.
 
 The speech model is downloaded separately, on first use, from Hugging Face. It
 is NVIDIA Parakeet TDT 0.6B v3 (ONNX export by the sherpa-onnx project) and is
