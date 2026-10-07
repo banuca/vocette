@@ -105,7 +105,21 @@ renewals, and issues the licence keys the app activates and checks daily.
      `PRO_YEARLY_PRICE_LABEL` to match.
    Commit. Until these are filled in, the app says subscriptions open soon and the licence
    field is disabled.
-9. **Test a purchase before going live**: with a 100% discount code in the live store
+9. **Test purchase, 7 October 2026 (owner, test mode):** yearly link → removed the preset
+   launch discount (×) → code FRIENDOFVOCETTE → US$0 → checkout completed → key VOCETTE-…
+   "Granted", no expiry; the seller email "new subscriber … $0.00/year" and the customer
+   email "Your Vocette Pro (yearly) subscription" with invoice and "Access purchase" both
+   arrived. Launch price shown first: US$24.50 including Swiss VAT US$1.84, so prices are
+   VAT-inclusive. Friends discount "Friends of Vocette": 100%, forever, yearly, 25 places,
+   code FRIENDOFVOCETTE; App – yearly link now allows codes. Installer with Polar connected:
+   `%LOCALAPPDATA%\vocette-release\0.5.0-polar` (8101885). **Activation in the app: Pass**
+   (owner, real profile, live Polar): before it, the Pro page showed the offer line and the
+   struck prices; after it, "Pro — thank you for supporting Vocette", "Subscription active on
+   this PC · key ending CCCC40 · confirmed today". **Check now: Pass** ("Your subscription is
+   active."). **Manage subscription: Pass** (opens the customer portal in the browser).
+   Friends link "Friends" (yearly, no preset, codes allowed):
+   `https://buy.polar.sh/polar_cl_zGiWMgLwnQYDOr5oQk63CxrKyWUD7xYzFI1ih0BsCN2` + code FRIENDOFVOCETTE.
+   **Test a purchase before going live**: with a 100% discount code in the live store
    (Polar's own suggestion), or in Polar's sandbox (`sandbox.polar.sh`, same steps), with the
    app pointed at it: set `MURMUR_POLAR_API_BASE=https://sandbox-api.polar.sh`,
    `MURMUR_POLAR_ORG_ID` and `MURMUR_POLAR_BENEFIT_ID` to the sandbox values before
