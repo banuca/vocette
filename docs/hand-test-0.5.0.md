@@ -17,14 +17,14 @@ is dealt with. Pass/fail recorded here, not in the chat.
 
 | # | Step (what the owner does) | Expected | Covers | Result |
 |---|---|---|---|---|
-| 1 | Run the installer (SmartScreen: More info → Run anyway), default options | Installs per user, Vocette opens on History; sidebar "Pro Trial · 30d" | 15, 11 | |
-| 2 | Settings → Transcription → On this PC → Download | 670 MB downloads with progress, then "Ready" | 7b on the real profile | |
-| 3 | Notepad open, hold Left Ctrl + Left Shift, say a sentence, let go | Text typed into Notepad; overlay "Pasted", the wait at its right | core, 10 | |
-| 4 | Copy a word first; dictate; then Ctrl + V somewhere | Pasting gives the copied word back (clipboard restored) | 4 | |
-| 5 | Alt + Shift + V in Notepad | Last dictation pasted again | 4 | |
-| 6 | Hold the chord and speak immediately | First word kept | 9 | |
-| 7 | Settings → Your words: add "Kirinde" and "ITU-T", save; dictate them | Spelled as written | 8 | |
-| 8 | Say "um, move it to Tuesday, no sorry, Wednesday" | "Move it to Wednesday." | 2 | |
+| 1 | Run the installer (SmartScreen: More info → Run anyway), default options | Installs per user, Vocette opens on History; sidebar "Pro Trial · 30d" | 15, 11 | **Pass** 5 Oct: opened on History, 1,389 dictations, "Pro Trial · 30d", Typical wait "—" (old entries unmeasured, as designed) |
+| 2 | Settings → Transcription → On this PC → Download | 670 MB downloads with progress, then "Ready" | 7b on the real profile | **Pass** 5 Oct: downloaded and verified (verified.json). Finding: the owner pressed Download but not Save settings, so the engine stayed on cloud until a second prompt — choosing an engine and downloading feels like the switch is made. Candidate: save the engine choice when the download finishes, or say "Save to switch" beside the Ready row |
+| 3 | Notepad open, hold Left Ctrl + Left Shift, say a sentence, let go | Text typed into Notepad; overlay "Pasted", the wait at its right | core, 10 | **Pass** (owner) |
+| 4 | Copy a word first; dictate; then Ctrl + V somewhere | Pasting gives the copied word back (clipboard restored) | 4 | **Pass** (owner) — first real-keyboard proof of clipboard restore |
+| 5 | Alt + Shift + V in Notepad | Last dictation pasted again | 4 | **Pass** (owner) |
+| 6 | Hold the chord and speak immediately | First word kept | 9 | **Pass** (owner) |
+| 7 | Settings → Your words: add "Kirinde" and "ITU-T", save; dictate them | Spelled as written | 8 | **Pass** (owner) |
+| 8 | Say "um, move it to Tuesday, no sorry, Wednesday" | "Move it to Wednesday." | 2 | **Fail** 7 Oct: pasted "Move to Tuesday. No sorry, Wednesday." Settings correct (corrections and fillers on, English, local engine). The current source turns that exact text into "Move to Wednesday.", so the recogniser's raw text was different, and raw text is not stored. Probable cause, reproduced: a hesitation sound beside the marker ("Tuesday. Uh, no sorry, Wednesday." or "No sorry, um Wednesday") hides the marker, because corrections run before filler removal; the fillers are removed afterwards, which leaves exactly the pasted text. Planned fix: remove hesitation sounds only (um, uh, er…) before the corrections pass, then run the full filler pass as now (it must stay after corrections because it removes a sentence-opening "I mean,"). ("it" missing: the recogniser's, not cleanup's) |
 | 9 | Replacement `my email => …` then say "my email" | Expands | 3 | |
 | 10 | Start dictating, switch to another window before letting go | Not pasted; "Copied — paste manually (focus moved)" | 4 | |
 | 11 | Settings → Press to start and stop; press, speak, Esc | Cancelled, nothing pasted; hint shows Esc | R3 | |
