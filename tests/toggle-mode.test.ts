@@ -28,7 +28,7 @@ vi.mock('uiohook-napi', () => ({
 }))
 
 const { KEY } = await import('../src/shared/keycodes')
-const { ShortcutController } = await import('../src/main/shortcut-controller')
+const { ARM_INTENT_MS, ShortcutController } = await import('../src/main/shortcut-controller')
 const { DictationController } = await import('../src/main/dictation-controller')
 type WorkflowSettings = import('../src/main/dictation-controller').WorkflowSettings
 
@@ -38,26 +38,38 @@ const keyUp = (keycode: number): void => hook.emit('keyup', { keycode })
 function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
   const settings: WorkflowSettings = {
     recordingMode: mode,
+    instantCapture: true,
     autoPaste: true,
     pasteAvailable: true,
+    restoreClipboard: true,
     removeFillers: true,
+    spokenCorrections: true,
+    spokenFormatting: true,
     playSounds: false,
+    engine: 'cloud',
     model: 'gpt-transcribe',
     language: 'en',
+    pro: true,
+    polish: false,
     vocabulary: [],
+    replacements: [],
     microphoneId: 'mic-1',
-    apiKeyConfigured: true
+    transcriptionReady: true,
+    notReadyReason: null
   }
 
   const sendToRecorder = vi.fn()
+  const broadcastStatus = vi.fn()
   const dictation = new DictationController({
     sendToRecorder,
     getSettings: () => settings,
     transcribe: async () => 'Hello world.',
     writeClipboard: vi.fn(),
+    snapshotClipboard: vi.fn(),
+    restoreClipboard: vi.fn(),
     paste: vi.fn(),
     playSound: vi.fn(),
-    broadcastStatus: vi.fn(),
+    broadcastStatus,
     showMain: vi.fn(),
     recordHistory: vi.fn(),
     captureForeground: vi.fn(),
@@ -72,6 +84,8 @@ function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
     holdDelayMs,
     onPress: () => dictation.onShortcutPressed(),
     onRelease: () => dictation.onShortcutReleased(),
+    onArm: () => dictation.prepareDictation(),
+    onDisarm: () => dictation.abandonPreparation(),
     onError: vi.fn(),
     onCapture: vi.fn()
   })
@@ -109,7 +123,27 @@ function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
   const stopped = (): boolean =>
     sendToRecorder.mock.calls.some(([channel]) => channel === 'recorder:stop')
 
-  return { dictation, shortcut, settings, tapChord, pressWithExtraKey, startRecorder, stopped }
+  /** The request ids sent on one recorder channel, in order. */
+  const sentIds = (channel: string): string[] =>
+    sendToRecorder.mock.calls
+      .filter(([sent]) => sent === channel)
+      .map(([, payload]) => (payload as { requestId: string }).requestId)
+
+  /** Every phase shown to the user, in order. */
+  const phases = (): string[] =>
+    broadcastStatus.mock.calls.map(([status]) => (status as { phase: string }).phase)
+
+  return {
+    dictation,
+    shortcut,
+    settings,
+    tapChord,
+    pressWithExtraKey,
+    startRecorder,
+    stopped,
+    sentIds,
+    phases
+  }
 }
 
 beforeEach(() => {
@@ -164,5 +198,167 @@ describe('toggle mode', () => {
 
     tapChord(80)
     expect(dictation.getStatus().phase).toBe('idle')
+  })
+})
+
+describe('listening from the keypress, across the real shortcut backend', () => {
+  it('holding to talk: the microphone opens once the chord has been held a moment, and nothing shows until the delay has passed', () => {
+    const { startRecorder, stopped, sentIds, phases } = makeHarness('hold')
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    vi.advanceTimersByTime(ARM_INTENT_MS - 1)
+    expect(sentIds('recorder:start')).toEqual([])
+    vi.advanceTimersByTime(1)
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    expect(phases()).toEqual([])
+
+    // The device is live well inside the hold delay.
+    vi.advanceTimersByTime(50)
+    startRecorder()
+    expect(phases()).toEqual([])
+
+    // Held: the take that has been listening since is the dictation.
+    vi.advanceTimersByTime(250 - ARM_INTENT_MS - 50)
+    expect(phases()).toEqual(['recording'])
+    expect(sentIds('recorder:start')).toHaveLength(1)
+
+    keyUp(KEY.Shift)
+    keyUp(KEY.Ctrl)
+    expect(stopped()).toBe(true)
+    expect(sentIds('recorder:cancel')).toEqual([])
+  })
+
+  it('holding to talk: Ctrl + Shift + T within 100 ms opens nothing', () => {
+    const { dictation, pressWithExtraKey, sentIds, phases } = makeHarness('hold')
+    // The third key arrives 40 ms in, as it does when a shortcut is typed.
+    pressWithExtraKey()
+    expect(sentIds('recorder:start')).toEqual([])
+    expect(sentIds('recorder:cancel')).toEqual([])
+    expect(phases()).toEqual([])
+    expect(dictation.getStatus().phase).toBe('idle')
+  })
+
+  it('holding to talk: Ctrl + Shift + T after 150 ms opens and closes the microphone unseen', () => {
+    const { dictation, sentIds, phases } = makeHarness('hold')
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    vi.advanceTimersByTime(150)
+    keyDown(KEY.T)
+    keyUp(KEY.T)
+    keyUp(KEY.Shift)
+    keyUp(KEY.Ctrl)
+    vi.advanceTimersByTime(3000)
+
+    const opened = sentIds('recorder:start')
+    expect(opened).toHaveLength(1)
+    expect(sentIds('recorder:cancel')).toEqual(opened)
+    expect(phases()).toEqual([])
+    expect(dictation.getStatus().phase).toBe('idle')
+  })
+
+  it('holding to talk: a quick tap opens nothing, and one let go after the moment closes unseen', () => {
+    const quick = makeHarness('hold')
+    quick.tapChord(80)
+    vi.advanceTimersByTime(3000)
+    expect(quick.sentIds('recorder:start')).toEqual([])
+    expect(quick.phases()).toEqual([])
+    expect(quick.dictation.getStatus().phase).toBe('idle')
+
+    hook.listeners.clear()
+    const slower = makeHarness('hold')
+    slower.tapChord(150)
+    vi.advanceTimersByTime(3000)
+    expect(slower.sentIds('recorder:start')).toHaveLength(1)
+    expect(slower.sentIds('recorder:cancel')).toEqual(slower.sentIds('recorder:start'))
+    expect(slower.phases()).toEqual([])
+    expect(slower.dictation.getStatus().phase).toBe('idle')
+  })
+
+  it('toggle: a quick tap starts an ordinary take, and the stop tap opens nothing', () => {
+    const { dictation, tapChord, startRecorder, stopped, sentIds, phases } = makeHarness('toggle')
+    tapChord(80)
+    expect(phases()).toEqual(['starting'])
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    startRecorder()
+    expect(dictation.getStatus().phase).toBe('recording')
+
+    tapChord(80)
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    expect(sentIds('recorder:cancel')).toEqual([])
+    expect(stopped()).toBe(true)
+  })
+
+  it('toggle: a tap held past the moment starts the take that is already listening', () => {
+    const { dictation, tapChord, startRecorder, stopped, sentIds, phases } = makeHarness('toggle')
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    vi.advanceTimersByTime(ARM_INTENT_MS)
+    // Open, and unseen.
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    expect(phases()).toEqual([])
+    startRecorder()
+    vi.advanceTimersByTime(50)
+    keyUp(KEY.Shift)
+    keyUp(KEY.Ctrl)
+    // The tap confirms it: straight to recording, with no second microphone.
+    expect(phases()).toEqual(['recording'])
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    expect(dictation.getStatus().phase).toBe('recording')
+
+    // The stop tap still only stops.
+    tapChord(80)
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    expect(sentIds('recorder:cancel')).toEqual([])
+    expect(stopped()).toBe(true)
+  })
+
+  it('toggle: a stop press that becomes another shortcut leaves the recording alone', () => {
+    const { dictation, tapChord, pressWithExtraKey, startRecorder, stopped, sentIds } =
+      makeHarness('toggle')
+    tapChord(80)
+    startRecorder()
+
+    // Typed at speed: nothing is even announced.
+    pressWithExtraKey()
+    expect(dictation.getStatus().phase).toBe('recording')
+
+    // After a pause: announced, turned away because a take is running, and
+    // then disarmed with nothing to close.
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    vi.advanceTimersByTime(150)
+    keyDown(KEY.T)
+    keyUp(KEY.T)
+    keyUp(KEY.Shift)
+    keyUp(KEY.Ctrl)
+    vi.advanceTimersByTime(400)
+
+    expect(dictation.getStatus().phase).toBe('recording')
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    expect(sentIds('recorder:cancel')).toEqual([])
+    expect(stopped()).toBe(false)
+  })
+
+  it('with the setting off, nothing opens until the hold delay has passed', () => {
+    const { settings, sentIds, phases } = makeHarness('hold')
+    settings.instantCapture = false
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    vi.advanceTimersByTime(249)
+    expect(sentIds('recorder:start')).toEqual([])
+
+    vi.advanceTimersByTime(1)
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    expect(phases()).toEqual(['starting'])
+  })
+
+  it('with no hold delay, the take simply starts as the keys go down', () => {
+    const { sentIds, phases } = makeHarness('hold', 0)
+    keyDown(KEY.Ctrl)
+    keyDown(KEY.Shift)
+    expect(sentIds('recorder:start')).toHaveLength(1)
+    expect(phases()).toEqual(['starting'])
+    keyUp(KEY.Shift)
+    expect(sentIds('recorder:cancel')).toEqual([])
   })
 })

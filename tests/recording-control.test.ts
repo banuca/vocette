@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { createRecordingControl, recordingControlState } from '../src/renderer/recording-control'
+import {
+  createRecordingControl,
+  recordingControlState,
+  type RecordingControlInput
+} from '../src/renderer/recording-control'
 import { available, unavailable, type PlatformStatus } from '../src/shared/capabilities'
-import type { ApiKeySource, WorkflowStatus } from '../src/shared/types'
+import type { WorkflowStatus } from '../src/shared/types'
+
+const NEEDS_KEY = 'Add your API key in Settings before recording.'
+const NEEDS_MODEL = 'Download the speech model first.'
 
 /**
  * The window control is the entry point that always works, whatever the
@@ -25,14 +32,21 @@ function platform(overrides: Partial<PlatformStatus['capabilities']> = {}): Plat
   }
 }
 
+/** Readiness as the main process reports it: ready, or not ready and why. */
+const ready = { ready: true, notReadyReason: null } as const
+const notReady = (reason: string | null) => ({ ready: false, notReadyReason: reason }) as const
+
 const state = (
   status: WorkflowStatus,
-  options: { apiKeySource?: ApiKeySource; platform?: PlatformStatus } = {}
+  options: {
+    readiness?: Pick<RecordingControlInput, 'ready' | 'notReadyReason'>
+    platform?: PlatformStatus
+  } = {}
 ) =>
   recordingControlState({
     status,
     platform: options.platform ?? platform(),
-    apiKeySource: options.apiKeySource ?? 'stored'
+    ...(options.readiness ?? ready)
   })
 
 describe('recordingControlState', () => {
@@ -48,20 +62,26 @@ describe('recordingControlState', () => {
     })
   })
 
-  it('will not start without a key, and says what is missing', () => {
-    const result = state({ phase: 'idle', message: 'Ready' }, { apiKeySource: 'none' })
+  it('will not start until transcription is set up, and says what is missing', () => {
+    const result = state({ phase: 'idle', message: 'Ready' }, { readiness: notReady(NEEDS_KEY) })
     expect(result.primaryEnabled).toBe(false)
     expect(result.primaryAction).toBeNull()
-    expect(result.hint).toBe('Add your API key in Settings before recording.')
+    expect(result.hint).toBe(NEEDS_KEY)
     // Not "Ready": as the heading over the record button, that would contradict
     // the hint immediately beneath it.
     expect(result.phaseLabel).toBe('Not set up yet')
   })
 
-  it('accepts a session key as being set up', () => {
-    expect(state({ phase: 'idle', message: 'Ready' }, { apiKeySource: 'session' }).primaryEnabled).toBe(
-      true
-    )
+  it('shows whichever reason readiness gives — the model as readily as a key', () => {
+    const result = state({ phase: 'idle', message: 'Ready' }, { readiness: notReady(NEEDS_MODEL) })
+    expect(result.primaryEnabled).toBe(false)
+    expect(result.hint).toBe(NEEDS_MODEL)
+  })
+
+  it('still explains itself if not-ready ever arrives without a reason', () => {
+    const result = state({ phase: 'idle', message: 'Ready' }, { readiness: notReady(null) })
+    expect(result.primaryEnabled).toBe(false)
+    expect(result.hint).toBe('Transcription is not set up yet.')
   })
 
   it('turns into Stop, with Cancel available, while recording', () => {
@@ -88,11 +108,11 @@ describe('recordingControlState', () => {
   })
 
   it('shows the outcome of the last take before returning to Record', () => {
-    const result = state({ phase: 'success', message: 'Copied and pasted' })
+    const result = state({ phase: 'success', message: 'Pasted' })
     expect(result).toMatchObject({
       primaryLabel: 'Record',
       primaryAction: 'start',
-      phaseLabel: 'Copied and pasted',
+      phaseLabel: 'Pasted',
       tone: 'success'
     })
     expect(state({ phase: 'cancelled', message: 'Dictation cancelled' }).tone).toBe('cancelled')
@@ -131,15 +151,34 @@ describe('recordingControlState', () => {
     expect(state({ phase: 'idle', message: 'Ready' }).hint).toBeNull()
   })
 
-  it('puts the missing key ahead of any platform limitation', () => {
+  it('puts what is missing ahead of any platform limitation', () => {
     const result = state(
       { phase: 'idle', message: 'Ready' },
       {
-        apiKeySource: 'none',
+        readiness: notReady(NEEDS_KEY),
         platform: platform({ autoPaste: unavailable('Cannot type here.') })
       }
     )
-    expect(result.hint).toBe('Add your API key in Settings before recording.')
+    expect(result.hint).toBe(NEEDS_KEY)
+  })
+
+  it('offers Retry for as long as a failed take is kept, but never mid-take', () => {
+    expect(state({ phase: 'error', message: 'Dictation failed', canRetry: true }).retryVisible).toBe(
+      true
+    )
+    // The error fades to Ready; the take is still there to send again.
+    expect(state({ phase: 'idle', message: 'Ready', canRetry: true }).retryVisible).toBe(true)
+    for (const phase of ['starting', 'recording', 'processing'] as const) {
+      expect(state({ phase, message: 'Busy', canRetry: true }).retryVisible).toBe(false)
+    }
+  })
+
+  it('offers no Retry when no failed take is kept', () => {
+    expect(state({ phase: 'error', message: 'Dictation failed' }).retryVisible).toBe(false)
+    expect(state({ phase: 'error', message: 'Dictation failed', canRetry: false }).retryVisible).toBe(
+      false
+    )
+    expect(state({ phase: 'idle', message: 'Ready', canRetry: false }).retryVisible).toBe(false)
   })
 })
 
@@ -175,6 +214,7 @@ describe('createRecordingControl', () => {
       ['#record-primary', new FakeElement('record-primary')],
       ['#record-icon', new FakeElement('record-icon')],
       ['#record-label', new FakeElement('record-label')],
+      ['#record-retry', new FakeElement('record-retry')],
       ['#record-cancel', new FakeElement('record-cancel')],
       ['#record-phase', new FakeElement('record-phase')],
       ['#record-hint', new FakeElement('record-hint')]
@@ -186,31 +226,39 @@ describe('createRecordingControl', () => {
     return { host, elements }
   }
 
-  function makeBridge(overrides: Partial<Record<'start' | 'stop' | 'cancel', () => Promise<void>>> = {}) {
+  function makeBridge(
+    overrides: Partial<Record<'start' | 'stop' | 'cancel' | 'retry', () => Promise<void>>> = {}
+  ) {
     const calls: string[] = []
     return {
       calls,
       bridge: {
         startRecording: overrides.start ?? (async () => void calls.push('start')),
         stopRecording: overrides.stop ?? (async () => void calls.push('stop')),
-        cancelRecording: overrides.cancel ?? (async () => void calls.push('cancel'))
+        cancelRecording: overrides.cancel ?? (async () => void calls.push('cancel')),
+        retryLastDictation: overrides.retry ?? (async () => void calls.push('retry'))
       }
     }
   }
 
   const recording: WorkflowStatus = { phase: 'recording', message: 'Listening…' }
   const idle: WorkflowStatus = { phase: 'idle', message: 'Ready' }
+  const failedAndKept: WorkflowStatus = {
+    phase: 'error',
+    message: 'Dictation failed',
+    canRetry: true
+  }
 
   it('sends each button to its own command', () => {
     const { host, elements } = makeHost()
     const { calls, bridge } = makeBridge()
     const view = createRecordingControl(host, bridge)
 
-    view.apply({ status: idle, platform: platform(), apiKeySource: 'stored' })
+    view.apply({ status: idle, platform: platform(), ...ready })
     elements.get('#record-primary')?.click()
     expect(calls).toEqual(['start'])
 
-    view.apply({ status: recording, platform: platform(), apiKeySource: 'stored' })
+    view.apply({ status: recording, platform: platform(), ...ready })
     elements.get('#record-primary')?.click()
     elements.get('#record-cancel')?.click()
     expect(calls).toEqual(['start', 'stop', 'cancel'])
@@ -220,7 +268,7 @@ describe('createRecordingControl', () => {
     const { host, elements } = makeHost()
     const { calls, bridge } = makeBridge()
     const view = createRecordingControl(host, bridge)
-    view.apply({ status: idle, platform: platform(), apiKeySource: 'none' })
+    view.apply({ status: idle, platform: platform(), ...notReady(NEEDS_KEY) })
     elements.get('#record-primary')?.click()
     expect(calls).toEqual([])
   })
@@ -234,7 +282,7 @@ describe('createRecordingControl', () => {
       cancel: () => Promise.reject(new Error('Forbidden.'))
     })
     const view = createRecordingControl(host, bridge)
-    view.apply({ status: recording, platform: platform(), apiKeySource: 'stored' })
+    view.apply({ status: recording, platform: platform(), ...ready })
 
     elements.get('#record-cancel')?.click()
     await Promise.resolve()
@@ -249,12 +297,12 @@ describe('createRecordingControl', () => {
     const { host, elements } = makeHost()
     const { bridge } = makeBridge({ cancel: () => Promise.reject(new Error('Forbidden.')) })
     const view = createRecordingControl(host, bridge)
-    view.apply({ status: recording, platform: platform(), apiKeySource: 'stored' })
+    view.apply({ status: recording, platform: platform(), ...ready })
     elements.get('#record-cancel')?.click()
     await Promise.resolve()
     await Promise.resolve()
 
-    view.apply({ status: idle, platform: platform(), apiKeySource: 'stored' })
+    view.apply({ status: idle, platform: platform(), ...ready })
     expect(elements.get('#record-hint')?.textContent).toBe('')
   })
 
@@ -263,10 +311,48 @@ describe('createRecordingControl', () => {
     const { bridge } = makeBridge()
     const view = createRecordingControl(host, bridge)
 
-    view.apply({ status: idle, platform: platform(), apiKeySource: 'stored' })
+    view.apply({ status: idle, platform: platform(), ...ready })
     expect(elements.get('#record-cancel')?.hidden).toBe(true)
 
-    view.apply({ status: recording, platform: platform(), apiKeySource: 'stored' })
+    view.apply({ status: recording, platform: platform(), ...ready })
     expect(elements.get('#record-cancel')?.hidden).toBe(false)
+  })
+
+  it('shows Retry only while one is offered, and sends it to its own command', () => {
+    const { host, elements } = makeHost()
+    const { calls, bridge } = makeBridge()
+    const view = createRecordingControl(host, bridge)
+    const retry = elements.get('#record-retry')
+
+    view.apply({ status: idle, platform: platform(), ...ready })
+    expect(retry?.hidden).toBe(true)
+
+    view.apply({ status: failedAndKept, platform: platform(), ...ready })
+    expect(retry?.hidden).toBe(false)
+    retry?.click()
+    expect(calls).toEqual(['retry'])
+
+    // Gone while the retry is being transcribed.
+    view.apply({
+      status: { phase: 'processing', message: 'Transcribing…', canRetry: true },
+      platform: platform(),
+      ...ready
+    })
+    expect(retry?.hidden).toBe(true)
+  })
+
+  it('shows a Retry that failed instead of swallowing it', async () => {
+    const { host, elements } = makeHost()
+    const { bridge } = makeBridge({ retry: () => Promise.reject(new Error('Forbidden.')) })
+    const view = createRecordingControl(host, bridge)
+    view.apply({ status: failedAndKept, platform: platform(), ...ready })
+
+    elements.get('#record-retry')?.click()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const hint = elements.get('#record-hint')
+    expect(hint?.textContent).toBe('Forbidden.')
+    expect(hint?.hidden).toBe(false)
   })
 })

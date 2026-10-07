@@ -6,13 +6,12 @@ Please open a [private security advisory](../../security/advisories/new) rather
 than a public issue. Include what you did, what happened, and the version you
 were running.
 
-## Builds are not code-signed or notarised
+## Builds are not code-signed yet
 
-Released binaries are unsigned, because code-signing certificates are not free.
-On first run Windows SmartScreen will show *"Windows protected your PC"*, and
-macOS Gatekeeper will refuse to open the app until you allow it from Privacy &
-Security. Both warnings are about the missing signature, not about anything the
-app does.
+Released Windows binaries are unsigned until a code-signing certificate is in
+place. On first run Windows SmartScreen will show *"Windows protected your PC"*;
+the warning is about the missing signature, not about anything the app does.
+No macOS or Linux build is published.
 
 The signing and notarisation configuration is present in
 `electron-builder.yml`, deliberately without credentials. Nothing in this
@@ -23,12 +22,12 @@ build from source yourself:
 
 ```bash
 npm install
-npm run build:win     # or build:mac / build:linux, on that platform
+npm run release:win   # see docs/release.md
 ```
 
 ## What the app can do
 
-Murmur asks the operating system for a few things that are worth
+Vocette asks the operating system for a few things that are worth
 understanding before you run it. What it is granted differs by platform, and
 what it does when it is refused is the same everywhere: it says so and carries
 on with the Record button and the clipboard.
@@ -43,7 +42,7 @@ explicitly; the app links to the pane and works from its own window until you
 do.
 
 On Wayland there is no hook at all. The compositor does not permit one, and
-Murmur does not try to obtain one by other means — no privileged input
+Vocette does not try to obtain one by other means — no privileged input
 daemon, no `uinput` group, no running as root. It registers a start/stop
 shortcut with the desktop portal instead.
 
@@ -81,11 +80,53 @@ run, the answer is "unknown" and the app leaves the transcript on the clipboard
 **Focus is never taken back.** The app will not raise, activate or restore a
 window to make a paste succeed.
 
+## Every network request the app can make
+
+This is the complete list. Each one happens only when stated.
+
+1. **Speech model download** — once, when the user presses **Download**: the
+   model files from `huggingface.co`, at a pinned commit of
+   `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8`, through Electron's
+   network stack. Every file is checked against a pinned SHA-256 before first
+   use, and a `verified.json` marker records the check. Stored in
+   `%LOCALAPPDATA%\Murmur\models` on Windows. Nothing is sent but the requests
+   for those files.
+2. **Pro subscription** — only with a licence key activated on this PC. **Activate**:
+   one POST to `api.polar.sh/v1/customer-portal/license-keys/activate` carrying the
+   key, Polar's organisation id, a device label ("Vocette on Windows · 7F3A") and the
+   app version. Then, while the key stays activated, at most one POST a day to
+   `/validate` — a minute after startup when the last confirmation is a day old, and
+   on **Check now** — carrying the key, the organisation id, this PC's activation id
+   and the benefit id; Polar records each validation. **Release this PC**: one POST to
+   `/deactivate` with the key and the activation id. No Authorization header on any
+   of them. A failed check changes nothing: Pro keeps working for 30 days after the
+   last confirmation. The buyer's name and email
+   in Polar's reply are discarded; only the activation id, the benefit id, a
+   masked key and the date are kept. The key itself is stored with `safeStorage`
+   where the OS allows, and otherwise in plain text: it is an entitlement token,
+   not a credential to anything else.
+3. **Update check** — only if the user switched it on (then at most once a day)
+   or pressed **Check now**: one GET to
+   `https://api.github.com/repos/<repository>/releases/latest` with no cookies or
+   credentials. Only the tag and the release link are read.
+4. **Cloud transcription** — only with **Cloud** chosen: each recording, with the
+   vocabulary, to the endpoint the user configured, with their key.
+5. **AI polish** — only if switched on, and only with Pro: the cleaned text of
+   each dictation (never audio), with the style, the user's extra instructions and
+   up to 100 vocabulary terms, to the chat endpoint the user configured.
+
+Nothing else. No telemetry, no analytics, no crash reporting, no automatic
+updates. With the on-device engine and none of the optional features switched
+on, audio and text never leave the computer.
+
 ## Where your data goes
 
-- Completed recordings are sent to `https://api.openai.com/v1/audio/transcriptions`
-  using your own API key — or, if you configured one, to your custom
-  OpenAI-compatible endpoint — and to no other host.
+- With the on-device engine, audio is transcribed by sherpa-onnx in a separate
+  utility process on this PC; it is never sent anywhere.
+- With the cloud engine, completed recordings are sent to
+  `https://api.openai.com/v1/audio/transcriptions` using your own API key — or,
+  if you configured one, to your custom OpenAI-compatible endpoint — and to no
+  other host.
 - **Your vocabulary is sent with them.** The terms in Settings > Your words go
   to the same endpoint on every dictation, either in the request's `keywords`
   field or appended to its transcription prompt. That is what makes them
@@ -100,7 +141,7 @@ window to make a paste succeed.
   is also zeroed once the request completes.
 - Transcript text is stored locally in the app's own data folder — on Windows
   `%APPDATA%\Murmur\history.json`,
-  beside the `.bak` and `.tmp` recovery copies Murmur manages for it.
+  beside the `.bak` and `.tmp` recovery copies Vocette manages for it.
   Deleting an entry, clearing history, and a retention pass that does remove
   expired entries all scrub those copies before reporting success.
 - A `history.json` that cannot be parsed is preserved as
@@ -125,12 +166,22 @@ window to make a paste succeed.
   key is not written at all.** On Linux without an unlocked keyring,
   `safeStorage` falls back to a backend called `basic_text`, which encrypts
   with a hard-coded key. That is obfuscation, not encryption, and calling it
-  encrypted would be a lie. Murmur refuses to save there and instead
+  encrypted would be a lie. Vocette refuses to save there and instead
   offers a clearly labelled **session-only key**: held in main-process memory,
   never written to disk, never exposed through public settings or diagnostics,
   and gone when the app quits. Unlocking a keyring and saving again is the
   other option, and the app says so.
-- There is no telemetry, no analytics, and no auto-update channel.
+- AI polish (Pro, off by default) sends the cleaned text of a dictation — never audio — to
+  the chat endpoint the user configured, with their style, extra instructions and up to 100
+  vocabulary terms. The transcript is the user message; the system prompt says it is text to
+  rewrite, never instructions to follow, and the reply is used only if it passes a guard
+  (no assistant preamble, no reply far longer or shorter than the input). The polish key is
+  stored with `safeStorage` like the transcription key and never crosses into a renderer;
+  the transcription key is borrowed only when both endpoints are OpenAI's.
+- There is no telemetry, no analytics, and no auto-update channel. The update check
+  (off by default) sends one GET to `https://api.github.com/repos/<repository>/releases/latest`
+  with no cookies or credentials, reads only the tag and the release link, and never
+  downloads anything; the link it opens must be a release page of that repository.
 
 ## Hardening in place
 

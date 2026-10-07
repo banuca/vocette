@@ -1,9 +1,9 @@
 {
   "name": "murmur",
-  "version": "0.4.0",
-  "description": "Open-source push-to-talk dictation for Windows, macOS and Linux",
+  "version": "0.5.0",
+  "description": "Dictation that runs on your PC: hold a shortcut, speak, and your words are typed where you are",
   "main": "./out/main/index.js",
-  "author": "Murmur contributors",
+  "author": "Vocette contributors",
   "license": "MIT",
   "private": false,
   "engines": {
@@ -23,11 +23,21 @@
     "build:linux": "npm run build && electron-builder --linux --x64",
     "pack:win": "electron-builder --win --x64",
     "pack:mac": "electron-builder --mac --arm64 --x64",
-    "pack:linux": "electron-builder --linux --x64"
+    "pack:linux": "electron-builder --linux --x64",
+    "release:win": "node scripts/release-win.mjs"
   },
   "dependencies": {
     "koffi": "^2.16.3",
+    "sherpa-onnx-node": "1.13.8",
     "uiohook-napi": "1.5.5"
+  },
+  "overrides": {
+    "sherpa-onnx-darwin-arm64": "1.13.8",
+    "sherpa-onnx-darwin-x64": "1.13.8",
+    "sherpa-onnx-linux-arm64": "1.13.8",
+    "sherpa-onnx-linux-x64": "1.13.8",
+    "sherpa-onnx-win-ia32": "1.13.8",
+    "sherpa-onnx-win-x64": "1.13.8"
   },
   "allowScripts": {
     "uiohook-napi@1.5.5": true,

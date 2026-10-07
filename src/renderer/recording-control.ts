@@ -1,8 +1,9 @@
 import { clipboardOnlyReason, globalShortcutUsable, type PlatformStatus } from '../shared/capabilities'
-import type { ApiKeySource, WorkflowStatus } from '../shared/types'
+import type { WorkflowStatus } from '../shared/types'
 
 /**
- * The Record / Stop / Cancel control.
+ * The Record / Stop / Cancel control, with Retry beside Record while a failed
+ * take is kept.
  *
  * It is rendered once and moved: a compact pill in the top bar on most pages,
  * and the large round control at the head of History. Moving the same element
@@ -12,7 +13,7 @@ import type { ApiKeySource, WorkflowStatus } from '../shared/types'
  * It is the entry point that always works. A global shortcut can be missing,
  * refused or impossible depending on the desktop; a button in a window the
  * user is already looking at cannot be. Recording started here is delivered to
- * the clipboard, because the window in front is Murmur itself.
+ * the clipboard, because the window in front is Vocette itself.
  *
  * The whole state is derived by a pure function, so every combination of
  * phase, capability and setup state is testable without a browser.
@@ -34,6 +35,8 @@ export interface RecordingControlState {
   /** What clicking the primary button should do, or null when it is inert. */
   primaryAction: ControlAction | null
   cancelVisible: boolean
+  /** A failed take is kept to send again, and nothing is running now. */
+  retryVisible: boolean
   phaseLabel: string
   tone: ControlTone
   /** A short explanation shown beside the control, or null when unremarkable. */
@@ -43,7 +46,10 @@ export interface RecordingControlState {
 export interface RecordingControlInput {
   status: WorkflowStatus
   platform: PlatformStatus
-  apiKeySource: ApiKeySource
+  /** Whether the chosen engine can transcribe now: its model, or a key, is in place. */
+  ready: boolean
+  /** What is missing, already a sentence. Shown as the hint while not ready. */
+  notReadyReason: string | null
 }
 
 /* Inline, so there is no icon font, no sprite and no request. */
@@ -56,18 +62,22 @@ const STOP_ICON =
   '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">' +
   '<rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor"/></svg>'
 
-const NEEDS_KEY = 'Add your API key in Settings before recording.'
+/** Only if the main process ever reports not-ready without saying why. */
+const NOT_READY = 'Transcription is not set up yet.'
 const NO_SHORTCUT = 'No system-wide shortcut on this desktop — use Record.'
 const CLIPBOARD_ONLY = 'Transcripts are copied here, not pasted. Settings explains why.'
 
 export function recordingControlState(input: RecordingControlInput): RecordingControlState {
   const { phase } = input.status
-  const ready = input.apiKeySource !== 'none'
+  const { ready } = input
   const recording = phase === 'starting' || phase === 'recording'
   const busy = recording || phase === 'processing'
+  // For as long as the main process keeps a failed take — on the error, and
+  // after it has faded to Ready — but never mid-take, when it would be refused.
+  const retryVisible = input.status.canRetry === true && !busy
 
   const hint = (): string | null => {
-    if (!ready) return NEEDS_KEY
+    if (!ready) return input.notReadyReason ?? NOT_READY
     if (busy) {
       // Recording from the window has no other application to paste into, so
       // say so up front rather than at the end.
@@ -89,6 +99,7 @@ export function recordingControlState(input: RecordingControlInput): RecordingCo
       primaryEnabled: true,
       primaryAction: 'stop',
       cancelVisible: true,
+      retryVisible,
       phaseLabel: input.status.message,
       tone: phase,
       hint: hint()
@@ -103,13 +114,14 @@ export function recordingControlState(input: RecordingControlInput): RecordingCo
       // Cancellation is the point of this button: a slow provider must never
       // leave the user with nothing to press.
       cancelVisible: true,
+      retryVisible,
       phaseLabel: input.status.message,
       tone: 'processing',
       hint: hint()
     }
   }
 
-  // "Ready" while the app is telling you it has no key reads as a
+  // "Ready" while the app is telling you it cannot transcribe yet reads as a
   // contradiction — mildly in a top-bar label, glaringly as the heading over
   // the record button on History.
   const idleLabel = ready ? 'Ready' : 'Not set up yet'
@@ -119,6 +131,7 @@ export function recordingControlState(input: RecordingControlInput): RecordingCo
     primaryEnabled: ready,
     primaryAction: ready ? 'start' : null,
     cancelVisible: false,
+    retryVisible,
     phaseLabel: phase === 'idle' ? idleLabel : input.status.message,
     tone: phase === 'idle' ? 'idle' : (phase as ControlTone),
     hint: hint()
@@ -129,6 +142,8 @@ export interface RecordingControlBridge {
   startRecording(): Promise<void>
   stopRecording(): Promise<void>
   cancelRecording(): Promise<void>
+  /** Sends the kept recording again. Nothing is re-recorded. */
+  retryLastDictation(): Promise<void>
 }
 
 export interface RecordingControlView {
@@ -152,6 +167,7 @@ export function createRecordingControl(
         <span class="record-icon" id="record-icon" aria-hidden="true"></span>
         <span class="record-label" id="record-label"></span>
       </button>
+      <button class="record-retry" id="record-retry" type="button" title="Send the last recording again">Retry</button>
       <button class="record-cancel" id="record-cancel" type="button" title="Discard this recording">Cancel</button>
       <span class="record-phase" id="record-phase" aria-live="polite"></span>
     </div>
@@ -161,6 +177,7 @@ export function createRecordingControl(
   const primary = host.querySelector<HTMLButtonElement>('#record-primary')
   const icon = host.querySelector<HTMLElement>('#record-icon')
   const label = host.querySelector<HTMLElement>('#record-label')
+  const retry = host.querySelector<HTMLButtonElement>('#record-retry')
   const cancel = host.querySelector<HTMLButtonElement>('#record-cancel')
   const phase = host.querySelector<HTMLElement>('#record-phase')
   const hint = host.querySelector<HTMLElement>('#record-hint')
@@ -193,6 +210,9 @@ export function createRecordingControl(
     if (action === 'start') run(() => bridge.startRecording())
     if (action === 'stop') run(() => bridge.stopRecording())
   })
+  retry?.addEventListener('click', () => {
+    run(() => bridge.retryLastDictation())
+  })
   cancel?.addEventListener('click', () => {
     run(() => bridge.cancelRecording())
   })
@@ -213,6 +233,7 @@ export function createRecordingControl(
       }
       if (icon) icon.innerHTML = state.primaryAction === 'stop' ? STOP_ICON : MIC_ICON
       if (label) label.textContent = state.primaryLabel
+      if (retry) retry.hidden = !state.retryVisible
       if (cancel) cancel.hidden = !state.cancelVisible
       if (phase) phase.textContent = state.phaseLabel
       showHint(state.hint)

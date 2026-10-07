@@ -1,5 +1,6 @@
 import { type CapabilityMap, type SettingsPane } from '../shared/capabilities'
-import type { ApiKeySource } from '../shared/types'
+import type { EngineStatus } from '../shared/engine'
+import { formatMegabytes } from '../shared/format'
 
 /**
  * First-run guidance.
@@ -10,7 +11,8 @@ import type { ApiKeySource } from '../shared/types'
  * already granted. An empty list means there is nothing left to set up.
  */
 export type SetupStepId =
-  | 'api-key'
+  | 'model'
+  | 'transcription'
   | 'microphone'
   | 'input-monitoring'
   | 'accessibility'
@@ -28,27 +30,48 @@ export interface SetupStep {
   id: SetupStepId
   title: string
   detail: string
+  /**
+   * The button beside the step, or null. The model step has none of its own:
+   * it carries the download itself, drawn by `model-download`.
+   */
   action: SetupAction | null
   /** True when dictation cannot work at all until this is resolved. */
   blocking: boolean
 }
 
 export interface SetupInput {
-  apiKeySource: ApiKeySource
+  /** The chosen engine, whether it can transcribe, and where the speech model stands. */
+  engine: EngineStatus
   capabilities: CapabilityMap
   microphone: MicrophoneAccess
 }
 
 export function setupSteps(input: SetupInput): SetupStep[] {
   const steps: SetupStep[] = []
+  const { engine } = input
 
-  if (input.apiKeySource === 'none') {
+  if (engine.engine === 'local' && engine.model.state !== 'installed') {
+    // The on-device engine needs nothing but its model, so the step is the
+    // download itself — with its progress, Cancel and Try again — rather
+    // than a pointer to somewhere else to go and do it.
     steps.push({
-      id: 'api-key',
-      title: 'Add your transcription API key',
+      id: 'model',
+      title: 'Download the speech model',
       detail:
-        'Murmur has no shared backend. Recordings go to the provider you ' +
-        'choose, using your own key.',
+        'Vocette transcribes on this PC, so your voice never leaves it. The model is ' +
+        `${formatMegabytes(engine.model.totalBytes)} and downloads once.`,
+      action: null,
+      blocking: true
+    })
+  } else if (!engine.ready) {
+    // A cloud user with no key and no endpoint of their own: OpenAI always
+    // needs a key, while a server of the user's own may need none, so an
+    // endpoint alone makes the cloud ready. The reason names what is missing,
+    // so the step never guesses.
+    steps.push({
+      id: 'transcription',
+      title: 'Set up transcription',
+      detail: engine.notReadyReason ?? 'Transcription is not set up yet.',
       action: { kind: 'navigate-settings', label: 'Open Settings' },
       blocking: true
     })
@@ -57,7 +80,7 @@ export function setupSteps(input: SetupInput): SetupStep[] {
   if (input.microphone === 'denied') {
     steps.push({
       id: 'microphone',
-      title: 'Allow Murmur to use your microphone',
+      title: 'Allow Vocette to use your microphone',
       detail: 'Microphone access is blocked, so no audio can be recorded.',
       action: { kind: 'open-pane', pane: 'microphone', label: 'Open privacy settings' },
       blocking: true
@@ -74,7 +97,7 @@ export function setupSteps(input: SetupInput): SetupStep[] {
   if (listening?.pane) {
     steps.push({
       id: 'input-monitoring',
-      title: 'Let Murmur see your shortcut',
+      title: 'Let Vocette see your shortcut',
       detail: listening.reason,
       action: { kind: 'open-pane', pane: listening.pane, label: 'Open permission settings' },
       blocking: false
@@ -85,18 +108,21 @@ export function setupSteps(input: SetupInput): SetupStep[] {
   if (paste.state === 'needs-permission' && paste.pane) {
     steps.push({
       id: 'accessibility',
-      title: 'Let Murmur paste for you',
+      title: 'Let Vocette paste for you',
       detail: paste.reason,
       action: { kind: 'open-pane', pane: paste.pane, label: 'Open permission settings' },
       blocking: false
     })
   }
 
-  // Only worth raising while there is no key yet: with a session key already
-  // in use the user has seen and answered this.
+  // Only a cloud key needs storing, and only while the cloud cannot dictate:
+  // with a key in use the user has seen and answered this, and a server of
+  // their own that may need no key leaves nothing to store. The on-device
+  // engine has no key at all, so this would be noise there.
   if (
+    engine.engine === 'cloud' &&
     input.capabilities.secureKeyStorage.state !== 'available' &&
-    input.apiKeySource === 'none'
+    !engine.ready
   ) {
     steps.push({
       id: 'secure-storage',
@@ -113,4 +139,14 @@ export function setupSteps(input: SetupInput): SetupStep[] {
 /** True when nothing at all can be dictated until the user acts. */
 export function setupIsBlocking(steps: readonly SetupStep[]): boolean {
   return steps.some((step) => step.blocking)
+}
+
+/**
+ * The card's heading. Until transcription works at all the user is getting
+ * started; a permission left over afterwards is only finishing off.
+ */
+export function setupHeading(steps: readonly SetupStep[]): string {
+  return steps.some((step) => step.id === 'model' || step.id === 'transcription')
+    ? 'Get started'
+    : 'Finish setting up Vocette'
 }

@@ -7,7 +7,10 @@
  *     compositor and never triggers layout or paint;
  *   - one class on `.overlay` drives every phase, via the `--accent` custom
  *     property, so a phase change is a single DOM write;
- *   - no JS animation loop, no audio analysis, no per-frame IPC.
+ *   - no JS animation loop, no audio analysis, no per-frame IPC. The live
+ *     level meter is fed about 14 readings a second, measured in the hidden
+ *     recorder window; each reading here is five `transform` writes and one
+ *     `opacity` write.
  */
 
 * {
@@ -382,6 +385,57 @@ body {
   font-weight: 600;
 }
 
+/* --- Live level ---------------------------------------------------------- */
+
+/*
+ * Five bars beside the timer that follow the microphone while recording, so
+ * "is it hearing me?" is answered at a glance. The bars are unlike the
+ * waveform either side of the badge, which only says a take is live: these
+ * move with the voice, and stay still when nothing is heard. The heights
+ * arrive already smoothed; the short transition glides between readings,
+ * which come about every 70 ms.
+ */
+.readout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.level {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  height: 16px;
+}
+
+.overlay.recording .level {
+  display: flex;
+}
+
+.level-bar {
+  display: block;
+  width: 3px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  /* At rest each bar is a dot, so the meter is there before the first word.
+     The script sets the same resting scale. */
+  transform: scaleY(0.2);
+  transform-origin: center;
+  transition: transform 90ms ease-out;
+  will-change: transform;
+}
+
+/* Stands in for the bars where motion is reduced; see the end of the file. */
+.level-dot {
+  display: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.3;
+}
+
 /* --- Keyframes ----------------------------------------------------------- */
 
 @keyframes listen-wave {
@@ -469,5 +523,15 @@ body {
   .overlay.recording .state-badge::after {
     opacity: 0.35;
     transform: scale(1.14);
+  }
+
+  /* The level as brightness rather than movement: one still dot, which the
+     script brightens with the voice, in place of the moving bars. */
+  .level-bar {
+    display: none;
+  }
+
+  .level-dot {
+    display: block;
   }
 }

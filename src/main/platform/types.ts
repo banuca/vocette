@@ -8,7 +8,7 @@ import type {
 import type { ShortcutChord } from '../../shared/shortcuts'
 
 /**
- * The main-process boundary between Murmur and the desktop it runs on.
+ * The main-process boundary between Vocette and the desktop it runs on.
  *
  * Everything platform-specific lives behind this: global shortcuts, the paste
  * target, key injection, permission state, and launch-at-login. The rest of
@@ -36,6 +36,28 @@ export interface ShortcutBackendOptions {
   onPress(): void
   /** Hold backends only; a toggle backend never calls this. */
   onRelease(): void
+  /**
+   * The chord has been held on its own for a moment and its hold delay is
+   * still running, so the user may be about to dictate — or may yet press the
+   * rest of some other shortcut that begins the same way. Only a backend that
+   * watches key-down calls this. Every arm announced here ends in exactly one
+   * `onPress` (the chord was held) or one `onDisarm`. A press can also come
+   * with no arm before it — a quick tap, or a delay too short to announce one.
+   */
+  onArm?(): void
+  /**
+   * An announced arm ended without activating: a key outside the chord, an
+   * early release, a reset, a new chord or delay, or the start of a capture.
+   * A toggle tap that fires `onPress` on release is an activation, not this.
+   */
+  onDisarm?(): void
+  /**
+   * Esc went down on its own, with no modifier held, while the shortcut is
+   * enabled and no chord is being recorded. Only a backend that watches the
+   * keyboard calls this, and says so with `supportsEscape`. The key is only
+   * observed: the app in front sees the same Esc.
+   */
+  onEscape?(): void
   onError(message: string): void
   /** Streams the chord being recorded by "Change shortcut". */
   onCapture(keys: number[], done: boolean): void
@@ -53,6 +75,8 @@ export interface ShortcutBackend {
   readonly supportsHold: boolean
   /** True when the backend can record a chord from live input. */
   readonly supportsCapture: boolean
+  /** True when the backend reports Esc through `onEscape`. */
+  readonly supportsEscape: boolean
   start(): void
   stop(): void
   setChord(chord: ShortcutChord): void
@@ -95,7 +119,7 @@ export interface PlatformAdapter {
   /**
    * A fresh capability read. Called again whenever the user might have changed
    * something outside the app, because macOS permissions can be revoked while
-   * Murmur is running.
+   * Vocette is running.
    */
   capabilities(context: CapabilityContext): CapabilityMap
 }
@@ -132,6 +156,7 @@ export class NullTargetTracker implements TargetTracker {
 export class NullShortcutBackend implements ShortcutBackend {
   readonly supportsHold = false
   readonly supportsCapture = false
+  readonly supportsEscape = false
 
   constructor(private readonly reason: string) {}
 

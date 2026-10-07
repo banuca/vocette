@@ -1,14 +1,22 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PlatformStatus, SettingsPane } from '../shared/capabilities'
+import type { EngineStatus } from '../shared/engine'
+import type { UpdateStatus } from '../shared/update'
+import type { PolishTestResult } from '../shared/polish'
 import type {
   AppInfo,
   HistoryEntry,
   HistorySaveStatus,
+  LicenceActivation,
+  LicenceRelease,
+  LicenceStatus,
   Page,
+  PasteLastStatus,
   PublicSettings,
   SettingsUpdate,
   ShortcutCapture,
   Theme,
+  TranscriptionTestResult,
   WorkflowStatus
 } from '../shared/types'
 
@@ -17,12 +25,25 @@ const api = {
   saveSettings: (update: SettingsUpdate): Promise<PublicSettings> =>
     ipcRenderer.invoke('settings:save', update),
   clearApiKey: (): Promise<PublicSettings> => ipcRenderer.invoke('settings:clear-api-key'),
+  clearPolishKey: (): Promise<PublicSettings> => ipcRenderer.invoke('settings:clear-polish-key'),
+  testPolish: (): Promise<PolishTestResult> => ipcRenderer.invoke('polish:test'),
   clearSessionApiKey: (): Promise<PublicSettings> =>
     ipcRenderer.invoke('settings:clear-session-key'),
+  // One second of silence to the saved cloud endpoint, with the saved key and
+  // model. It takes no arguments on purpose: nothing typed but unsaved is sent.
+  testTranscription: (): Promise<TranscriptionTestResult> =>
+    ipcRenderer.invoke('transcription:test'),
 
   getPlatformStatus: (): Promise<PlatformStatus> => ipcRenderer.invoke('platform:status'),
   openPlatformSettings: (pane: SettingsPane): Promise<void> =>
     ipcRenderer.invoke('platform:open-settings', pane),
+
+  // The on-device engine. Each command answers with the status as it stands;
+  // download progress and every later change arrive through `onEngineStatus`.
+  getEngineStatus: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:get-status'),
+  downloadModel: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:download'),
+  cancelModelDownload: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:cancel-download'),
+  removeModel: (): Promise<EngineStatus> => ipcRenderer.invoke('engine:remove-model'),
 
   // Recording from the window goes to the one dictation controller, exactly
   // like the global shortcut; the renderer never opens a microphone for this.
@@ -35,6 +56,11 @@ const api = {
   getHistorySaveStatus: (): Promise<HistorySaveStatus> => ipcRenderer.invoke('history:save-status'),
   deleteHistoryEntry: (id: string): Promise<HistoryEntry[]> =>
     ipcRenderer.invoke('history:delete', id),
+  updateHistoryEntry: (id: string, text: string): Promise<HistoryEntry[]> =>
+    ipcRenderer.invoke('history:update', id, text),
+  /** Undo after a delete: puts back the copy of the entry the window kept. */
+  restoreHistoryEntry: (entry: HistoryEntry): Promise<HistoryEntry[]> =>
+    ipcRenderer.invoke('history:restore', entry),
   clearHistory: (): Promise<void> => ipcRenderer.invoke('history:clear'),
   exportHistory: (format: 'json' | 'txt'): Promise<{ saved: boolean; path: string | null }> =>
     ipcRenderer.invoke('history:export', format),
@@ -47,16 +73,47 @@ const api = {
 
   beginShortcutCapture: (): Promise<void> => ipcRenderer.invoke('shortcut:begin-capture'),
   cancelShortcutCapture: (): Promise<void> => ipcRenderer.invoke('shortcut:cancel-capture'),
+  getPasteLastStatus: (): Promise<PasteLastStatus> =>
+    ipcRenderer.invoke('shortcut:paste-last-status'),
+
+  // Pro. The status says what the Pro page may offer. Activating and
+  // releasing answer with the sentence to show rather than an exception, and
+  // a key, once sent, never comes back this way.
+  getLicenceStatus: (): Promise<LicenceStatus> => ipcRenderer.invoke('licence:status'),
+  activateLicence: (key: string): Promise<LicenceActivation> =>
+    ipcRenderer.invoke('licence:activate', key),
+  releaseLicence: (): Promise<LicenceRelease> => ipcRenderer.invoke('licence:deactivate'),
+  checkSubscription: (): Promise<LicenceStatus> => ipcRenderer.invoke('licence:check-now'),
+  removeLicenceLocally: (): Promise<LicenceStatus> => ipcRenderer.invoke('licence:remove-local'),
+  getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
+  checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check-now'),
+  setUpdateCheck: (enabled: boolean): Promise<UpdateStatus> =>
+    ipcRenderer.invoke('update:set-enabled', enabled),
 
   onWorkflowStatus: (callback: (status: WorkflowStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: WorkflowStatus): void => callback(status)
     ipcRenderer.on('workflow:status', listener)
     return () => ipcRenderer.removeListener('workflow:status', listener)
   },
+  /**
+   * The microphone level, 0–1, while a take is recording. This preload is
+   * shared, but the main process sends the level to the overlay alone, so in
+   * the main window this listener never hears anything.
+   */
+  onLevel: (callback: (level: number) => void): (() => void) => {
+    const listener = (_event: unknown, level: number): void => callback(level)
+    ipcRenderer.on('workflow:level', listener)
+    return () => ipcRenderer.removeListener('workflow:level', listener)
+  },
   onPlatformStatus: (callback: (status: PlatformStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: PlatformStatus): void => callback(status)
     ipcRenderer.on('platform:status', listener)
     return () => ipcRenderer.removeListener('platform:status', listener)
+  },
+  onEngineStatus: (callback: (status: EngineStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: EngineStatus): void => callback(status)
+    ipcRenderer.on('engine:status', listener)
+    return () => ipcRenderer.removeListener('engine:status', listener)
   },
   onHistorySaveStatus: (callback: (status: HistorySaveStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: HistorySaveStatus): void => callback(status)
@@ -67,6 +124,16 @@ const api = {
     const listener = (): void => callback()
     ipcRenderer.on('history:changed', listener)
     return () => ipcRenderer.removeListener('history:changed', listener)
+  },
+  onLicenceChanged: (callback: (status: LicenceStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: LicenceStatus): void => callback(status)
+    ipcRenderer.on('licence:changed', listener)
+    return () => ipcRenderer.removeListener('licence:changed', listener)
+  },
+  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    const listener = (_event: unknown, status: UpdateStatus): void => callback(status)
+    ipcRenderer.on('update:status', listener)
+    return () => ipcRenderer.removeListener('update:status', listener)
   },
   onSettingsChanged: (callback: (settings: PublicSettings) => void): (() => void) => {
     const listener = (_event: unknown, settings: PublicSettings): void => callback(settings)

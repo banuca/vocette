@@ -31,7 +31,9 @@ export type IconName =
   | 'keyboard'
   | 'home'
   | 'key'
+  | 'lock'
   | 'empty'
+  | 'sparkle'
 
 /** The body of each icon: paths only, sharing one set of stroke attributes. */
 const PATHS: Record<IconName, string> = {
@@ -65,10 +67,18 @@ const PATHS: Record<IconName, string> = {
     'M6.5 13h.01M17 13h.01"/><path d="M9.5 13h5"/><path d="M8 16.3h8"/>',
   home: '<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.6V19a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V9.6"/><path d="M9.8 20.5v-6h4.4v6"/>',
   key: '<circle cx="8" cy="14.5" r="4.5"/><path d="M11.4 11.6 20 3.5"/><path d="M17 6.5l2.2 2.2"/><path d="M14.6 8.9l2.2 2.2"/>',
+  // A padlock: private by default, which a key would have muddled with the
+  // optional API key.
+  lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 14.5v2"/>',
   // Deliberately not a magnifying glass or a document: an empty history is not
   // a failed search and not a missing file, it is simply a page not yet
   // written on.
-  empty: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3 3.4"/><path d="M12 8.5v7M8.5 12h7"/>'
+  empty: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3 3.4"/><path d="M12 8.5v7M8.5 12h7"/>',
+  // Pro: a four-pointed spark with a small one beside it. Not a star, which
+  // reads as "favourite", and not a crown, which would oversell a word list.
+  sparkle:
+    '<path d="M11 5C11.7 10 14 12.3 19 13C14 13.7 11.7 16 11 21C10.3 16 8 13.7 3 13C8 12.3 10.3 10 11 5Z"/>' +
+    '<path d="M19 3v4M17 5h4"/>'
 }
 
 /**

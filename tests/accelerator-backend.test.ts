@@ -150,4 +150,27 @@ describe('AcceleratorShortcutBackend', () => {
     backend.setChord({ keys: [KEY.Alt, KEY.J] })
     expect(desktop.calls.register).toEqual([])
   })
+
+  it('never arms: the desktop says nothing until the shortcut has fired', () => {
+    // Listening early needs the key going down, which this backend never sees,
+    // so it must not open a microphone it could not tell the user about.
+    const desktop = fakeDesktop()
+    const onArm = vi.fn()
+    const onDisarm = vi.fn()
+    const onPress = vi.fn()
+    const backend = new AcceleratorShortcutBackend(
+      options([KEY.Ctrl, KEY.D], { onArm, onDisarm, onPress }),
+      desktop.api
+    )
+    backend.start()
+    desktop.fire('Control+D')
+    backend.setChord({ keys: [KEY.Alt, KEY.J] })
+    backend.setHoldDelay()
+    backend.setEnabled(false)
+    backend.resetKeyState()
+    backend.stop()
+    expect(onPress).toHaveBeenCalledTimes(1)
+    expect(onArm).not.toHaveBeenCalled()
+    expect(onDisarm).not.toHaveBeenCalled()
+  })
 })

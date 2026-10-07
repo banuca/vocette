@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- This text is a template, not legal advice. Have it reviewed before selling. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy — Vocette</title>
+    <meta name="description" content="What Vocette sends, when, and to whom. The short answer: nothing about you." />
+    <link rel="icon" href="assets/icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="wrap site-header">
+      <a class="wordmark" href="./"><img src="assets/icon.png" alt="" width="28" height="28" />Vocette</a>
+      <nav class="site-nav" aria-label="Site"><a href="./">Home</a></nav>
+    </header>
+    <main class="wrap legal">
+      <h1>Privacy</h1>
+      <p class="updated">Last updated 5 October 2026</p>
+
+      <p>
+        Vocette is built so that it does not need to know anything about you. It has no
+        account, no analytics, no telemetry and no crash reporting. This page lists every
+        occasion on which the app uses the internet, what it sends, and who receives it.
+      </p>
+
+      <h2>What stays on your computer</h2>
+      <ul>
+        <li>Your voice. Speech is turned into text by a model running on your PC. The recording is held in memory only while it is transcribed, then erased; it is never written to disk.</li>
+        <li>Your transcripts, in a history file in your user profile, which you can clear at any time and set to delete itself after 30, 90 or 365 days.</li>
+        <li>Your settings, vocabulary, replacements and snippets.</li>
+      </ul>
+
+      <h2>When Vocette uses the internet</h2>
+      <ol>
+        <li>
+          <strong>Downloading the speech model — once, when you press Download.</strong>
+          The model files are fetched from Hugging Face (huggingface.co) and checked against
+          fingerprints built into the app. Hugging Face sees an ordinary download request from
+          your internet address.
+        </li>
+        <li>
+          <strong>A Pro subscription — only with a licence key activated.</strong>
+          When you press Activate, Vocette sends your licence key, a device label such as
+          “Vocette on Windows · 7F3A” and the app's version number to Polar (api.polar.sh), our
+          payment provider. After that, at most once a day, it sends the key and this PC's
+          activation to ask whether your subscription is still active; Polar records when it
+          was asked. Releasing a PC sends the key once more. Vocette discards everything in
+          Polar's replies except what it needs to know whether Pro is on.
+        </li>
+        <li>
+          <strong>Checking for updates — only if you switch it on, or press “Check now”.</strong>
+          Vocette asks GitHub (api.github.com) for the number of the latest version. Nothing
+          about you or your dictation is sent.
+        </li>
+        <li>
+          <strong>A cloud provider or AI polish — only if you set one up.</strong>
+          If you choose a cloud transcription provider, your recordings and your vocabulary go
+          to that provider using your own account. If you turn on AI polish (Pro) with a
+          provider other than one running on your PC, the text of each dictation — never the
+          audio — goes to that provider, with your polish instructions and your vocabulary.
+          Their privacy terms apply.
+        </li>
+      </ol>
+      <p>Nothing else. Vocette's source code is public, so this list can be checked by anyone.</p>
+
+      <h2>Buying Pro</h2>
+      <p>
+        Purchases are handled by Polar Software, Inc., which acts as merchant of record: it
+        takes the payment, handles sales tax and VAT, and issues your licence key. The details
+        you give at checkout are processed by Polar under its own privacy policy. We receive
+        your name, email address and order details from Polar so that we can support you and
+        process refunds, and we use them for nothing else.
+      </p>
+
+      <h2>This website</h2>
+      <p>
+        This site is static pages with no cookies, no analytics and no third-party scripts or
+        fonts. It is hosted on GitHub Pages, whose servers may keep technical logs such as your
+        IP address, as GitHub describes in its own privacy statement.
+      </p>
+
+      <h2>Contact</h2>
+      <!-- Owner: add the support email address and a postal address if required. -->
+      <p>Questions about privacy: <a href="mailto:support@example.com">support@example.com</a>.</p>
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <nav aria-label="Legal"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="refund.html">Refunds</a></nav>
+      </div>
+    </footer>
+  </body>
+</html>

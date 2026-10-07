@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_POLISH } from '../src/shared/polish'
+import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
-import type { PublicSettings } from '../src/shared/types'
+import type { EngineStatus } from '../src/shared/engine'
+import { MAX_REPLACEMENT_RULES } from '../src/shared/replacements'
+import type { LicenceStatus, PublicSettings } from '../src/shared/types'
 
 /**
  * The vocabulary card, driven through the same render function the app uses.
@@ -13,6 +17,20 @@ import type { PublicSettings } from '../src/shared/types'
  * settings change arriving from elsewhere, and that the note tells the truth
  * about which biasing channel the current model and endpoint will use.
  */
+
+/** Cloud, with a key in use: these pages are exercised as they were before the on-device engine. */
+const TEST_ENGINE: EngineStatus = {
+  engine: 'cloud',
+  model: {
+    id: 'parakeet-tdt-0.6b-v3-int8',
+    state: 'missing',
+    receivedBytes: 0,
+    totalBytes: 670_478_772,
+    error: null
+  },
+  ready: true,
+  notReadyReason: null
+}
 
 const TEST_PLATFORM: PlatformStatus = {
   platform: 'windows',
@@ -117,17 +135,25 @@ const SELECTORS = [
   '#settings-feedback',
   '#vocabulary',
   '#vocabulary-note',
-  '#vocabulary-badge'
+  '#vocabulary-badge',
+  '#replacements',
+  '#replacements-note'
 ]
 
 function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
   return {
+    engine: 'cloud',
     shortcut: { keys: [29, 42] },
     holdDelayMs: 250,
     recordingMode: 'hold',
     hotkeyEnabled: true,
+    instantCapture: true,
     autoPaste: true,
+    restoreClipboard: true,
+    pasteLastShortcut: true,
     removeFillers: true,
+    spokenCorrections: true,
+    spokenFormatting: true,
     playSounds: false,
     launchAtLogin: false,
     theme: 'dark',
@@ -136,13 +162,18 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     model: 'gpt-transcribe',
     language: 'en',
     vocabulary: '',
+    replacements: '',
     apiEndpoint: '',
     apiKeySource: 'none',
+    polish: { ...DEFAULT_POLISH, keySource: 'none' },
     ...overrides
   }
 }
 
-async function makeHarness(overrides: Partial<PublicSettings> = {}) {
+async function makeHarness(
+  overrides: Partial<PublicSettings> = {},
+  licence: LicenceStatus = licenceStatus()
+) {
   const elements = new Map<string, FakeElement>()
   SELECTORS.forEach((selector) => elements.set(selector, new FakeElement()))
   const content = new FakeElement(elements)
@@ -154,10 +185,15 @@ async function makeHarness(overrides: Partial<PublicSettings> = {}) {
     history: [],
     appInfo: { version: '0.4.0', platform: 'win32', platformStatus: TEST_PLATFORM },
     platform: TEST_PLATFORM,
+    engine: TEST_ENGINE,
+    workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
+    licence,
     setHeading: vi.fn(),
     applySettings: vi.fn(),
     applyPlatform: vi.fn(),
+    applyEngine: vi.fn(),
+    applyLicence: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }
@@ -204,7 +240,7 @@ async function makeHarness(overrides: Partial<PublicSettings> = {}) {
     return element
   }
 
-  return { view, at, saveSettings, settings }
+  return { view, at, saveSettings, settings, context }
 }
 
 afterEach(() => {
@@ -231,7 +267,7 @@ describe('the vocabulary card', () => {
     box.value = 'Kirinde\nITU-T\nDataverse'
     box.emit('input')
     expect(at('#vocabulary-badge').textContent).toBe('3 terms — unsaved')
-    // The green badge means "this is what Murmur will send", so unsaved text
+    // The green badge means "this is what Vocette will send", so unsaved text
     // must not wear it.
     expect(at('#vocabulary-badge').className).not.toContain('is-configured')
   })
@@ -312,5 +348,216 @@ describe('the vocabulary card', () => {
   it('does not warn when every term fits', async () => {
     const { at } = await makeHarness({ vocabulary: 'Kirinde\nITU-T', model: 'whisper-1' })
     expect(at('#vocabulary-note').textContent).not.toContain('not being sent')
+  })
+})
+
+/**
+ * The second box on the same card. The count comes from the parser the
+ * dictation uses, so what the note says is what will apply.
+ */
+describe('the replacements box', () => {
+  it('shows the saved rules, how to write one, and how many there are', async () => {
+    const saved = 'itu => ITU\nmy email => name@example.com'
+    const { at } = await makeHarness({ replacements: saved })
+    expect(at('#replacements').value).toBe(saved)
+    const note = at('#replacements-note').textContent
+    expect(note).toContain('One rule per line: what you say => what you want.')
+    expect(note).toContain('Use \\n for a line break')
+    expect(note).toContain('{date} or {time}')
+    expect(note).toContain('2 rules.')
+  })
+
+  it('says there are no rules yet for an empty box', async () => {
+    const { at } = await makeHarness()
+    expect(at('#replacements-note').textContent).toContain('No rules yet.')
+  })
+
+  it('counts rules and ignored lines as they are typed', async () => {
+    const { at } = await makeHarness()
+    const box = at('#replacements')
+    box.value = 'itu => ITU\n# a comment\nno arrow here\nsign off =>'
+    box.emit('input')
+    // A comment is not a mistake, so only the two broken lines are counted.
+    expect(at('#replacements-note').textContent).toContain('1 rule — 2 lines ignored:')
+  })
+
+  it('says so when the list reaches the most Vocette will use', async () => {
+    const many = Array.from(
+      { length: MAX_REPLACEMENT_RULES + 5 },
+      (_, i) => `word${i} => W${i}`
+    ).join('\n')
+    const { at } = await makeHarness({ replacements: many })
+    expect(at('#replacements-note').textContent).toContain(
+      `${MAX_REPLACEMENT_RULES} rules, the most Vocette will use.`
+    )
+  })
+
+  it('does not lose unsaved rules when settings change out of band', async () => {
+    const { view, at } = await makeHarness({ replacements: 'itu => ITU' })
+    const box = at('#replacements')
+    box.value = 'itu => ITU\nmy email => half-typed@'
+    box.emit('input')
+
+    view.apply(baseSettings({ replacements: 'itu => ITU', playSounds: true }))
+
+    expect(box.value).toBe('itu => ITU\nmy email => half-typed@')
+  })
+
+  it('saves what is typed, and shows the stored rules again once saved', async () => {
+    const { view, at, saveSettings } = await makeHarness()
+    const box = at('#replacements')
+    box.value = 'itu => ITU'
+    box.emit('input')
+
+    at('#save-settings').emit('click')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ replacements: 'itu => ITU' })
+    )
+
+    view.apply(baseSettings({ replacements: 'itu => ITU\nsign off => Alex' }))
+    expect(box.value).toBe('itu => ITU\nsign off => Alex')
+  })
+})
+
+/**
+ * The correction after recognition runs for every engine, so the note says
+ * so for every engine — and for the on-device one, which takes no prompt, it
+ * is the only thing the note may claim.
+ */
+describe('the vocabulary note and the correction', () => {
+  const CORRECTION =
+    'Vocette corrects near-misses of these words after it hears you — ' +
+    '“data verse” becomes “Dataverse”.'
+
+  it('describes only the correction for the on-device engine, and claims nothing is sent', async () => {
+    const { at } = await makeHarness({ engine: 'local', vocabulary: 'Kirinde' })
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain(CORRECTION)
+    expect(note).toContain('One term per line')
+    expect(note).not.toContain('sent to your transcription provider')
+    expect(note).not.toContain('keyword list')
+    expect(note).not.toContain('transcription prompt')
+  })
+
+  it('keeps the keyword-list note for a cloud engine and adds the correction', async () => {
+    const { at } = await makeHarness({ vocabulary: 'Kirinde' })
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain('sent to your transcription provider')
+    expect(note).toContain('dedicated keyword list')
+    expect(note).toContain(CORRECTION)
+  })
+
+  it('keeps the prompt note and its warning for a cloud engine, and adds the correction', async () => {
+    const many = Array.from({ length: 100 }, (_, i) => `term-number-${i}`).join('\n')
+    const { at } = await makeHarness({ vocabulary: many, model: 'whisper-1' })
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain('transcription prompt')
+    expect(note).toContain('not being sent')
+    expect(note).toContain(CORRECTION)
+  })
+})
+
+/**
+ * Free and Pro. A list longer than Free's limit keeps every line; the notes
+ * say how much of it the plan in force uses, and say nothing about Pro to a
+ * list the plan makes no difference to.
+ */
+describe('the notes under the lists, on each plan', () => {
+  const terms = (count: number): string =>
+    Array.from({ length: count }, (_, index) => `Term${index}`).join('\n')
+  const rules = (count: number): string =>
+    Array.from({ length: count }, (_, index) => `word${index} => W${index}`).join('\n')
+
+  it('say Free uses the first 50 of a longer vocabulary, and Pro all of it', async () => {
+    const { at } = await makeHarness({ vocabulary: terms(80) }, licenceStatus({ plan: 'free' }))
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain('One term per line, up to 50 terms of 48 characters.')
+    expect(note).toContain('Using 50 of your 80 terms — Pro uses all of them.')
+    // Every line is kept, and the badge counts all of them.
+    expect(at('#vocabulary').value.split('\n')).toHaveLength(80)
+    expect(at('#vocabulary-badge').textContent).toBe('80 terms')
+  })
+
+  it('say during the trial that every term is in use', async () => {
+    const { at } = await makeHarness(
+      { vocabulary: terms(80) },
+      licenceStatus({ plan: 'trial', trialDaysLeft: 23 })
+    )
+    const note = at('#vocabulary-note').textContent
+    expect(note).toContain('One term per line, up to 500 terms of 48 characters.')
+    expect(note).toContain('Pro trial: all 80 terms in use.')
+  })
+
+  it('say nothing about Pro for a list inside the Free limit', async () => {
+    const { at } = await makeHarness({ vocabulary: terms(30) }, licenceStatus({ plan: 'free' }))
+    const note = at('#vocabulary-note').textContent ?? ''
+    expect(note).not.toContain('Pro')
+    expect(note).toContain('up to 50 terms')
+  })
+
+  it('warn about the prompt only for the terms Free actually uses', async () => {
+    // 80 terms, 50 of them in use: the budget warning counts those 50.
+    const long = Array.from({ length: 80 }, (_, index) => `term-number-${index}`).join('\n')
+    const { at } = await makeHarness(
+      { vocabulary: long, model: 'whisper-1' },
+      licenceStatus({ plan: 'free' })
+    )
+    const note = at('#vocabulary-note').textContent ?? ''
+    expect(note).toContain('Using 50 of your 80 terms')
+    const match = /Only the first (\d+) fit, so (\d+) are not being sent/u.exec(note)
+    expect(match).not.toBeNull()
+    expect(Number(match?.[1]) + Number(match?.[2])).toBe(50)
+  })
+
+  it('say a Pro list beyond 100 terms sends its first 100 as keywords', async () => {
+    const { at } = await makeHarness({ vocabulary: terms(150) }, licenceStatus({ plan: 'pro' }))
+    const note = at('#vocabulary-note').textContent ?? ''
+    expect(note).toContain(
+      'gpt-transcribe takes the first 100 as a dedicated keyword list, and the rest still correct near-misses.'
+    )
+    expect(note).not.toContain('so every term is used')
+  })
+
+  it('say Free applies the first 20 of a longer list of rules, and the trial all of them', async () => {
+    const free = await makeHarness({ replacements: rules(35) }, licenceStatus({ plan: 'free' }))
+    expect(free.at('#replacements-note').textContent).toContain(
+      'Using 20 of your 35 rules — Pro uses all of them.'
+    )
+    expect(free.at('#replacements').value.split('\n')).toHaveLength(35)
+
+    const trial = await makeHarness({ replacements: rules(35) }, licenceStatus({ plan: 'trial' }))
+    expect(trial.at('#replacements-note').textContent).toContain('Pro trial: all 35 rules in use.')
+  })
+
+  it('keep counting ignored lines alongside the plan', async () => {
+    const { at } = await makeHarness(
+      { replacements: `${rules(25)}\nno arrow here` },
+      licenceStatus({ plan: 'free' })
+    )
+    expect(at('#replacements-note').textContent).toContain(
+      'Using 20 of your 25 rules — Pro uses all of them. 1 line ignored:'
+    )
+  })
+
+  it('follow the plan when it changes while the page is open', async () => {
+    const { view, at, context } = await makeHarness(
+      { vocabulary: terms(80), replacements: rules(35) },
+      licenceStatus({ plan: 'trial', trialDaysLeft: 1 })
+    )
+    expect(at('#vocabulary-note').textContent).toContain('Pro trial: all 80 terms in use.')
+
+    // The trial ends: the shell updates the context, then tells the page.
+    const ended = licenceStatus({ plan: 'free', trialEndNoticeDue: true })
+    context.licence = ended
+    view.applyLicence(ended)
+
+    expect(at('#vocabulary-note').textContent).toContain(
+      'Using 50 of your 80 terms — Pro uses all of them.'
+    )
+    expect(at('#replacements-note').textContent).toContain(
+      'Using 20 of your 35 rules — Pro uses all of them.'
+    )
   })
 })

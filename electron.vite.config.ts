@@ -5,8 +5,10 @@ import type { Plugin } from 'vite'
 /**
  * The production CSP has `connect-src 'none'` (renderers never touch the
  * network). In development that same CSP blocks Vite's HMR websocket, so hot
- * reload silently died on `npm run dev`. This plugin relaxes connect-src for
- * the dev server only; built pages keep the strict policy.
+ * reload silently died on `npm run dev`. The dev server also injects imported
+ * stylesheets as inline `<style>` elements, which `style-src 'self'` refuses,
+ * so the window rendered unstyled under `npm run dev`. This plugin relaxes
+ * both for the dev server only; built pages keep the strict policy.
  */
 function devCspAllowHmr(): Plugin {
   let serving = false
@@ -17,20 +19,26 @@ function devCspAllowHmr(): Plugin {
     },
     transformIndexHtml(html) {
       if (!serving) return html
-      return html.replace(
-        "connect-src 'none'",
-        "connect-src 'self' ws://localhost:* ws://127.0.0.1:*"
-      )
+      return html
+        .replace("connect-src 'none'", "connect-src 'self' ws://localhost:* ws://127.0.0.1:*")
+        .replace("style-src 'self'", "style-src 'self' 'unsafe-inline'")
     }
   }
 }
 
 export default defineConfig({
   main: {
+    // Dependencies stay `require()`s in the output, so the speech addon is
+    // loaded from node_modules (unpacked from the asar) rather than bundled.
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.ts') }
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          // The on-device speech engine runs as its own utility process,
+          // forked from out/main/engine-worker.js.
+          'engine-worker': resolve(__dirname, 'src/main/engine/worker.ts')
+        }
       }
     }
   },

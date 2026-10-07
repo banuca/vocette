@@ -29,6 +29,7 @@ pass. Neither macOS nor Linux is called verified from a Windows machine.
 | Tray | Yes | Yes | Desktop-dependent | Desktop-dependent |
 | Launch at login | Yes | Yes | Yes (autostart entry; AppImage path handled) | Yes |
 | OS-backed key storage | DPAPI | Keychain | libsecret / KWallet, else session-only | libsecret / KWallet, else session-only |
+| On-device transcription (sherpa-onnx, Parakeet v3) | Yes, x64 | Prebuilt addon ships; never run | Prebuilt addon ships; never run | Prebuilt addon ships; never run |
 
 Where a capability is missing the app says so in its own words, in Settings and
 in the first-run guidance, and keeps working with the Record button and the
@@ -45,11 +46,12 @@ input daemon, no `sudo`, no `uinput` group.
 
 ## Verification status
 
-Last updated 10 September 2026, branch `fix/v0.3.2-safety`.
+Last updated 28 September 2026, branch `launch`. The per-feature evidence for 0.5.0
+is in [launch-plan.md](launch-plan.md) §7.
 
 | Check | Windows 11 (x64) | macOS | Linux X11 | Linux Wayland |
 |---|---|---|---|---|
-| Unit suite (25 files, 354 tests) | Verified | Not tested | Not tested | Not tested |
+| Unit suite (64 files, 1438 tests) | Verified | Not tested | Not tested | Not tested |
 | Typecheck, lint, `electron-vite build` | Verified | Not tested | Not tested | Not tested |
 | Platform adapter logic | Automated | Automated | Automated | Automated |
 | Native target verification | **Verified** (native probe) | Not tested | Not tested | n/a |
@@ -57,8 +59,10 @@ Last updated 10 September 2026, branch `fix/v0.3.2-safety`.
 | Automatic paste into an unchanged target | **Verified** (manual) | Not tested | Not tested | n/a |
 | Refusal on a changed target | **Verified** (manual) | Not tested | Not tested | n/a |
 | Refusal on a blocked target | **Verified** (manual, elevated) | Not tested | n/a | n/a |
-| Packaging | **Verified** (NSIS + zip) | Not tested | Not tested | Not tested |
-| Packaged app starts | **Verified** | Not tested | Not tested | Not tested |
+| On-device engine: model download, verification, dictation | **Verified** (built app, fake microphone) | Not tested | Not tested | Not tested |
+| Packaging | **Verified** (NSIS + zip, `npm run release:win`) | Not tested | Not tested | Not tested |
+| Packaged app starts and dictates on-device | **Verified** (unpacked and installed) | Not tested | Not tested | Not tested |
+| Silent install and uninstall, user data kept | **Verified** | n/a | n/a | n/a |
 | Rendered dark interface, 100% and 150% | **Verified** (captured) | Not tested | Not tested | Not tested |
 
 Only Windows has been exercised. Everything in the macOS and Linux columns is

@@ -18,18 +18,18 @@ const PRIVACY = 'x-apple.systempreferences:com.apple.preference.security?Privacy
 
 const NO_HOOK =
   'The keyboard hook could not start, so system-wide shortcuts are off. ' +
-  'You can still record from the Murmur window.'
+  'You can still record from the Vocette window.'
 
 const NEEDS_INPUT_MONITORING =
-  'macOS needs to grant Murmur Input Monitoring before it can see your ' +
-  'shortcut. Until then, record from the Murmur window.'
+  'macOS needs to grant Vocette Input Monitoring before it can see your ' +
+  'shortcut. Until then, record from the Vocette window.'
 
 const NEEDS_ACCESSIBILITY =
-  'macOS needs to grant Murmur Accessibility before it can paste for ' +
+  'macOS needs to grant Vocette Accessibility before it can paste for ' +
   'you. Until then, the transcript is copied to your clipboard.'
 
 const NO_TARGET_CHECK =
-  'Murmur could not check which application is in front, so it copies ' +
+  'Vocette could not check which application is in front, so it copies ' +
   'the transcript instead of pasting it.'
 
 /**

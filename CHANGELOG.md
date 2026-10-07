@@ -5,7 +5,49 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.5.0] — unreleased
+
+Vocette now transcribes on your PC by default — no key, no account — and gains a
+30-day Pro trial, Pro as a monthly or yearly subscription, AI polish, snippets, instant capture,
+Esc to cancel, a measured wait on every dictation, an opt-in update check and a
+Windows release build that is checked before it is trusted.
+
+### Changed — Murmur is now Vocette
+
+- The product is renamed **Vocette**: window titles, the tray, messages, the installer
+  (`Vocette-0.5.0-win-x64.exe`, installing `Vocette.exe`), the website and the documents.
+  Your settings, history and downloaded speech model stay exactly where they were — the
+  folders on disk keep the name `Murmur`, so nothing has to be moved or downloaded again.
+  The app id is now `app.vocette`, so Vocette installs beside an older Murmur or Voice
+  Hotkey rather than over it.
+
 ### Added
+
+- **Transcription on this PC, by default.** Dictation now runs on your computer with
+  NVIDIA's Parakeet v3 (25 European languages): no API key, no account, and nothing sent
+  anywhere once the 670 MB model is downloaded. A first run opens on **Get started**, whose
+  one step is that download — with progress, Cancel (the next download resumes), and the
+  reason plus **Try again** if it fails. **Settings → Transcription** switches between **On
+  this PC** and **Cloud, with your API key**, showing only the fields for the one chosen;
+  the model row can also remove the model, though never mid-dictation, and a language the
+  model cannot recognise is named in a warning. Until a take could be transcribed, the tray
+  does not offer Start recording and says why. About says where audio goes for the engine
+  in use, and credits the model, sherpa-onnx and ONNX Runtime.
+
+- **Cleanup that actually runs.** The switch used to do nothing unless the language
+  was set to exactly English, so Automatic — a common choice — got no cleanup while
+  the switch showed as on. Hesitation sounds are now removed in every language, and
+  the English rules also run for Automatic whenever the text reads as English.
+- **Stutters and comma-delimited fillers**: “I I think” → “I think”; “it was, like,
+  really good” → “it was really good”.
+- **Follow spoken corrections** (new switch, on by default): “Scratch that” drops the
+  sentence before it, and “move it to Tuesday, no sorry, Wednesday” becomes “move it
+  to Wednesday” — including when the recogniser put a full stop before the correction.
+  A repair happens only when the replacement clearly lines up with a word just said
+  (a day with a day, a number with a number, a name with a name); anything else is
+  left exactly as spoken.
+- **Spoken line breaks** (new switch, on by default): “new line” and “new paragraph”,
+  when said as a phrase of their own.
 
 - **Your words — a custom vocabulary.** A new Settings card takes a list of
   names, acronyms and product terms, one per line, and biases the recogniser
@@ -21,9 +63,9 @@ All notable changes to this project are documented here. This project adheres to
   the box, in the README, on the About page and in SECURITY.md: this is not a
   place for a secret.
 - Blank lines, duplicates (ignoring case) and terms over 48 characters are
-  dropped rather than truncated. The list is capped at 100 terms, and the
-  2000-character ceiling cuts on a line boundary so a half-word can never be
-  biased into a request.
+  dropped rather than truncated. The list holds up to 500 terms (Free uses the
+  first 50, Pro all of them), and the 20,000-character ceiling cuts on a line
+  boundary so a half-word can never be biased into a request.
 - On the prompt path the list is budgeted to about 480 characters, because
   `whisper-1` keeps only the last 224 tokens of a prompt and an unbounded list
   would push out the language hint it is appended to. The note under the box
@@ -33,8 +75,222 @@ All notable changes to this project are documented here. This project adheres to
   an English sentence welded onto a French prompt shifts the decoder.
 - `keywords` is only sent to OpenAI itself, never to a custom endpoint that may
   reject an unknown field — and if a request carrying it is rejected anyway,
-  Murmur retries once with the terms in the prompt instead, so an unverified
+  Vocette retries once with the terms in the prompt instead, so an unverified
   parameter can cost one request some accuracy but cannot break dictation.
+
+- **Your words, spelled right on every engine.** After recognition, and before
+  cleanup, Vocette corrects near-misses of your terms on this computer: “ITUT” and
+  “I T U T” become “ITU-T”, “data verse” becomes “Dataverse”, and “Kirinda”,
+  “Kiranda” and “Kurindi” become “Kirinde”. It runs for the on-device engine,
+  which takes no prompt to bias, and for cloud models, which still miss. A common
+  English word is never turned into one of your terms — “coffee” stays “coffee”
+  with “koffi” in the list, “an apple” is never “an Apple”, and “who” stays “who”
+  with WHO — checked against about 73,000 common English word forms from SCOWL.
+  Sound-alike matching is English only; a match that differs only in spacing,
+  capitals or punctuation applies in every language. A correction never reaches
+  across sentence punctuation, and the note under the box now says it happens.
+
+- **Replacements and snippets.** A second box on the Your words card rewrites
+  what you said into what you meant, one `spoken => written` rule per line:
+  `itu => ITU`, `console log => console.log()`, `my email => name@example.com`.
+  `\n` in the written side is a line break, so a spoken trigger can expand into a
+  whole signature or address, and `{date}` and `{time}` become today's date and
+  the time. Rules run on this computer, after cleanup, and are never sent to your
+  provider. They match whole words only (“itu” never fires inside “situation”),
+  ignore capitals, and tolerate a comma the recogniser put between words, but never
+  match across a line break you asked for; the longest phrase wins, and replaced
+  text is never rewritten again. What you wrote goes in exactly as typed — no
+  capital is added, so code keeps its case — and a snippet that spans lines takes
+  the full stop or comma after its trigger with it, so a signature does not end on
+  a stray full stop. The note under the box counts the rules and says how many
+  lines could not be read as one.
+
+- **Your clipboard, given back.** Automatic paste used to leave every transcript on
+  the clipboard, so whatever you had copied was gone. Now the clipboard is only
+  borrowed: after the paste, what you had copied — text, formatting, an image — is
+  put back about ¾ s later. A file list copied in Explorer, or an application's own
+  private format, cannot be restored. When Vocette does not paste (clipboard-only
+  delivery, focus moved, an elevated window) the transcript stays on the clipboard as
+  before. On by default; **Put my clipboard back** in Settings turns it off. The
+  overlay now says **Pasted** rather than “Copied and pasted”, which stopped being
+  true once the clipboard is given back.
+- **Paste last dictation — Alt + Shift + V** (Windows, on by default) pastes your
+  newest transcript again into the window in front, with the same focus and
+  elevation checks as a dictation: for a paste that went to the wrong place. If
+  another app already owns the combination, Settings says so. It is deliberately not
+  in the tray menu — opening the menu takes focus away from the window you want it in.
+- **A retry is copied, not pasted.** Retry is pressed in Vocette's own window or tray,
+  so the window in front is Vocette itself; a retried take used to be pasted there (into
+  whatever field had focus) and, with the clipboard given back, could end up only in
+  History. It now goes to the clipboard, like a take started from the window.
+- **A busy service is retried once, and Retry is in the window.** A rate limit (429),
+  a server error (5xx) or a dropped connection used to cost a 4.5-second error and a
+  hunt through the tray. Now the cloud request is quietly sent once more — after the
+  pause the service asks for in `Retry-After`, held to between 0.25 and 5 seconds, or
+  0.7 seconds otherwise — while the overlay says “The service was busy — trying once
+  more”. Only once, and never for a rejected request — a bad key, a wrong address or
+  model, a recording that is too large — nor after a two-minute timeout, which would
+  only fail the same way again; a dictation cancelled during the pause sends nothing
+  more. When a take still fails, **Retry** appears beside Record in the window, in the
+  top bar and at the head of History, for as long as the recording is kept, and sends
+  it again without re-speaking — on-device takes included. Starting a new dictation or
+  cancelling removes it, just as it greys out **Retry last dictation** in the tray.
+- **The first word is less likely to be cut off.** The microphone used to open only
+  once the hold delay had passed (250 ms by default), and then had to start up —
+  slower still on a Bluetooth headset — so “Send it by Friday” could arrive as “it by
+  Friday”. It now opens once the keys have been held on their own for a moment (a
+  tenth of a second), while the hold delay is still running, so it has a head start
+  and what you say from then on is in the take. A shortcut typed at speed, such as
+  Ctrl + Shift + T, brings its third key within that moment and never opens the
+  microphone at all. If it has opened and the keys turn out to be part of another
+  shortcut, or are let go before the delay, what was captured is thrown away unheard:
+  nothing is transcribed or stored, and no overlay appears, though the system's
+  microphone indicator may flash briefly. With the on-device engine, the speech model
+  starts loading at the same moment. **Start listening as soon as the shortcut is
+  held** (Settings → Recording, on by default) turns it off. It needs a keyboard Vocette
+  can watch, so on Wayland, or wherever the keyboard hook cannot start, the switch is
+  disabled and says why.
+- **Is it hearing me? A live level in the overlay.** While you record, five small bars
+  beside the timer move with your voice, and rest as dots when nothing is heard — so a
+  muted or wrong microphone shows while you speak, not after an empty transcript. Where
+  the system is set to reduce motion, one still dot brightens instead. The level goes
+  from the recorder to the overlay and nowhere else, and is never stored or logged.
+- **A plain note about Bluetooth headsets.** While a Bluetooth headset's microphone is
+  open, Windows switches the headphones to call quality — mono and muffled — and nothing
+  said why. When the microphone chosen in Settings looks like a Bluetooth headset (or,
+  for the system default, the device Windows is using does), a note under the picker now
+  says so and suggests the computer's built-in microphone instead. It follows the picker
+  before Save and is worked out again on refresh. It is a guess from the device's name —
+  “Headset”, “Hands-Free”, “AirPods”, “Buds”, “Bluetooth”, “BT”, Sony's WH- and WF- models
+  — so a wired headset can get the note too; with no name to read, nothing is shown.
+- **Correct a dictation in History, and undo a delete.** **Edit** turns an entry's text
+  into a box of the same size and type, with **Save** and **Cancel** (Ctrl + Enter saves —
+  Command + Enter on a Mac — and Esc cancels); the entry then says “Edited” beside its
+  time, and keeps its date, length and model. An empty text is refused — delete the
+  dictation instead. **Delete** no longer asks first: the entry goes at once, on disk too,
+  and a bar at the foot of the page offers **Undo** for 8 seconds, or until the next
+  delete, putting it back exactly where it was. Deleting all history in Settings still
+  asks, because that cannot be undone. Whenever cleanup, your words or a replacement
+  changed what the recogniser heard, its own words are now kept beside the text: **Show
+  original** switches the entry to them and **Copy original** copies them, so a rule that
+  misfires never costs you what you said. Dictations saved before this version were stored
+  without them. An edit keeps the text it replaced in the same way, so to remove words for
+  good, delete the dictation. The `.json` export includes both.
+
+- **Pro, with a 30-day trial — and a Free version that stays complete.** Everyone gets
+  Pro for their first 30 days (an existing user from their first launch of this
+  version). Afterwards Free keeps everything dictation needs, for good: on-device and
+  cloud dictation of any length, cleanup, spoken corrections and line breaks, clipboard
+  restore, paste last, Retry and history. Pro is for power users: 500 vocabulary terms in
+  use instead of 50, 200 replacement rules instead of 20, and AI polish when it ships.
+  Nothing is deleted when Pro lapses — a longer list keeps every line, only its first
+  part is used, and the note under each box says so. Pro is a subscription, **US$5 a
+  month or US$50 a year**, for up to three PCs. A new **Pro** page shows the plan, the two
+  plans (Polar's checkout, in the browser) and a **Your subscription** field: **Activate**
+  sends the key and a device label (“Vocette on Windows · 7F3A”) to Polar — no
+  credentials, no API-version pin — and from then on, at most once a day, Vocette asks
+  Polar whether the subscription is still active (**Check now** asks at once). Cancelled,
+  Pro lasts to the end of the paid period, then Vocette carries on as Free, keeping the
+  key: subscribing again makes it work again. Offline, Pro keeps working for 30 days
+  after the last confirmation, then pauses until a check succeeds. If Polar no longer
+  knows this PC — released in the Polar account, or the key changed — the key is removed
+  here and the page says why. The buyer details in Polar's answers are discarded, never
+  logged. **Release this PC** frees a device slot,
+  and without a connection **Remove from this PC anyway** clears it here, saying the slot
+  stays in use. The key is encrypted by the operating system where it can be, and kept
+  plain, marked as such, where it cannot. The sidebar shows “Trial · 23d” during the
+  trial and nothing otherwise; when it ends, History shows one notice, dismissed for
+  good. A cloud request still carries at most 100 keywords. Purchases stay closed (“Pro
+  purchases open soon”) until the Polar values in `src/shared/product.ts` are filled in.
+- **A server of your own needs no key.** whisper.cpp's server, Speaches or a corporate
+  Whisper deployment often has no key to give, yet Vocette refused to record without one.
+  Now, with an **API endpoint** set in Settings → Transcription, the key is optional: the
+  badge reads “No key needed for this server”, Record works, and the request goes out
+  with no `Authorization` header at all, rather than an empty one. OpenAI itself, used
+  when the endpoint is empty, still asks for a key before anything is sent. When a server
+  refuses (HTTP 401 or 403), the message names it — “The server at localhost:8080 refused
+  the request (HTTP 401). If it needs a key, add one in Settings.” — or, when a key was
+  sent, says to check it, instead of blaming an OpenAI key. A server on this computer that
+  cannot be reached is asked about rather than your internet connection: “Could not reach
+  the transcription server at localhost:8080. Is it running?” **Test connection**, beside the
+  endpoint, sends one second of silence as a WAV to the saved endpoint, once, with no
+  retry and a 10-second limit, and says “Connected — the server answered in 180 ms” or
+  why not. An empty transcript of the silence counts as connected; a web page served at
+  the wrong address does not. It uses saved settings only — your saved key never goes to
+  an address you have not saved — so while the endpoint, model or key fields hold unsaved
+  changes it waits for **Save settings**, and says so.
+
+- **Esc cancels a hands-free recording.** In **Press to start and stop**, and for any take
+  started from the window, Esc on its own cancels the recording as Cancel does: nothing is
+  transcribed, kept or pasted. The overlay says so — “Press Left Ctrl + Left Shift to
+  finish · Esc to cancel” — and a chord too long to fit beside it is called “the shortcut”
+  so the Esc part is never cut off. Esc with a modifier is left alone (Ctrl + Shift + Esc
+  is Task Manager), as is a take held to talk and one already being transcribed. Vocette
+  only watches the key, so the app in front sees the same Esc; Settings says so. Where the
+  keyboard is not watched (a Wayland desktop) or the shortcut is off, Esc is not offered.
+
+- **How long each dictation took, measured on your PC.** The wait from letting go of the
+  shortcut (or pressing Stop, or Retry) until the text is ready to paste is timed for every
+  dictation. The overlay shows it where the recording timer was — “0.4s” — each History entry
+  ends “ready in 0.4s”, and History's totals gain **Typical wait**, the middle wait over your
+  last 50 dictations. Dictations from before this release have no figure and show none. The
+  timing stays on this PC: it is kept in History and sent to no provider.
+
+- **An update check you switch on, and can refuse.** About has a new **Updates** section:
+  **Check for updates once a day** (off unless you switch it on) and **Check now**, which
+  works either way. A check is one request to GitHub for the latest version number —
+  nothing about you or your dictation is sent — and it runs at most once a day on its own,
+  a minute after startup at the earliest. It says “You have the latest version (0.4.0).”,
+  “Vocette 0.6.0 is available.” with a **Download** link to the release page, or why it
+  could not check. An update on offer adds one line to the tray menu and a dot beside
+  About; there are no dialogs or notifications, and nothing is downloaded or installed.
+
+- **AI polish (Pro).** A new **Settings → AI polish** card: switch on **Polish my dictation**
+  and a language model rewrites each dictation before it is pasted — **Clean** (grammar and
+  punctuation, your words kept), **Professional**, **Casual** or **Notes** (bullet points when
+  you list things), plus optional extra instructions. Providers: OpenAI (borrowing your OpenAI
+  transcription key when transcription goes to OpenAI too), Ollama or LM Studio on this PC,
+  Groq, or any OpenAI-compatible server. **Wait at most** 2, 4 or 8 seconds: if polishing takes
+  longer, or its reply looks wrong (an assistant's preamble, or far longer or shorter than
+  what you said), your text is pasted as it was and the overlay says “Pasted — unpolished
+  (took too long)”. Polish never fails a dictation. It runs after cleanup and before your
+  replacements, so snippets are pasted exactly as written; it is told the transcript is text
+  to rewrite, never a message to answer; and your vocabulary is spelled as you wrote it.
+  History marks a polished entry “Polished” and keeps the text polish started from. **Test**
+  sends one short sentence to the saved provider and shows what came back. Only the text is
+  ever sent, never audio, and About says so while polish is on.
+
+### Fixed
+
+- **The shortcut keeps working after sleep and the lock screen.** Windows can drop the
+  keyboard hook while the PC is away, and the key-ups of Win + L happen where no hook can
+  see them, so the shortcut could go dead until Vocette was restarted. The hook is now put
+  back, with nothing held, when the PC wakes or is unlocked. A take still recording when
+  the PC sleeps or locks is finished rather than lost, and the microphone does not stay
+  open behind the lock screen; what was said is kept on the clipboard and in History, and
+  pasted only if the window it was meant for is in front when it is ready. A hook error
+  after several sleeps is reported once, not once per wake.
+- In **Press to start and stop**, and for a take started from the window, the overlay said
+  “Release Left Ctrl + Left Shift to finish” once recording began, which was wrong for both.
+  It now keeps the words for how the take was started.
+
+- Only the main window can ask for app info, as for every other channel, and the
+  settings the window sees are now listed field by field — a new stored field no longer
+  crosses into the window unless it is added on purpose.
+- Cleanup no longer inserts a space after punctuation, which turned `example.com`
+  into `example. com`, `3.5` into `3. 5` and `10:30` into `10: 30`; and it keeps an
+  ellipsis instead of collapsing it to a full stop.
+- German “um 10 Uhr” and Portuguese “um carro” keep their “um”, and a measurement in
+  `mm` is not a hesitation.
+- **Silence stays silent.** Pressing and releasing the shortcut without saying anything
+  used to send the recording anyway: a cloud provider billed for the silence, Whisper
+  could paste “Thank you.” into your document, and an empty result came back as a failed
+  dictation with a Retry. Now a take with no speech in it is not transcribed by either
+  engine. The overlay says “No speech heard — nothing was sent.” for a moment, as a
+  neutral note rather than an error, and nothing is pasted, kept in History or offered
+  for Retry. The bar is low on purpose — a take counts as silent only when every 30 ms of
+  it stays below about −56 dBFS — so a whisper still goes through, and a recording Vocette
+  cannot decode is still sent as before.
 
 ## [0.4.0] — 2026-09-11
 

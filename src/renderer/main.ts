@@ -1,17 +1,21 @@
 import './styles.css'
-import type { AppContext } from './app-context'
+import type { AppContext, NavigationIntent } from './app-context'
 import { escapeHtml, friendlyError } from './dom'
 import { createHistorySaveWarning, trackHistorySaveStatus } from './history-save-warning'
 import { createRecordingControl } from './recording-control'
 import { icon } from './icons'
+import { trialBadge } from './licence-text'
 import { applyTheme, createThemeToggle, type ThemeToggle } from './theme'
 import type { MicrophoneAccess } from './setup-guide'
-import { renderAbout } from './pages/about'
-import { renderHistory } from './pages/history'
-import { renderSettings } from './pages/settings'
+import { renderAbout, type AboutView } from './pages/about'
+import { renderHistory, type HistoryView } from './pages/history'
+import { renderPro, type ProView } from './pages/pro'
+import { renderSettings, type SettingsView } from './pages/settings'
 import { effectiveRecordingMode, globalShortcutUsable } from '../shared/capabilities'
+import type { EngineStatus } from '../shared/engine'
 import { chordLabel } from '../shared/keycodes'
-import type { AppInfo, HistoryEntry, Page, PublicSettings, WorkflowStatus } from '../shared/types'
+import type { AppInfo, HistoryEntry, LicenceStatus, Page, PublicSettings } from '../shared/types'
+import type { UpdateStatus } from '../shared/update'
 
 const root = document.querySelector<HTMLDivElement>('#app')
 if (!root) throw new Error('Application root was not found.')
@@ -42,7 +46,7 @@ async function mount(): Promise<void> {
   appRoot.innerHTML = `
     <div class="loading-screen">
       <div class="brand-mark" aria-hidden="true"><span></span></div>
-      <p>Opening Murmur…</p>
+      <p>Opening Vocette…</p>
     </div>
   `
 
@@ -53,14 +57,18 @@ async function mount(): Promise<void> {
   let settings: PublicSettings
   let history: HistoryEntry[]
   let appInfo: AppInfo
+  let engine: EngineStatus
+  let licence: LicenceStatus
   try {
-    ;[settings, history, appInfo] = await Promise.all([
+    ;[settings, history, appInfo, engine, licence] = await Promise.all([
       window.murmur.getSettings(),
       window.murmur.getHistory(),
-      window.murmur.getAppInfo()
+      window.murmur.getAppInfo(),
+      window.murmur.getEngineStatus(),
+      window.murmur.getLicenceStatus()
     ])
   } catch (error) {
-    appRoot.innerHTML = `<div class="fatal-error"><h1>Murmur could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
+    appRoot.innerHTML = `<div class="fatal-error"><h1>Vocette could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
     return
   }
 
@@ -69,21 +77,23 @@ async function mount(): Promise<void> {
   applyTheme(document.documentElement, settings.theme)
 
   let activePage: Page = 'history'
-  let workflowStatus: WorkflowStatus = { phase: 'idle', message: 'Ready' }
-  let historyView: { refresh: () => void } | null = null
-  let settingsView: { apply: (next: PublicSettings) => void; dispose: () => void } | null = null
+  let historyView: HistoryView | null = null
+  let settingsView: SettingsView | null = null
+  let proView: ProView | null = null
+  let aboutView: AboutView | null = null
 
   appRoot.innerHTML = `
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true"><span></span></div>
-          <div><strong>Murmur</strong><small>Open dictation</small></div>
+          <div><strong>Vocette</strong><small>Open dictation</small></div>
         </div>
         <nav class="navigation" aria-label="Primary navigation">
           <button class="nav-item active" data-page="history" title="History"><span class="nav-icon">${icon('history')}</span><span>History</span></button>
           <button class="nav-item" data-page="settings" title="Settings"><span class="nav-icon">${icon('settings')}</span><span>Settings</span></button>
-          <button class="nav-item" data-page="about" title="About"><span class="nav-icon">${icon('info')}</span><span>About</span></button>
+          <button class="nav-item" data-page="pro" title="Pro"><span class="nav-icon">${icon('sparkle')}</span><span>Pro<small class="nav-suffix" id="nav-pro-suffix" hidden></small></span></button>
+          <button class="nav-item" data-page="about" title="About"><span class="nav-icon">${icon('info')}</span><span>About<i class="nav-dot" id="nav-about-dot" hidden></i></span></button>
         </nav>
         <div class="sidebar-footer">
           <div class="live-status"><span class="status-dot" id="status-dot"></span><span id="sidebar-status">Ready</span></div>
@@ -124,9 +134,10 @@ async function mount(): Promise<void> {
 
   const updateRecordControl = (): void => {
     recordControl.apply({
-      status: workflowStatus,
+      status: context.workflow,
       platform: context.platform,
-      apiKeySource: context.settings.apiKeySource
+      ready: context.engine.ready,
+      notReadyReason: context.engine.notReadyReason
     })
   }
 
@@ -136,10 +147,13 @@ async function mount(): Promise<void> {
     const shortcut = appRoot.querySelector<HTMLElement>('#sidebar-shortcut')
     const mode = appRoot.querySelector<HTMLElement>('#sidebar-shortcut-mode')
     const usable = globalShortcutUsable(context.platform.capabilities)
-    if (status) status.textContent = workflowStatus.message
+    // "Ready" beside a green dot while nothing can be transcribed yet reads as
+    // a contradiction of the setup card right next to it.
+    const idleButNotReady = context.workflow.phase === 'idle' && !context.engine.ready
+    if (status) status.textContent = idleButNotReady ? 'Not set up yet' : context.workflow.message
     if (dot) {
-      const off = context.settings.hotkeyEnabled && usable ? '' : ' off'
-      dot.className = `status-dot ${workflowStatus.phase}${off}`
+      const off = context.settings.hotkeyEnabled && usable && !idleButNotReady ? '' : ' off'
+      dot.className = `status-dot ${context.workflow.phase}${off}`
     }
     if (shortcut) {
       shortcut.textContent = usable ? chordLabel(context.settings.shortcut.keys) : 'Not available'
@@ -155,13 +169,28 @@ async function mount(): Promise<void> {
     updateRecordControl()
   }
 
+  /**
+   * The sidebar's Pro item says "Trial · 23d" during the trial and nothing
+   * otherwise: no countdown in red, and nothing at all on Free or Pro.
+   */
+  const updateProNav = (): void => {
+    const suffix = appRoot.querySelector<HTMLElement>('#nav-pro-suffix')
+    if (!suffix) return
+    const badge = trialBadge(context.licence)
+    suffix.textContent = badge ?? ''
+    suffix.hidden = badge === null
+  }
+
   const context: AppContext = {
     content,
     settings,
     history,
     appInfo,
     platform: appInfo.platformStatus,
+    engine,
+    workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
+    licence,
     setHeading: (nextTitle, nextSubtitle) => {
       title.textContent = nextTitle
       subtitle.textContent = nextSubtitle
@@ -180,9 +209,37 @@ async function mount(): Promise<void> {
       historyView?.refresh()
       settingsView?.apply(context.settings)
     },
-    navigate: (page) => {
+    applyEngine: (next) => {
+      const stepsChanged =
+        next.engine !== context.engine.engine ||
+        next.ready !== context.engine.ready ||
+        next.notReadyReason !== context.engine.notReadyReason
+      context.engine = next
+      // The sidebar says "Not set up yet" until the engine is ready.
+      if (stepsChanged) updateSidebar()
+      else updateRecordControl()
+      // Download progress arrives several times a second. The setup steps
+      // only change with the engine or its readiness, so History is redrawn
+      // only then; in between, just the model rows follow the download.
+      if (stepsChanged) historyView?.refresh()
+      else historyView?.applyEngine(next)
+      settingsView?.applyEngine(next)
+    },
+    applyLicence: (next) => {
+      // Asked for on every focus, so an answer that changes nothing changes
+      // nothing on screen either.
+      if (JSON.stringify(next) === JSON.stringify(context.licence)) return
+      context.licence = next
+      updateProNav()
+      // Each view repaints only what the plan changes: History's notice,
+      // the notes under the lists in Settings, the Pro page itself.
+      historyView?.applyLicence(next)
+      settingsView?.applyLicence(next)
+      proView?.apply(next)
+    },
+    navigate: (page, intent) => {
       activePage = page
-      renderPage()
+      renderPage(intent)
     },
     reloadHistory: async () => {
       context.history = await window.murmur.getHistory()
@@ -202,7 +259,7 @@ async function mount(): Promise<void> {
     }
   )
 
-  const renderPage = (): void => {
+  const renderPage = (intent?: NavigationIntent): void => {
     appRoot.querySelectorAll<HTMLButtonElement>('.nav-item').forEach((button) => {
       button.classList.toggle('active', button.dataset.page === activePage)
     })
@@ -211,10 +268,14 @@ async function mount(): Promise<void> {
     settingsView?.dispose()
     settingsView = null
     historyView = null
+    proView?.dispose()
+    proView = null
+    aboutView = null
     try {
       if (activePage === 'history') historyView = renderHistory(context)
-      if (activePage === 'settings') settingsView = renderSettings(context)
-      if (activePage === 'about') renderAbout(context)
+      if (activePage === 'settings') settingsView = renderSettings(context, intent)
+      if (activePage === 'pro') proView = renderPro(context)
+      if (activePage === 'about') aboutView = renderAbout(context)
     } catch (error) {
       // A page bug must be visible — once, a render error after the HTML was
       // drawn left the page looking fine but with zero event listeners, so
@@ -232,7 +293,9 @@ async function mount(): Promise<void> {
   appRoot.querySelectorAll<HTMLButtonElement>('.nav-item').forEach((button) => {
     button.addEventListener('click', () => {
       const page = button.dataset.page
-      if (page === 'history' || page === 'settings' || page === 'about') context.navigate(page)
+      if (page === 'history' || page === 'settings' || page === 'pro' || page === 'about') {
+        context.navigate(page)
+      }
     })
   })
 
@@ -241,8 +304,10 @@ async function mount(): Promise<void> {
   })
 
   window.murmur.onWorkflowStatus((status) => {
-    workflowStatus = status
+    context.workflow = status
     updateSidebar()
+    // Removing the speech model waits for a dictation to finish.
+    settingsView?.applyWorkflow(status)
   })
 
   window.murmur.onSettingsChanged((next) => {
@@ -257,6 +322,10 @@ async function mount(): Promise<void> {
     context.applyPlatform(next)
   })
 
+  window.murmur.onEngineStatus((next) => {
+    context.applyEngine(next)
+  })
+
   window.murmur.onHistoryChanged(() => {
     void context.reloadHistory()
   })
@@ -265,12 +334,39 @@ async function mount(): Promise<void> {
     context.navigate(page)
   })
 
+  window.murmur.onLicenceChanged((next) => {
+    context.applyLicence(next)
+  })
+
+  // A dot on About while an update is on offer, and the page kept current.
+  const applyUpdate = (status: UpdateStatus): void => {
+    const dot = appRoot.querySelector<HTMLElement>('#nav-about-dot')
+    if (dot) {
+      dot.hidden = status.state !== 'available'
+      dot.title = status.state === 'available' ? 'An update is available' : ''
+    }
+    aboutView?.applyUpdate(status)
+  }
+  window.murmur.onUpdateStatus(applyUpdate)
+
+  // The trial ends on its own, perhaps while the window sits behind other
+  // work, so coming back to it asks again. Nothing leaves this computer: the
+  // answer is worked out in the main process from the clock.
+  const refreshLicence = (): void => {
+    void window.murmur
+      .getLicenceStatus()
+      .then((next) => context.applyLicence(next))
+      .catch(() => undefined)
+  }
+  window.addEventListener('focus', refreshLicence)
+
+  updateProNav()
   renderPage()
   // Tells the main process the renderer can receive navigation now, instead of
   // guessing with a timeout.
   void window.murmur.announceReady()
 
-  // Neither of these may hold up the window: both only refine what is shown.
+  // None of these may hold up the window: they only refine what is shown.
   void microphoneAccess().then((access) => {
     context.microphone = access
     historyView?.refresh()
@@ -278,6 +374,17 @@ async function mount(): Promise<void> {
   void window.murmur
     .getPlatformStatus()
     .then((next) => context.applyPlatform(next))
+    .catch(() => undefined)
+  // A change broadcast while this window was loading, before it subscribed,
+  // would otherwise be missed until the next one.
+  void window.murmur
+    .getEngineStatus()
+    .then((next) => context.applyEngine(next))
+    .catch(() => undefined)
+  refreshLicence()
+  void window.murmur
+    .getUpdateStatus()
+    .then(applyUpdate)
     .catch(() => undefined)
 }
 

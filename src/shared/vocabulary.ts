@@ -12,10 +12,24 @@
  * of it, and it is stated in the interface, the README and SECURITY.md.
  */
 
-/** Ceiling on the stored string, applied on both the load and save paths. */
-export const MAX_VOCABULARY_CHARS = 2000
-/** Ceiling on terms actually sent. Beyond this, biasing starts to hurt. */
-export const MAX_VOCABULARY_TERMS = 100
+import { PRO_VOCABULARY_TERMS } from './product'
+
+/**
+ * Ceiling on the stored string, applied on both the load and save paths. Room
+ * for Pro's list; Free uses the first part of it and keeps the rest.
+ */
+export const MAX_VOCABULARY_CHARS = 20_000
+/**
+ * Ceiling on the terms the parser returns — Pro's limit. Free's lower limit is
+ * applied where a dictation reads its settings, so the stored list is never cut.
+ */
+export const MAX_VOCABULARY_TERMS = PRO_VOCABULARY_TERMS
+/**
+ * Ceiling on the terms one request carries in a keyword list. A longer list
+ * still corrects near-misses after recognition, but a request stays the size
+ * it has always been: beyond this, biasing starts to hurt.
+ */
+export const MAX_KEYWORD_TERMS = 100
 /** A term is a name or a phrase, not a sentence. */
 export const MAX_VOCABULARY_TERM_CHARS = 48
 

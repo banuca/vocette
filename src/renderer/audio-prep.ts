@@ -4,12 +4,14 @@
  * The recorder captures Opus in a WebM container. Before upload we decode,
  * downsample to 16 kHz mono, trim leading/trailing silence (the user pays per
  * audio second), and encode as PCM16 WAV — the format whisper-family models
- * transcribe best. Any failure falls back to sending the original blob, so a
- * codec quirk can never break dictation.
+ * transcribe best. A take with no speech in it at all is reported as such, so
+ * the main process can drop it instead of transcribing silence. Any failure
+ * falls back to sending the original blob, so a codec quirk can never break
+ * dictation.
  *
- * `findSpeechBounds` and `encodeWavPcm16` are pure so they are unit-testable
- * in the Node test environment; only `prepareForTranscription` touches the
- * Web Audio APIs.
+ * `findSpeechBounds`, `encodeWavPcm16` and `prepareSamples` are pure so they
+ * are unit-testable in the Node test environment; only
+ * `prepareForTranscription` touches the Web Audio APIs.
  */
 
 const TARGET_SAMPLE_RATE = 16000
@@ -17,6 +19,13 @@ const TARGET_SAMPLE_RATE = 16000
 export interface PreparedAudio {
   buffer: ArrayBuffer
   mimeType: string
+  /**
+   * Whether any part of the take reached speech level. False means the take
+   * is silence throughout and is not worth transcribing. A take that could
+   * not be decoded reports true: nothing is known about it, so it is still
+   * sent, as it always was.
+   */
+  speechDetected: boolean
 }
 
 /** Root-mean-square level of a window of samples (DC removed). */
@@ -109,6 +118,22 @@ export function encodeWavPcm16(samples: Float32Array, sampleRate: number): Array
 }
 
 /**
+ * The pure half of `prepareForTranscription`: trims silence from decoded mono
+ * samples, encodes what is left as WAV, and says whether any speech was found
+ * at all. The one measurement serves both, so the take that is trimmed and the
+ * take that is judged silent can never disagree.
+ */
+export function prepareSamples(samples: Float32Array, sampleRate: number): PreparedAudio {
+  const bounds = findSpeechBounds(samples, sampleRate)
+  const trimmed = bounds ? samples.subarray(bounds[0], bounds[1]) : samples
+  return {
+    buffer: encodeWavPcm16(trimmed, sampleRate),
+    mimeType: 'audio/wav',
+    speechDetected: bounds !== null
+  }
+}
+
+/**
  * Decodes the recorded blob, trims silence, and returns a 16 kHz WAV ready
  * for the transcription API. Falls back to the original blob on any error.
  */
@@ -131,12 +156,11 @@ export async function prepareForTranscription(
     source.start(0)
     const rendered = await renderContext.startRendering()
 
-    const channel = rendered.getChannelData(0)
-    const bounds = findSpeechBounds(channel, TARGET_SAMPLE_RATE)
-    const trimmed = bounds ? channel.subarray(bounds[0], bounds[1]) : channel
-    return { buffer: encodeWavPcm16(trimmed, TARGET_SAMPLE_RATE), mimeType: 'audio/wav' }
+    return prepareSamples(rendered.getChannelData(0), TARGET_SAMPLE_RATE)
   } catch {
     // Never let audio processing break dictation: the API accepts WebM too.
-    return { buffer: await blob.arrayBuffer(), mimeType }
+    // A take that could not be read is not known to be silent, so it counts
+    // as speech and is sent exactly as it was before silence was checked.
+    return { buffer: await blob.arrayBuffer(), mimeType, speechDetected: true }
   }
 }

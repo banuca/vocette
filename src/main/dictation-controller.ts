@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto'
-import { lightCleanup } from '../shared/cleanup'
+import { cleanupTranscript } from '../shared/cleanup'
+import { applyReplacements, type ReplacementRule } from '../shared/replacements'
+import { correctVocabulary, type CommonWordTest } from '../shared/vocabulary-correction'
+import type { PolishOutcome } from '../shared/polish'
 import type { RecordingMode } from '../shared/capabilities'
 import type {
+  HistoryEntry,
   Page,
   RecorderAudioPayload,
   RecorderErrorPayload,
   RecorderStartedPayload,
+  TranscriptionEngine,
   WorkflowStatus
 } from '../shared/types'
 
@@ -13,6 +18,13 @@ import type {
 const MAX_RECORDING_MS = 5 * 60 * 1000
 /** The microphone must report back within this long, or the take is abandoned. */
 const START_WATCHDOG_MS = 8000
+/**
+ * The longest a take opened at the keypress may wait to be confirmed. A press
+ * is settled within the hold delay (400 ms at most), so reaching this means a
+ * key-up went missing or a modifier is stuck — and the microphone must never
+ * stay open behind the user's back.
+ */
+const PROVISIONAL_MAX_MS = 2000
 /** A stop request must produce audio or an error within this long. */
 const STOP_WATCHDOG_MS = 10_000
 /** How long a success/error status lingers before the overlay hides. */
@@ -20,15 +32,48 @@ const SUCCESS_RESET_MS = 1600
 const ERROR_RESET_MS = 4500
 /** Cancellation is an acknowledgement, not news; it clears quickly. */
 const CANCELLED_RESET_MS = 1200
+/**
+ * A take with no speech in it is dismissed the same neutral way, but shown a
+ * little longer: the user did not ask for it, so they need a moment to read
+ * why nothing happened.
+ */
+const NO_SPEECH_RESET_MS = 1600
 /** Small settle delay before the synthetic Ctrl+V, so clipboard writes propagate. */
 const PASTE_DELAY_MS = 80
+/**
+ * How long after the synthetic Ctrl+V the user's own clipboard is put back.
+ * It is a race either way. Too early, and the target app — which reads the
+ * clipboard when it gets round to handling the keystroke — pastes the old
+ * contents instead of the transcript. Too late, and the user's own next
+ * Ctrl+V pastes the transcript again rather than what they had copied.
+ */
+const CLIPBOARD_RESTORE_MS = 750
+/**
+ * The longest Vocette waits for the user to let go of Ctrl, Shift, Alt or the
+ * Windows key before sending its own Ctrl + V. Pressed straight after Alt +
+ * Shift + V, those keys are still down for a moment, and a paste sent into
+ * them arrives as Ctrl + Alt + Shift + V — which pastes nothing.
+ */
+const MODIFIER_RELEASE_MS = 1500
+/** How often the key state is read while waiting. */
+const MODIFIER_POLL_MS = 15
+/** Longest transcript shown in full beside a success message. */
+const PREVIEW_CHARS = 68
+/**
+ * Longest shortcut label the hands-free hint spells out. Measured in the
+ * overlay: "Press Right Ctrl + Right Shift to finish · Esc to cancel" (24
+ * characters of label) fits in its 248 px; a three-key chord does not.
+ */
+const FINISH_HINT_MAX_LABEL = 24
+/** Shown while the cloud service, having answered busy, is asked once more. */
+const BUSY_RETRY_DETAIL = 'The service was busy — trying once more'
 
 export type SoundKind = 'start' | 'success' | 'error'
 
 /**
  * Where a dictation was started from.
  *
- * It decides delivery. A take started from the Murmur window has no
+ * It decides delivery. A take started from the Vocette window has no
  * external target — this app has focus — so it is delivered to the clipboard
  * and nothing is typed anywhere. Only a take started by the global shortcut
  * has a target worth capturing and verifying.
@@ -39,17 +84,42 @@ export type DictationSource = 'shortcut' | 'ui'
 export interface WorkflowSettings {
   /** Already resolved against platform capability by the caller. */
   recordingMode: RecordingMode
+  /** Open the microphone at the keypress, before the hold delay confirms it. */
+  instantCapture: boolean
   autoPaste: boolean
   /** Whether this platform can verify a target and type into it at all. */
   pasteAvailable: boolean
+  /** Put the user's own clipboard back once a paste has landed. */
+  restoreClipboard: boolean
   removeFillers: boolean
+  spokenCorrections: boolean
+  spokenFormatting: boolean
   playSounds: boolean
+  /** Which engine transcribes this take. */
+  engine: TranscriptionEngine
+  /** The model that will transcribe, as History records it. */
   model: string
   language: string
-  /** Parsed once by the caller; the controller only forwards it. */
+  /**
+   * Whether Pro's limits apply to this take: during the trial and with a
+   * licence. The lists below already honour it — Free's first 50 terms and
+   * 20 rules — so nothing here needs to look, until a Pro-only step does.
+   */
+  pro: boolean
+  /**
+   * AI polish for this take: switched on, and Pro. The caller works it out,
+   * so a Free user's saved switch never sends anything anywhere.
+   */
+  polish: boolean
+  /** Parsed once by the caller, and cut to the plan's limit; the controller only forwards it. */
   vocabulary: string[]
+  /** Parsed once by the caller, like the vocabulary; the controller only applies them. */
+  replacements: ReplacementRule[]
   microphoneId: string
-  apiKeyConfigured: boolean
+  /** Whether the chosen engine has what it needs: its model, or a key. */
+  transcriptionReady: boolean
+  /** What to tell the user when it has not, already a sentence. */
+  notReadyReason: string | null
 }
 
 /** Foreground-window verdict taken at paste time (null = tracking unavailable). */
@@ -66,13 +136,31 @@ export interface ForegroundState {
   blockedReason?: string
 }
 
+/**
+ * What History keeps about a take beyond its text, duration and model. One
+ * object rather than more positional parameters, so a later field — how long
+ * the wait after release was, say — joins without touching every caller.
+ */
+export type HistoryExtras = Pick<HistoryEntry, 'heardText' | 'waitMs' | 'originalText'>
+
 export interface TranscriptionPayload {
+  /**
+   * Taken from the same settings read as everything else in this take, so a
+   * take is transcribed by the engine History will name.
+   */
+  engine: TranscriptionEngine
   audio: Uint8Array
   mimeType: string
   durationMs: number
   model: string
   language: string
   vocabulary: string[]
+  /**
+   * Called when the service answered busy and is being asked once more, so
+   * the overlay can say why this take is taking longer. Only the cloud path
+   * calls it: the on-device engine restarts its own worker instead.
+   */
+  onRetry?: () => void
 }
 
 export interface DictationDeps {
@@ -84,13 +172,25 @@ export interface DictationDeps {
   getSettings(): WorkflowSettings
   transcribe(payload: TranscriptionPayload, signal: AbortSignal): Promise<string>
   writeClipboard(text: string): void
+  /**
+   * Copies whatever the user has on the clipboard, before a transcript is
+   * written over it. Opaque here: only `restoreClipboard` looks inside.
+   */
+  snapshotClipboard(): unknown
+  /** Puts a snapshot back — unless the clipboard no longer holds `ours`. */
+  restoreClipboard(token: unknown, ours: string): void
   /** Injects Ctrl+V into the focused app. */
   paste(): void
+  /**
+   * Whether a modifier key is physically held right now; null when the
+   * platform cannot tell, which never delays a paste.
+   */
+  modifiersHeld?(): boolean | null
   playSound(kind: SoundKind): void
   /** Shows the overlay/main window status. Reset timing is owned here. */
   broadcastStatus(status: WorkflowStatus): void
   showMain(page: Page): void
-  recordHistory(text: string, durationMs: number, model: string): void
+  recordHistory(text: string, durationMs: number, model: string, extras: HistoryExtras): void
   /** Remembers which window has focus, for the paste-target check. */
   captureForeground(): void
   /** Forgets any captured target, so nothing can be pasted into it. */
@@ -98,8 +198,33 @@ export interface DictationDeps {
   getForegroundState(): ForegroundState | null
   /** Display label of the configured chord, for the overlay's release hint. */
   shortcutLabel(): string
+  /**
+   * Whether Esc on its own reaches `cancelOnEscape` right now: the keyboard is
+   * being watched and the shortcut is on. The overlay offers "Esc to cancel"
+   * only then. Without this, it never does.
+   */
+  escapeWatched?(): boolean
   /** Fired when a failed take becomes retryable (or stops being retryable). */
   onRetryChanged?(available: boolean): void
+  /**
+   * Gets the speech engine ready while the user is still speaking, so the
+   * transcription does not wait for it to load. Called once a take is both
+   * confirmed and live. Only ever a head start: a failure is reported by the
+   * take that needs the engine.
+   */
+  prewarm?(): void
+  /**
+   * AI polish (Pro): the cleaned text rewritten in the user's style, inside
+   * their time limit. Always resolves; `note` says why the text went out
+   * unpolished. Only called while `WorkflowSettings.polish` is on.
+   */
+  polish?(text: string, signal: AbortSignal): Promise<PolishOutcome>
+  /**
+   * The common English words the vocabulary correction must leave alone,
+   * loaded on first use. Without it every word counts as common, so only the
+   * corrections that cannot change a real word run.
+   */
+  commonWords?(): Promise<CommonWordTest>
 }
 
 interface RetryTake {
@@ -115,11 +240,64 @@ interface ProcessingAttempt {
   readonly take: RetryTake
   /** Normal takes own their audio; Retry borrows the retained retry take. */
   readonly releaseAudioOnCancel: boolean
+  /**
+   * When the user's wait began: the stop of the take, or the press of Retry.
+   * What History and the overlay report is measured from here.
+   */
+  readonly waitFrom: number
+}
+
+/**
+ * The take behind "paste last dictation", which has no audio. It exists so a
+ * paste can hold the attempt slot, and so everything that supersedes a take —
+ * a reset, a failure, shutdown, a newer attempt — supersedes the paste too.
+ */
+const PASTE_ONLY: RetryTake = {
+  audio: new Uint8Array(0),
+  mimeType: '',
+  durationMs: 0,
+  clipboardOnly: false
+}
+
+/** The user's clipboard, lent to a transcript until its paste has landed. */
+interface ClipboardLoan {
+  /** Opaque snapshot, handed back to `restoreClipboard` untouched. */
+  readonly token: unknown
+  /** The transcript written over it; once that is gone, nothing is put back. */
+  readonly ours: string
+  /** Set once the paste has been sent and the return is scheduled. */
+  timer: NodeJS.Timeout | null
+}
+
+/** One hand-over of finished text, from a dictation or from "paste last". */
+interface Delivery {
+  text: string
+  /** False delivers to the clipboard and stops there. */
+  paste: boolean
+  /** Borrow the user's clipboard for the paste, and give it back afterwards. */
+  restoreClipboard: boolean
+  /** The status once the paste has been sent. */
+  pastedMessage: string
+  /** Whether this delivery still owns the outcome; asked after every step. */
+  owns(): boolean
 }
 
 function clearTimer(timer: NodeJS.Timeout | null): null {
   if (timer) clearTimeout(timer)
   return null
+}
+
+/** The transcript as shown under a success message. */
+function previewOf(text: string): string {
+  return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text
+}
+
+/**
+ * Zeroes audio nobody is going to use, so it is not left lying in memory.
+ * Typed loosely because it runs on payloads that are being turned away.
+ */
+function discard(audio: unknown): void {
+  if (audio instanceof Uint8Array) audio.fill(0)
 }
 
 /**
@@ -130,12 +308,31 @@ function clearTimer(timer: NodeJS.Timeout | null): null {
  * Extracted from the app entry point so every transition is unit-testable,
  * because the two most damaging bugs in the previous build (a lost stop
  * request and a tray reset wedging the recorder) lived exactly here.
+ *
+ * A shortcut take can also be opened provisionally, once the chord has been
+ * held on its own for a moment (`prepareDictation`), so the rest of the hold
+ * delay no longer costs the first word. A provisional take changes no phase
+ * and is invisible: it becomes the take when the chord is held, and is
+ * otherwise thrown away unheard.
  */
 export class DictationController {
   private currentStatus: WorkflowStatus = { phase: 'idle', message: 'Ready' }
   private currentRequestId = ''
   private releaseRequested = false
   private stopRequested = false
+
+  /**
+   * Set while the take behind `currentRequestId` has been sent
+   * `recorder:start` but the user has not yet held the shortcut past its
+   * delay. Such a take never broadcasts, sounds, writes history, touches the
+   * clipboard or becomes a retry take; until it is promoted, the phase on
+   * screen still belongs to whatever came before it.
+   */
+  private provisional = false
+  /** When the recorder reported a provisional take live; null while it opens. */
+  private provisionalStartedAt: number | null = null
+  /** The ceiling on a provisional take, `PROVISIONAL_MAX_MS`. */
+  private provisionalTimer: NodeJS.Timeout | null = null
 
   private statusResetTimer: NodeJS.Timeout | null = null
   private maximumRecordingTimer: NodeJS.Timeout | null = null
@@ -148,6 +345,15 @@ export class DictationController {
   private activeAttempt: ProcessingAttempt | null = null
   /** Set when the current take was started from the app's own window. */
   private clipboardOnly = false
+  /** When the current take was asked to stop: where the user's wait begins. */
+  private stopRequestedAt: number | null = null
+  /**
+   * The user's clipboard while a transcript is borrowing it: copied just
+   * before the transcript is written, given back once the paste has landed,
+   * and let go of when the transcript has to stay because the paste was
+   * refused. Only one loan is ever outstanding.
+   */
+  private loan: ClipboardLoan | null = null
 
   constructor(private readonly deps: DictationDeps) {}
 
@@ -159,7 +365,11 @@ export class DictationController {
     return this.retryTake !== null
   }
 
-  /** True while a take is being opened, recorded or transcribed. */
+  /**
+   * True while a take is being opened, recorded or transcribed. A take opened
+   * at a keypress and not yet confirmed does not count: nothing about it is on
+   * screen, so nothing may be switched off or greyed out because of it.
+   */
   isBusy(): boolean {
     const phase = this.currentStatus.phase
     return phase === 'starting' || phase === 'recording' || phase === 'processing'
@@ -177,6 +387,17 @@ export class DictationController {
    * never a second owner of the device or a second transcription pipeline.
    */
   startDictation(source: DictationSource): void {
+    if (this.provisional) {
+      // The take opened at this press's keypress already holds its first
+      // words. Only a shortcut take may carry on with it, and only while it
+      // could still be transcribed; anything else lets it go unheard first.
+      const settings = this.deps.getSettings()
+      if (source === 'shortcut' && settings.transcriptionReady) {
+        this.promoteProvisional(settings)
+        return
+      }
+      this.abandonProvisional()
+    }
     if (this.isBusy()) return
 
     // `success`, `error` and `cancelled` linger on screen for a few seconds.
@@ -185,8 +406,10 @@ export class DictationController {
     this.statusResetTimer = clearTimer(this.statusResetTimer)
 
     const settings = this.deps.getSettings()
-    if (!settings.apiKeyConfigured) {
-      this.fail('Add your own API key in Settings before recording.', true)
+    if (!settings.transcriptionReady) {
+      // The reason names what is missing — the speech model, or a key — so
+      // the user is not sent looking for the wrong thing.
+      this.fail(settings.notReadyReason ?? 'Transcription is not set up yet.', true)
       return
     }
 
@@ -201,23 +424,70 @@ export class DictationController {
     this.currentRequestId = randomUUID()
     this.releaseRequested = false
     this.stopRequested = false
+    this.stopRequestedAt = null
     this.clearDictationTimers()
 
     this.broadcast({
       phase: 'starting',
       message: 'Starting microphone…',
-      detail: this.startingHint(settings, source)
+      detail: this.finishHint(settings, source, false)
     })
 
-    this.startWatchdog = setTimeout(() => {
-      this.startWatchdog = null
-      this.fail('The microphone did not start in time. Check it is connected and try again.')
-    }, START_WATCHDOG_MS)
+    this.startWatchdog = setTimeout(this.startTimedOut, START_WATCHDOG_MS)
 
     this.deps.sendToRecorder('recorder:start', {
       requestId: this.currentRequestId,
       microphoneId: settings.microphoneId
     })
+  }
+
+  /**
+   * Opens the microphone while the shortcut is held, before its hold delay has
+   * said whether the user means to dictate — or is pressing some other
+   * shortcut that begins the same way. The take is provisional: nothing is
+   * shown and nothing sounds. It becomes the dictation if the shortcut is held
+   * on (`startDictation`), and `abandonPreparation` throws it away if not.
+   *
+   * Only ever a head start. Whenever it cannot be one it does nothing, and a
+   * press that is held starts its take in the ordinary way.
+   */
+  prepareDictation(): void {
+    // Busy includes a toggle recording, whose stop press must never open a
+    // second take.
+    if (this.isBusy() || this.provisional) return
+    // "Paste last dictation" is still delivering. Capturing the window in
+    // front now would change the target its own last check compares with.
+    if (this.activeAttempt) return
+    const settings = this.deps.getSettings()
+    // Not being ready is not news yet: a press that is held says so itself.
+    if (!settings.instantCapture || !settings.transcriptionReady) return
+
+    // What any shortcut take captures at its start, and nothing the user can
+    // see. The status on screen, its timer and a kept retry take are all left
+    // exactly as they are, in case this press was never meant for Vocette.
+    this.deps.captureForeground()
+    this.currentRequestId = randomUUID()
+    this.clearDictationTimers()
+    this.provisional = true
+    this.provisionalStartedAt = null
+    // Silent while the take is provisional; the ceiling below ends it first.
+    this.startWatchdog = setTimeout(this.startTimedOut, START_WATCHDOG_MS)
+    this.provisionalTimer = setTimeout(this.provisionalExpired, PROVISIONAL_MAX_MS)
+
+    this.deps.sendToRecorder('recorder:start', {
+      requestId: this.currentRequestId,
+      microphoneId: settings.microphoneId
+    })
+  }
+
+  /**
+   * The press was not a dictation after all: another shortcut, or let go too
+   * soon. The provisional take goes unheard — the recorder discards what it
+   * has, nothing is transcribed or kept, and nothing is shown. A take the user
+   * has already confirmed is left alone.
+   */
+  abandonPreparation(): void {
+    this.abandonProvisional()
   }
 
   /** Ends the recording and sends it for transcription. */
@@ -249,6 +519,20 @@ export class DictationController {
     this.broadcast({ phase: 'cancelled', message: 'Dictation cancelled' }, CANCELLED_RESET_MS)
   }
 
+  /**
+   * Esc on its own, pressed anywhere. It cancels a recording nobody is
+   * holding a key for: a hands-free take, or one started from the window. A
+   * take held to talk is left alone, since letting go is how that one ends,
+   * and so is one already being transcribed, which Esc meant for another app
+   * could otherwise throw away.
+   */
+  cancelOnEscape(): void {
+    if (!this.isRecording()) return
+    const handsFree = this.deps.getSettings().recordingMode === 'toggle'
+    if (!handsFree && !this.clipboardOnly) return
+    this.cancelDictation()
+  }
+
   /** One shortcut press, used where the platform cannot report a key release. */
   toggleDictation(source: DictationSource): void {
     if (this.isRecording()) {
@@ -272,35 +556,176 @@ export class DictationController {
     this.stopDictation()
   }
 
-  private startingHint(settings: WorkflowSettings, source: DictationSource): string {
-    if (source === 'ui') return 'Press Stop when you have finished'
-    return settings.recordingMode === 'toggle'
-      ? `Press ${this.deps.shortcutLabel()} again to finish`
-      : 'Keep holding the shortcut'
+  /**
+   * The shortcut was held: the provisional take becomes the dictation, with
+   * the audio it already has. Nothing is reopened, so the first word stays.
+   */
+  private promoteProvisional(settings: WorkflowSettings): void {
+    const startedAt = this.provisionalStartedAt
+    this.endProvisional()
+    this.statusResetTimer = clearTimer(this.statusResetTimer)
+    // From here it is a take the user asked for, so it replaces a retryable one.
+    this.setRetryTake(null)
+    this.clipboardOnly = false
+    this.releaseRequested = false
+    this.stopRequested = false
+    this.stopRequestedAt = null
+    if (startedAt === null) {
+      // Still opening, just as an ordinary take would be. The start watchdog
+      // armed at the keypress goes on timing the device from its request.
+      this.broadcast({
+        phase: 'starting',
+        message: 'Starting microphone…',
+        detail: this.finishHint(settings, 'shortcut', false)
+      })
+      return
+    }
+    this.enterRecording(startedAt)
+  }
+
+  /**
+   * Ends a provisional take without a trace, and says nothing. There is no
+   * audio in this process to zero: it only leaves the recorder after a stop,
+   * and a provisional take is never stopped. Safe to call with none.
+   */
+  private abandonProvisional(): void {
+    if (!this.provisional) return
+    const requestId = this.currentRequestId
+    this.endProvisional()
+    this.currentRequestId = ''
+    this.clearDictationTimers()
+    // Last, once nothing here refers to the take any more.
+    this.deps.sendToRecorder('recorder:cancel', { requestId })
+  }
+
+  /** Clears what marks a take as provisional; what becomes of it is the caller's. */
+  private endProvisional(): void {
+    this.provisional = false
+    this.provisionalStartedAt = null
+    this.provisionalTimer = clearTimer(this.provisionalTimer)
+  }
+
+  /** Neither confirmed nor cancelled in time: see `PROVISIONAL_MAX_MS`. */
+  private readonly provisionalExpired = (): void => {
+    this.provisionalTimer = null
+    this.abandonProvisional()
+  }
+
+  /** The microphone never reported back. */
+  private readonly startTimedOut = (): void => {
+    this.startWatchdog = null
+    // Nobody has seen a provisional take start, so it goes quietly. (Its
+    // ceiling normally ends it long before this could.)
+    if (this.provisional) {
+      this.abandonProvisional()
+      return
+    }
+    this.fail('The microphone did not start in time. Check it is connected and try again.')
+  }
+
+  /** A head start for the engine; never a reason for a take to fail. */
+  private prewarm(): void {
+    try {
+      this.deps.prewarm?.()
+    } catch {
+      // The take that needs the engine reports whatever is wrong with it.
+    }
+  }
+
+  /**
+   * How to end the take, in the words that match how it was started. A held
+   * take is told to keep holding while the microphone opens, and to let go
+   * once it is live. The others end with a press, and can be cancelled with
+   * Esc whenever Esc is being watched.
+   */
+  private finishHint(settings: WorkflowSettings, source: DictationSource, live: boolean): string {
+    const label = this.deps.shortcutLabel()
+    if (source === 'shortcut' && settings.recordingMode === 'hold') {
+      return live ? `Release ${label} to finish` : 'Keep holding the shortcut'
+    }
+    const escape = this.deps.escapeWatched?.() ?? false
+    if (source === 'ui') {
+      return escape
+        ? 'Press Stop when you have finished · Esc to cancel'
+        : 'Press Stop when you have finished'
+    }
+    if (!escape) return `Press ${label} again to finish`
+    // The overlay has room for one line. A longer chord is not spelt out, so
+    // the ellipsis never swallows the part about Esc.
+    return label.length <= FINISH_HINT_MAX_LABEL
+      ? `Press ${label} to finish · Esc to cancel`
+      : 'Press the shortcut again to finish · Esc to cancel'
   }
 
   onRecorderStarted(payload: RecorderStartedPayload): void {
-    if (payload.requestId !== this.currentRequestId || this.currentStatus.phase !== 'starting') {
+    if (payload.requestId !== this.currentRequestId) return
+    if (this.provisional) {
+      // Live, but not yet confirmed: nothing is shown and nothing sounds until
+      // the shortcut has been held. Remembered, so that a confirmation arriving
+      // later goes straight to recording, timed from now.
+      this.provisionalStartedAt ??= Date.now()
+      this.startWatchdog = clearTimer(this.startWatchdog)
       return
     }
+    if (this.currentStatus.phase !== 'starting') return
+    this.enterRecording(Date.now())
+  }
+
+  /** The microphone is live and the take is on screen: say so, and time it. */
+  private enterRecording(startedAt: number): void {
     this.startWatchdog = clearTimer(this.startWatchdog)
+    // The engine starts loading only now, with the microphone live and the
+    // take confirmed. Loading it alongside the microphone's own start-up
+    // measurably slowed the device (about 1 s longer on a cold start on a
+    // 15 W laptop), and loading it for a keypress that turns out to be
+    // another shortcut would burn seconds of CPU for nothing. From here the
+    // load overlaps the user's speech, which is all a head start needs.
+    this.prewarm()
     this.broadcast({
       phase: 'recording',
       message: 'Listening…',
-      detail: `Release ${this.deps.shortcutLabel()} to finish`,
-      startedAt: Date.now()
+      detail: this.finishHint(
+        this.deps.getSettings(),
+        this.clipboardOnly ? 'ui' : 'shortcut',
+        true
+      ),
+      startedAt
     })
     this.deps.playSound('start')
-    this.maximumRecordingTimer = setTimeout(this.forceStop, MAX_RECORDING_MS)
+    // Measured from when recording really began, which for a take opened at
+    // the keypress is before it was confirmed.
+    const remaining = MAX_RECORDING_MS - Math.max(0, Date.now() - startedAt)
+    this.maximumRecordingTimer = setTimeout(this.forceStop, Math.max(0, remaining))
     if (this.releaseRequested) this.requestStop()
   }
 
   async onRecorderAudio(payload: RecorderAudioPayload): Promise<void> {
-    if (payload.requestId !== this.currentRequestId) return
+    if (payload.requestId !== this.currentRequestId) {
+      // Audio for a take nobody wants any more — abandoned, cancelled or
+      // superseded — is thrown away unheard, and not left lying in memory.
+      discard(payload.audio)
+      return
+    }
+    if (this.provisional) {
+      // The recorder has ended a take the user never confirmed: its device
+      // went away, say. It is not theirs to transcribe, and it is over, so a
+      // press held from here opens the microphone afresh.
+      discard(payload.audio)
+      this.abandonProvisional()
+      return
+    }
     if (this.currentStatus.phase !== 'recording' && this.currentStatus.phase !== 'starting') {
+      discard(payload.audio)
       return
     }
     this.clearDictationTimers()
+
+    // Only an explicit false counts, so a take whose flag is missing is sent
+    // for transcription as it always was.
+    if (payload.speechDetected === false) {
+      this.dismissSilentTake(payload.audio)
+      return
+    }
 
     // The payload arrives over IPC as a structured clone: this process is the
     // sole owner, so it is safe (and thriftier) to use it directly and zero
@@ -312,13 +737,66 @@ export class DictationController {
       durationMs: Math.max(0, payload.durationMs),
       clipboardOnly: this.clipboardOnly
     }
-    const attempt = this.beginProcessingAttempt(take, true)
+    // A take the recorder ended by itself was never asked to stop; its wait
+    // starts as its audio arrives.
+    const waitFrom = this.stopRequestedAt ?? Date.now()
+    this.stopRequestedAt = null
+    const attempt = this.beginProcessingAttempt(take, true, waitFrom)
     await this.processTake(attempt, 'Your audio is being converted to text', false)
+  }
+
+  /**
+   * Ends a take the recorder heard no speech in, without transcribing it. On
+   * either engine nothing is sent: a cloud provider bills nothing, and Whisper
+   * is given no silence to turn into "Thank you." Nothing reaches History or
+   * the clipboard, and nothing is kept for Retry: there is nothing to retry.
+   *
+   * The bar is deliberately low. `findSpeechBounds` finds no speech only when
+   * every 30 ms window is below max(4 % of the take's peak, 0.0015 RMS ≈
+   * −56 dBFS), so a whisper still passes and only a take that is silence
+   * throughout ends here.
+   */
+  private dismissSilentTake(audio: Uint8Array): void {
+    // Whatever attempt was still active gives way, exactly as it would to a
+    // take being transcribed.
+    this.cancelActiveAttempt()
+    audio.fill(0)
+    this.currentRequestId = ''
+    this.releaseRequested = false
+    this.stopRequested = false
+    this.clipboardOnly = false
+    // Neutral, like a cancellation: nothing went wrong, so it is not an error.
+    this.broadcast(
+      { phase: 'cancelled', message: 'No speech heard — nothing was sent.' },
+      NO_SPEECH_RESET_MS
+    )
   }
 
   onRecorderError(payload: RecorderErrorPayload): void {
     if (payload.requestId !== this.currentRequestId) return
+    if (this.provisional) {
+      // Nobody has seen this take start, so its failure is not news yet. If
+      // the shortcut is held, the take is opened again in the ordinary way,
+      // and a device that really is at fault says so then.
+      this.abandonProvisional()
+      return
+    }
     this.fail(payload.message)
+  }
+
+  /**
+   * True only while this request is the take being recorded right now: not
+   * while its microphone is still opening, not once its audio has been handed
+   * over, and never after it was cancelled, failed or replaced. The overlay's
+   * level meter is fed through this, so a stray reading from any other take
+   * cannot move it.
+   */
+  isRecordingRequest(requestId: string): boolean {
+    return (
+      requestId !== '' &&
+      requestId === this.currentRequestId &&
+      this.currentStatus.phase === 'recording'
+    )
   }
 
   /** Shows a dictation error from outside the workflow (e.g. a hook fault). */
@@ -341,25 +819,81 @@ export class DictationController {
     // a user wants to do the moment they see it.
     if (!take || this.isBusy()) return
 
+    // Asked for by name, so it outranks a press not yet confirmed. That take
+    // is let go first: under a new id its microphone could never be closed.
+    this.abandonProvisional()
     // A fresh id invalidates any stale recorder events still in flight.
     this.currentRequestId = randomUUID()
-    this.clipboardOnly = take.clipboardOnly
-    // A retry of a window-started take still has no target to capture.
-    if (take.clipboardOnly) this.deps.clearForeground()
-    else this.deps.captureForeground()
-    const attempt = this.beginProcessingAttempt(take, false)
+    // Every Retry is pressed in Vocette's own window or tray menu, so whatever
+    // has focus now is Vocette, not the app the take was dictated for.
+    // Capturing it would paste the transcript into Vocette itself — and, with
+    // the clipboard given back afterwards, leave it only in History. A retry
+    // is therefore delivered to the clipboard, like a take started from the
+    // window, for the user to paste where they meant it to go. The retained
+    // take itself is left as it was, sharing the same audio.
+    this.clipboardOnly = true
+    this.deps.clearForeground()
+    // The wait a Retry reports is its own, from the press.
+    const attempt = this.beginProcessingAttempt({ ...take, clipboardOnly: true }, false, Date.now())
     await this.processTake(attempt, 'Retrying your last recording', true)
+  }
+
+  /**
+   * "Paste last dictation": the newest transcript, pasted again into whatever
+   * has focus now — for a paste that landed in the wrong place, or one whose
+   * clipboard has since been given back. The checks are a dictation's: nothing
+   * is typed into a window that runs elevated or cannot be verified; the text
+   * is copied instead, and the overlay says so.
+   */
+  async pasteLast(text: string): Promise<void> {
+    if (this.isBusy() || !text) return
+    const settings = this.deps.getSettings()
+    const attempt = this.beginProcessingAttempt(PASTE_ONLY, false, Date.now())
+    // A take started during the settle delay owns the overlay from then on;
+    // a success announced over it would strand the recording.
+    const owns = (): boolean => this.ownsAttempt(attempt) && !this.isBusy()
+    // The target is the window in front now: the one the shortcut was pressed in.
+    this.deps.captureForeground()
+
+    try {
+      const message = await this.pasteOrExplain({
+        text,
+        // "Paste automatically" governs what happens after a dictation; this is
+        // a paste asked for by name. Only whether this platform can paste
+        // safely at all still applies.
+        paste: settings.pasteAvailable,
+        restoreClipboard: settings.restoreClipboard,
+        pastedMessage: 'Pasted your last dictation',
+        owns
+      })
+      if (!message || !owns()) return
+      this.broadcast({ phase: 'success', message, detail: previewOf(text) }, SUCCESS_RESET_MS)
+    } catch (error) {
+      if (!owns()) return
+      this.broadcast(
+        {
+          phase: 'error',
+          message: 'Could not paste your last dictation',
+          detail: error instanceof Error ? error.message : 'An unexpected error occurred.'
+        },
+        ERROR_RESET_MS
+      )
+    } finally {
+      if (this.activeAttempt === attempt) this.activeAttempt = null
+    }
   }
 
   private beginProcessingAttempt(
     take: RetryTake,
-    releaseAudioOnCancel: boolean
+    releaseAudioOnCancel: boolean,
+    waitFrom: number
   ): ProcessingAttempt {
     this.cancelActiveAttempt()
     const attempt: ProcessingAttempt = {
       controller: new AbortController(),
       take,
-      releaseAudioOnCancel
+      releaseAudioOnCancel,
+      waitFrom
     }
     this.activeAttempt = attempt
     return attempt
@@ -386,32 +920,141 @@ export class DictationController {
     return null
   }
 
-  private async pasteOrExplain(
-    attempt: ProcessingAttempt,
-    settings: WorkflowSettings
-  ): Promise<string | null> {
-    // Three separate reasons to deliver to the clipboard and stop there: the
-    // user turned automatic paste off, this platform cannot paste safely at
-    // all, or the take was started from this app's own window and so has no
-    // target. None of them is a failure.
-    if (!settings.autoPaste || !settings.pasteAvailable || attempt.take.clipboardOnly) {
+  /**
+   * Puts the text on the clipboard and, when every check passes, pastes it.
+   * Returns the status to show, or null once the delivery stopped owning the
+   * outcome part-way through.
+   */
+  private async pasteOrExplain(delivery: Delivery): Promise<string | null> {
+    const { text, owns } = delivery
+    if (!delivery.paste) {
+      this.deps.writeClipboard(text)
       return 'Copied to clipboard'
     }
-    if (!this.ownsAttempt(attempt)) return null
 
-    let message = this.manualPasteMessage(this.deps.getForegroundState())
-    if (!this.ownsAttempt(attempt)) return null
-    if (message) return message
+    // Checked before anything is written: a paste refused from the outset
+    // leaves the transcript on the clipboard for good, so the user's own
+    // clipboard is never even read.
+    let refusal = this.manualPasteMessage(this.deps.getForegroundState())
+    if (!owns()) return null
+    if (refusal) {
+      this.deps.writeClipboard(text)
+      return refusal
+    }
 
-    await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
-    if (!this.ownsAttempt(attempt)) return null
+    // Copied before the transcript goes on, or it would be a copy of the
+    // transcript rather than of what the user had.
+    const loan = delivery.restoreClipboard ? this.borrowClipboard(text) : null
+    try {
+      this.deps.writeClipboard(text)
+      if (!owns()) return this.abandonDelivery(loan)
 
-    message = this.manualPasteMessage(this.deps.getForegroundState())
-    if (!this.ownsAttempt(attempt)) return null
-    if (message) return message
+      await new Promise((resolve) => setTimeout(resolve, PASTE_DELAY_MS))
+      if (!owns()) return this.abandonDelivery(loan)
 
-    this.deps.paste()
-    return 'Copied and pasted'
+      if (!(await this.modifiersReleased(owns))) {
+        if (!owns()) return this.abandonDelivery(loan)
+        // Still held after the wait: a paste now would land as some other
+        // shortcut. The transcript stays for the user to paste themselves.
+        this.leaveTranscript(loan)
+        return 'Copied — paste manually (keys were still held down)'
+      }
+      if (!owns()) return this.abandonDelivery(loan)
+
+      refusal = this.manualPasteMessage(this.deps.getForegroundState())
+      if (!owns()) return this.abandonDelivery(loan)
+      if (refusal) {
+        // Refused at the last moment: now the transcript is what the user
+        // needs on the clipboard, to paste it themselves.
+        this.leaveTranscript(loan)
+        return refusal
+      }
+
+      this.deps.paste()
+    } catch (error) {
+      // Whatever failed, the transcript may be all the user has left to paste.
+      this.leaveTranscript(loan)
+      throw error
+    }
+    // No ownership check between the paste and this: once the keystroke has
+    // been sent, the clipboard is given back even if the take is cancelled.
+    this.returnClipboardLater(loan)
+    return delivery.pastedMessage
+  }
+
+  /**
+   * Waits until no modifier key is held. Resolves true once they are released
+   * (or the platform cannot tell), false if they are still down after
+   * `MODIFIER_RELEASE_MS`. Stops waiting as soon as the delivery is superseded;
+   * the caller checks ownership again.
+   */
+  private async modifiersReleased(owns: () => boolean): Promise<boolean> {
+    const held = this.deps.modifiersHeld
+    if (!held) return true
+    const deadline = Date.now() + MODIFIER_RELEASE_MS
+    while (held() === true) {
+      if (!owns()) return true
+      if (Date.now() >= deadline) return false
+      await new Promise((resolve) => setTimeout(resolve, MODIFIER_POLL_MS))
+    }
+    return true
+  }
+
+  /**
+   * Takes a copy of the user's clipboard before a transcript goes on it. A
+   * loan still outstanding from an earlier paste is settled first, or this copy
+   * would be of that transcript rather than of what the user had.
+   */
+  private borrowClipboard(ours: string): ClipboardLoan | null {
+    this.returnClipboard()
+    try {
+      this.loan = { token: this.deps.snapshotClipboard(), ours, timer: null }
+    } catch {
+      // A clipboard that cannot be read must not cost the user a dictation:
+      // the paste goes ahead, and the transcript simply stays, as it used to.
+      this.loan = null
+    }
+    return this.loan
+  }
+
+  /** Gives back whatever is on loan, now. Safe to call with nothing borrowed. */
+  private returnClipboard(): void {
+    const loan = this.loan
+    if (!loan) return
+    this.loan = null
+    loan.timer = clearTimer(loan.timer)
+    try {
+      this.deps.restoreClipboard(loan.token, loan.ours)
+    } catch {
+      // Best effort: the transcript stays, which is what always happened
+      // before the clipboard was given back at all.
+    }
+  }
+
+  /** Schedules the return once the paste has been sent. */
+  private returnClipboardLater(loan: ClipboardLoan | null): void {
+    if (!loan || this.loan !== loan) return
+    loan.timer = setTimeout(() => {
+      loan.timer = null
+      if (this.loan === loan) this.returnClipboard()
+    }, CLIPBOARD_RESTORE_MS)
+  }
+
+  /** Lets the copy go: the transcript stays on the clipboard. */
+  private leaveTranscript(loan: ClipboardLoan | null): void {
+    if (!loan || this.loan !== loan) return
+    loan.timer = clearTimer(loan.timer)
+    this.loan = null
+  }
+
+  /**
+   * A delivery superseded before its paste was sent. Nothing was delivered, so
+   * what it borrowed goes back at once — but only its own loan: a newer
+   * delivery may already hold another.
+   */
+  private abandonDelivery(loan: ClipboardLoan | null): null {
+    if (loan && this.loan === loan) this.returnClipboard()
+    return null
   }
 
   private async processTake(
@@ -423,45 +1066,125 @@ export class DictationController {
 
     try {
       const settings = this.deps.getSettings()
-      // Only the audio and its shape travel to the provider; how this take is
-      // to be delivered afterwards is nobody else's business.
+      // Only the audio, its shape, the engine that should hear it and a way
+      // to say it is trying again leave here; how this take is to be
+      // delivered afterwards is nobody else's business.
       const rawText = await this.deps.transcribe(
         {
+          engine: settings.engine,
           audio: attempt.take.audio,
           mimeType: attempt.take.mimeType,
           durationMs: attempt.take.durationMs,
           model: settings.model,
           language: settings.language,
-          vocabulary: settings.vocabulary
+          vocabulary: settings.vocabulary,
+          onRetry: () => {
+            // A take cancelled or superseded meanwhile keeps whatever the
+            // overlay shows now; it is not brought back to "Transcribing…".
+            if (!this.ownsAttempt(attempt)) return
+            this.broadcast({
+              phase: 'processing',
+              message: 'Transcribing…',
+              detail: BUSY_RETRY_DETAIL
+            })
+          }
         },
         attempt.controller.signal
       )
       if (!this.ownsAttempt(attempt)) return
 
-      // The filler dictionary and punctuation rules are English-specific.
-      // For auto or another explicit language, preserve the provider text
-      // except for harmless outer-whitespace trimming.
-      const text =
-        settings.removeFillers && settings.language === 'en'
-          ? lightCleanup(rawText)
-          : rawText.trim()
+      // The user's own words first, on the recogniser's raw text, so cleanup
+      // sees "ITU-T" rather than "ITUT" — and for every engine, because the
+      // on-device one takes no prompt to bias. The common words the
+      // correction must not touch are only read once there are terms to use.
+      const isCommonWord =
+        settings.vocabulary.length > 0 ? await this.commonWordTest() : undefined
+      if (!this.ownsAttempt(attempt)) return
+      const corrected = correctVocabulary(
+        rawText,
+        settings.vocabulary,
+        settings.language,
+        isCommonWord
+      )
+
+      // Every language gets the rules that cannot change a word; the English
+      // ones also run for Automatic when the text reads as English. The old
+      // gate cleaned explicit English only, so Automatic got nothing while
+      // the switch showed as on.
+      const cleaned = cleanupTranscript(corrected, {
+        language: settings.language,
+        removeFillers: settings.removeFillers,
+        spokenCorrections: settings.spokenCorrections,
+        spokenFormatting: settings.spokenFormatting
+      })
+
+      // AI polish (Pro) works on the cleaned text, before the user's own
+      // rules, so a snippet is pasted exactly as they wrote it. Its time limit
+      // is its own; running out of it, or any failure, costs only the polish.
+      let finished = cleaned
+      let polishedFrom: string | null = null
+      let polishNote: string | null = null
+      if (settings.polish && this.deps.polish && cleaned.trim()) {
+        const outcome = await this.deps.polish(cleaned, attempt.controller.signal)
+        if (!this.ownsAttempt(attempt)) return
+        if (outcome.polished) {
+          finished = outcome.text
+          polishedFrom = cleaned
+        }
+        polishNote = outcome.note
+      }
+
+      // The user's own rules run last, on the finished text: a phrase matches
+      // what cleanup (and polish) left, and what they wrote is not capitalised
+      // or tidied afterwards. What is pasted and what history keeps are the
+      // same text.
+      const text = applyReplacements(finished, settings.replacements)
       if (!text) throw new Error('Only filler words or silence were detected.')
       if (!this.ownsAttempt(attempt)) return
+      // The text is ready to paste: this is the wait the user sat through,
+      // measured here on their own machine rather than claimed. It stays in
+      // this process and History; no provider is told.
+      const waitMs = Math.max(0, Date.now() - attempt.waitFrom)
 
-      this.deps.recordHistory(text, attempt.take.durationMs, settings.model)
+      // History keeps the recogniser's own words beside the delivered text
+      // whenever the steps above changed them, so a rule that misfires can
+      // never cost the user what they said. Outer whitespace carries no words,
+      // and on its own is not a change worth keeping.
+      const heard = rawText.trim()
+      const extras: HistoryExtras = { waitMs }
+      if (heard !== text) extras.heardText = heard
+      if (polishedFrom !== null) extras.originalText = polishedFrom
+      this.deps.recordHistory(text, attempt.take.durationMs, settings.model, extras)
       if (!this.ownsAttempt(attempt)) return
 
-      this.deps.writeClipboard(text)
-      if (!this.ownsAttempt(attempt)) return
-
-      const message = await this.pasteOrExplain(attempt, settings)
+      const message = await this.pasteOrExplain({
+        text,
+        // Three separate reasons to deliver to the clipboard and stop there:
+        // the user turned automatic paste off, this platform cannot paste
+        // safely at all, or the take was started from this app's own window
+        // and so has no target. None of them is a failure.
+        paste: settings.autoPaste && settings.pasteAvailable && !attempt.take.clipboardOnly,
+        restoreClipboard: settings.restoreClipboard,
+        // Not "Copied and pasted": once the clipboard is given back, the
+        // transcript is no longer on it. "Pasted" is true either way.
+        pastedMessage: 'Pasted',
+        owns: () => this.ownsAttempt(attempt)
+      })
       if (!message || !this.ownsAttempt(attempt)) return
+
+      // Delivered, so nothing is left to retry — and the success status has
+      // to say so, or the window would go on offering Retry for a take that
+      // has just landed.
+      this.setRetryTake(null)
+      if (!this.ownsAttempt(attempt)) return
 
       this.broadcast(
         {
           phase: 'success',
-          message,
-          detail: text.length > 68 ? `${text.slice(0, 68)}…` : text
+          // Said plainly when polish was wanted and did not happen.
+          message: polishNote ? `${message} — unpolished (${polishNote})` : message,
+          detail: previewOf(text),
+          waitMs
         },
         SUCCESS_RESET_MS
       )
@@ -471,8 +1194,6 @@ export class DictationController {
       if (!this.ownsAttempt(attempt)) return
 
       attempt.take.audio.fill(0)
-      if (!this.ownsAttempt(attempt)) return
-      this.setRetryTake(null)
     } catch (error) {
       if (!this.ownsAttempt(attempt)) return
 
@@ -491,17 +1212,33 @@ export class DictationController {
     }
   }
 
+  /** The common-word test, or none: a list that cannot be read never costs a take. */
+  private async commonWordTest(): Promise<CommonWordTest | undefined> {
+    try {
+      return await this.deps.commonWords?.()
+    } catch {
+      return undefined
+    }
+  }
+
   /** Stops timers and releases memory. Call before quitting. */
   shutdown(): void {
+    this.abandonProvisional()
     this.cancelActiveAttempt()
     this.clearDictationTimers()
     this.statusResetTimer = clearTimer(this.statusResetTimer)
     this.setRetryTake(null)
+    // A clipboard still on loan is given back now rather than dropped: after
+    // quitting there is nobody left to return it.
+    this.returnClipboard()
   }
 
   private broadcast(status: WorkflowStatus, resetAfterMs = 0): void {
-    this.currentStatus = status
-    this.deps.broadcastStatus(status)
+    // On every status, idle included: the window's Retry button follows it,
+    // and has no other way to learn that a failed take is still kept.
+    const stamped: WorkflowStatus = { ...status, canRetry: this.retryTake !== null }
+    this.currentStatus = stamped
+    this.deps.broadcastStatus(stamped)
 
     this.statusResetTimer = clearTimer(this.statusResetTimer)
     if (resetAfterMs > 0) {
@@ -542,15 +1279,23 @@ export class DictationController {
   }
 
   private goIdle(): void {
-    this.abandonRecorder()
-    this.currentRequestId = ''
-    this.releaseRequested = false
-    this.stopRequested = false
-    this.clearDictationTimers()
+    // A take opened at a keypress is not this status's to end: only the
+    // lingering message goes, and the take carries on unseen, to be confirmed
+    // or thrown away. Clearing its id here would strand its microphone.
+    if (!this.provisional) {
+      this.abandonRecorder()
+      this.currentRequestId = ''
+      this.releaseRequested = false
+      this.stopRequested = false
+      this.clearDictationTimers()
+    }
     this.broadcast({ phase: 'idle', message: 'Ready' })
   }
 
   private fail(message: string, openSettings = false, silent = false): void {
+    // A take opened at a keypress goes too, and quietly. The recorder has to
+    // be told: nothing below would, because no phase says it is running.
+    this.abandonProvisional()
     this.cancelActiveAttempt()
     this.abandonRecorder()
     this.currentRequestId = ''
@@ -571,6 +1316,7 @@ export class DictationController {
       return
     }
     this.stopRequested = true
+    this.stopRequestedAt = Date.now()
     this.deps.sendToRecorder('recorder:stop', { requestId: this.currentRequestId })
     this.armStopWatchdog()
   }
@@ -584,6 +1330,8 @@ export class DictationController {
   private readonly forceStop = (): void => {
     if (!this.currentRequestId) return
     this.stopRequested = true
+    // A retried stop does not restart the wait; the first stop began it.
+    this.stopRequestedAt ??= Date.now()
     this.deps.sendToRecorder('recorder:stop', { requestId: this.currentRequestId })
     this.armStopWatchdog()
   }

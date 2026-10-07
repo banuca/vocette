@@ -48,6 +48,7 @@ function hookModule(): HookModule & { pastes: string[] } {
     createBackend: (options): ShortcutBackend => ({
       supportsHold: true,
       supportsCapture: true,
+      supportsEscape: true,
       start: () => {},
       stop: () => {},
       setChord: () => {},
@@ -113,7 +114,7 @@ describe('Windows adapter', () => {
     const adapter = createWindowsAdapter(null, services())
     const map = adapter.capabilities(context())
     expect(map.globalHold.state).toBe('unavailable')
-    expect(map.globalHold.reason).toContain('record from the Murmur window')
+    expect(map.globalHold.reason).toContain('record from the Vocette window')
     expect(map.autoPaste.state).toBe('unavailable')
     expect(adapter.canPaste()).toBe(false)
     // Nothing here may throw: the window still has to open.

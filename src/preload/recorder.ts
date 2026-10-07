@@ -3,6 +3,7 @@ import type {
   RecorderAudioPayload,
   RecorderCancelRequest,
   RecorderErrorPayload,
+  RecorderLevelPayload,
   RecorderStartRequest,
   RecorderStartedPayload,
   RecorderStopRequest
@@ -27,7 +28,9 @@ const api = {
   sendStarted: (payload: RecorderStartedPayload): void =>
     ipcRenderer.send('recorder:started', payload),
   sendAudio: (payload: RecorderAudioPayload): void => ipcRenderer.send('recorder:audio', payload),
-  sendError: (payload: RecorderErrorPayload): void => ipcRenderer.send('recorder:error', payload)
+  sendError: (payload: RecorderErrorPayload): void => ipcRenderer.send('recorder:error', payload),
+  /** A live microphone level for the overlay's meter; about 14 a second while recording. */
+  sendLevel: (payload: RecorderLevelPayload): void => ipcRenderer.send('recorder:level', payload)
 }
 
 export type RecorderApi = typeof api

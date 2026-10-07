@@ -1,5 +1,11 @@
-import type { AppContext } from '../app-context'
+import type { AppContext, NavigationIntent } from '../app-context'
+import { BLUETOOTH_HEADSET_NOTE, looksLikeBluetoothHeadset } from '../bluetooth-headset'
 import { escapeHtml, friendlyError, keyChips } from '../dom'
+import { replacementsPlanNote, vocabularyPlanNote } from '../licence-text'
+import { createModelRow, localLanguageNote } from '../model-download'
+import { createPolishCard, polishCardMarkup } from '../polish-card'
+import type { EngineStatus } from '../../shared/engine'
+import { vocabularyTermLimit } from '../../shared/entitlement'
 import {
   autoPasteSupported,
   clipboardOnlyReason,
@@ -18,23 +24,76 @@ import {
 import {
   LANGUAGE_OPTIONS,
   TRANSCRIPTION_MODELS,
+  dictationIsBusy,
+  type LicenceStatus,
+  type PasteLastStatus,
   type PublicSettings,
-  type SettingsUpdate
+  type SettingsUpdate,
+  type TranscriptionEngine,
+  type WorkflowStatus
 } from '../../shared/types'
 import {
+  MAX_KEYWORD_TERMS,
   MAX_PROMPT_TERM_CHARS,
-  MAX_VOCABULARY_TERMS,
   MAX_VOCABULARY_TERM_CHARS,
   budgetPromptTerms,
   parseVocabulary,
   supportsKeywordList
 } from '../../shared/vocabulary'
+import {
+  MAX_REPLACEMENT_RULES,
+  MAX_SPOKEN_CHARS,
+  MAX_WRITTEN_CHARS,
+  parseReplacements
+} from '../../shared/replacements'
 
 /** Requesting the mic once per session is what makes device labels readable. */
 let microphonePermissionRequested = false
 
+/** What happens to the terms after recognition, on every engine. */
+const VOCABULARY_CORRECTION_NOTE =
+  'Vocette corrects near-misses of these words after it hears you — “data verse” becomes “Dataverse”.'
+
+/** How to write a rule. The count that follows it in the note is live. */
+const REPLACEMENTS_HELP =
+  'One rule per line: what you say => what you want. Use \\n for a line break, ' +
+  "{date} or {time} for today's date or the time. Rules apply after cleanup, " +
+  'match whole words, and ignore capitals.'
+
 const CUSTOM_MODEL_OPTION = '__custom__'
 const MIC_TEST_DURATION_MS = 8000
+
+/**
+ * Why "Start listening as soon as the shortcut is held" is off where the
+ * shortcut works but no key is watched: a desktop that registers the shortcut
+ * itself (Wayland) says nothing until it has fired.
+ */
+const INSTANT_CAPTURE_NEEDS_KEYS =
+  'This desktop tells Vocette about the shortcut only once it has fired, so listening cannot start any earlier.'
+
+/** The Transcription card's subtitle; the cloud keeps the key's promise it always made. */
+const LOCAL_SUMMARY = 'Where your speech becomes text.'
+const CLOUD_SUMMARY =
+  'Where your speech becomes text. Your key is encrypted by the operating system and never ' +
+  'displayed again.'
+
+/** Test connection's line while its one request is out. */
+const TEST_SENDING = 'Sending one second of silence…'
+/** Why Test connection waits while the cloud fields hold unsaved changes. */
+const TEST_NEEDS_SAVE = 'Save settings first — the test uses the saved endpoint, model and key.'
+
+/**
+ * The badge over the card, from saved settings: a key in use, wherever it is
+ * held — or, without one, whether the saved endpoint is OpenAI, which always
+ * needs a key, or a server of the user's own, which may need none.
+ */
+function keyBadgeState(next: PublicSettings): { text: string; configured: boolean } {
+  if (next.apiKeySource === 'stored') return { text: 'Key saved', configured: true }
+  if (next.apiKeySource === 'session') return { text: 'Key for this session', configured: true }
+  return next.apiEndpoint.trim() !== ''
+    ? { text: 'No key needed for this server', configured: true }
+    : { text: 'Key required', configured: false }
+}
 
 function holdDelayLabel(ms: number): string {
   return ms === 0 ? 'Instantly' : `${ms} ms`
@@ -42,6 +101,12 @@ function holdDelayLabel(ms: number): string {
 
 export interface SettingsView {
   apply(next: PublicSettings): void
+  /** The speech model's row follows the download without redrawing the page. */
+  applyEngine(next: EngineStatus): void
+  /** Removing the model waits for a dictation to finish. */
+  applyWorkflow(status: WorkflowStatus): void
+  /** The notes under the lists say how much of each the plan in force uses. */
+  applyLicence(next: LicenceStatus): void
   dispose(): void
 }
 
@@ -54,8 +119,11 @@ interface MicTestAttempt {
   cleaned: boolean
 }
 
-export function renderSettings(context: AppContext): SettingsView {
-  context.setHeading('Settings', 'Set up your key, microphone, shortcut, and local history.')
+export function renderSettings(
+  context: AppContext,
+  intent: NavigationIntent = {}
+): SettingsView {
+  context.setHeading('Settings', 'Set up transcription, your microphone, shortcut, and local history.')
 
   /** Fresh view of the settings; updated by `syncControlValues`. */
   let settings = context.settings
@@ -76,8 +144,7 @@ export function renderSettings(context: AppContext): SettingsView {
   /** Secure storage unfit for a credential means the key stays in memory. */
   const storageUnusable = (): boolean => !isAvailable(capabilities().secureKeyStorage)
 
-  const keyBadgeText = (source: PublicSettings['apiKeySource']): string =>
-    source === 'stored' ? 'Key saved' : source === 'session' ? 'Key for this session' : 'Key required'
+  const initialBadge = keyBadgeState(settings)
 
   const launchLabel =
     context.platform.platform === 'windows'
@@ -86,63 +153,102 @@ export function renderSettings(context: AppContext): SettingsView {
         ? 'Open at login'
         : 'Start when I sign in'
 
+  /**
+   * Alt + Shift + V is registered on Windows only, for now. Elsewhere the row
+   * is not drawn at all: a switch for something that cannot happen here would
+   * be a promise the app does not keep.
+   */
+  const pasteLastOffered = context.platform.platform === 'windows'
+  const pasteLastRow = pasteLastOffered
+    ? '<label class="toggle-row" id="row-paste-last"><div><strong>Paste last dictation with Alt + Shift + V</strong><span>Handy when a paste went to the wrong place.</span><small class="capability-note" id="paste-last-note" hidden></small></div><input id="paste-last-shortcut" type="checkbox" /><i></i></label>'
+    : ''
+
   context.content.innerHTML = `
     <div class="settings-stack">
       <section class="settings-card">
         <div class="settings-heading">
-          <div><h2>Transcription API</h2><p>Your key is encrypted by the operating system and never displayed again.</p></div>
-          <span class="configured-badge ${settings.apiKeySource !== 'none' ? 'is-configured' : ''}" id="key-badge">${keyBadgeText(settings.apiKeySource)}</span>
+          <div><h2>Transcription</h2><p id="transcription-summary"></p></div>
+          <span class="configured-badge ${initialBadge.configured ? 'is-configured' : ''}" id="key-badge">${initialBadge.text}</span>
+        </div>
+
+        <div class="mode-choice engine-choice" role="radiogroup" aria-label="Where transcription runs">
+          <label class="mode-option">
+            <input type="radio" name="engine" value="local" id="engine-local" />
+            <div><strong>On this PC</strong><span>Private and offline. Nothing is sent anywhere. Uses about 1 GB of memory while dictating, released after 5 minutes of rest.</span></div>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="engine" value="cloud" id="engine-cloud" />
+            <div><strong>Cloud, with your API key</strong><span>OpenAI, Groq, Azure or any OpenAI-compatible server. Audio is sent to that provider.</span></div>
+          </label>
+        </div>
+
+        <div class="engine-local-fields" id="local-fields">
+          <div class="model-row" id="model-row"></div>
         </div>
         <div class="form-grid">
-          <label class="field field-wide"><span>API key</span>
-            <div class="password-row">
-              <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="${settings.apiKeySource !== 'none' ? 'Enter a new key to replace the current key' : 'sk-…'}" />
-              <button class="secondary-button" id="open-api-keys" type="button">Get a key</button>
-            </div>
-            <small>The app sends each completed recording directly to your provider using your key.</small>
-          </label>
-          <div class="field field-wide key-scope" id="key-scope">
-            <label class="checkbox-row">
-              <input id="api-key-session" type="checkbox" />
-              <span>Keep this key for this session only</span>
+          <div class="engine-cloud-fields" id="cloud-fields">
+            <label class="field field-wide"><span>API key</span>
+              <div class="password-row">
+                <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="${settings.apiKeySource !== 'none' ? 'Enter a new key to replace the current key' : 'sk-…'}" />
+                <button class="secondary-button" id="open-api-keys" type="button">Get a key</button>
+              </div>
+              <small>The app sends each completed recording directly to your provider using your key.</small>
             </label>
-            <small id="key-scope-note"></small>
+            <div class="field field-wide key-scope" id="key-scope">
+              <label class="checkbox-row">
+                <input id="api-key-session" type="checkbox" />
+                <span>Keep this key for this session only</span>
+              </label>
+              <small id="key-scope-note"></small>
+            </div>
+            <div class="field field-wide">
+              <label class="field-label" for="api-endpoint">API endpoint <em>(optional)</em></label>
+              <div class="inline-control">
+                <input id="api-endpoint" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.openai.com/v1" value="${escapeHtml(settings.apiEndpoint)}" aria-describedby="api-endpoint-help" />
+                <button class="secondary-button" id="test-connection" type="button" aria-describedby="connection-result">Test connection</button>
+              </div>
+              <small class="connection-result" id="connection-result" aria-live="polite" hidden></small>
+              <small id="api-endpoint-help">Leave empty for OpenAI. For another OpenAI-compatible provider, paste its base URL — for example <code>https://api.groq.com/openai/v1</code>, or <code>http://localhost:8080/v1</code> for a local transcription server. With an endpoint here the key is optional: a server of your own may not need one.</small>
+            </div>
+            <label class="field"><span>Model</span>
+              <select id="model">
+                ${TRANSCRIPTION_MODELS.map(
+                  (model) => `<option value="${model}">${model}</option>`
+                ).join('')}
+                ${settings.apiEndpoint ? `<option value="${CUSTOM_MODEL_OPTION}">Custom model…</option>` : ''}
+              </select>
+              <input id="model-custom" class="model-custom-input ${modelIsCustom ? '' : 'is-hidden'}" type="text" spellcheck="false" placeholder="model name, e.g. whisper-large-v3" value="${modelIsCustom ? escapeHtml(settings.model) : ''}" />
+            </label>
           </div>
-          <label class="field field-wide"><span>API endpoint <em>(optional)</em></span>
-            <input id="api-endpoint" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.openai.com/v1" value="${escapeHtml(settings.apiEndpoint)}" />
-            <small>Leave empty for OpenAI. For another OpenAI-compatible provider, paste its base URL — for example <code>https://api.groq.com/openai/v1</code>, or <code>http://localhost:8080/v1</code> for a local transcription server.</small>
-          </label>
-          <label class="field"><span>Model</span>
-            <select id="model">
-              ${TRANSCRIPTION_MODELS.map(
-                (model) => `<option value="${model}">${model}</option>`
-              ).join('')}
-              ${settings.apiEndpoint ? `<option value="${CUSTOM_MODEL_OPTION}">Custom model…</option>` : ''}
-            </select>
-            <input id="model-custom" class="model-custom-input ${modelIsCustom ? '' : 'is-hidden'}" type="text" spellcheck="false" placeholder="model name, e.g. whisper-large-v3" value="${modelIsCustom ? escapeHtml(settings.model) : ''}" />
-          </label>
-          <label class="field"><span>Language</span>
-            <select id="language">
+          <div class="field">
+            <label class="field-label" for="language">Language</label>
+            <select id="language" aria-describedby="language-note">
               ${LANGUAGE_OPTIONS.map(
                 (option) =>
                   `<option value="${option.code}">${escapeHtml(option.label)}${option.code === 'auto' ? '' : ` (${option.code.toUpperCase()})`}</option>`
               ).join('')}
             </select>
-          </label>
+            <small class="language-note" id="language-note" aria-live="polite" hidden></small>
+          </div>
         </div>
         <div class="key-actions" id="key-actions"></div>
       </section>
 
       <section class="settings-card">
         <div class="settings-heading">
-          <div><h2>Your words</h2><p>Names, acronyms and product terms Murmur should expect to hear.</p></div>
+          <div><h2>Your words</h2><p>Names, acronyms and product terms Vocette should expect to hear.</p></div>
           <span class="configured-badge" id="vocabulary-badge"></span>
         </div>
         <label class="field field-wide"><span>Vocabulary</span>
           <textarea id="vocabulary" class="vocabulary-input" rows="6" spellcheck="false" autocomplete="off" aria-describedby="vocabulary-note" placeholder="Kirinde&#10;ITU-T&#10;Dataverse&#10;koffi"></textarea>
         </label>
         <small class="field-note" id="vocabulary-note" aria-live="polite"></small>
+        <label class="field field-wide replacements-field"><span>Replacements and snippets</span>
+          <textarea id="replacements" class="replacements-input" rows="6" spellcheck="false" autocomplete="off" aria-describedby="replacements-note" placeholder="itu =&gt; ITU&#10;console log =&gt; console.log()&#10;my email =&gt; name@example.com&#10;sign off =&gt; Best regards,\\nAlex&#10;today's date =&gt; {date}"></textarea>
+        </label>
+        <small class="field-note" id="replacements-note" aria-live="polite"></small>
       </section>
+${polishCardMarkup()}
 
       <section class="settings-card">
         <div class="settings-heading"><div><h2>Recording</h2><p>How a dictation starts, and which microphone it uses.</p></div></div>
@@ -154,7 +260,7 @@ export function renderSettings(context: AppContext): SettingsView {
           </label>
           <label class="mode-option">
             <input type="radio" name="recording-mode" value="toggle" id="mode-toggle" />
-            <div><strong>Press to start and stop</strong><span>One press begins recording, the next ends it.</span></div>
+            <div><strong>Press to start and stop</strong><span>One press begins recording, the next ends it.</span><span id="mode-escape">Esc cancels. The app you are in sees that Esc too.</span></div>
           </label>
         </div>
         <p class="capability-note" id="mode-note" hidden></p>
@@ -189,21 +295,28 @@ export function renderSettings(context: AppContext): SettingsView {
             </select>
             <small>A short delay stops shortcuts like Ctrl + Shift + T from triggering dictation.</small>
           </label>
-          <label class="field"><span>Microphone</span>
+          <div class="field">
+            <label class="field-label" for="microphone">Microphone</label>
             <div class="inline-control">
-              <select id="microphone"><option value="">System default microphone</option></select>
+              <select id="microphone" aria-describedby="microphone-feedback microphone-note"><option value="">System default microphone</option></select>
               <button class="icon-refresh" id="refresh-microphones" type="button" aria-label="Refresh microphones">↻</button>
               <button class="secondary-button" id="mic-test" type="button">Test</button>
             </div>
             <div class="mic-meter" id="mic-meter"><div class="mic-meter-bar" id="mic-meter-bar"></div></div>
             <small id="microphone-feedback">Checking microphones…</small>
-          </label>
+            <small class="microphone-note" id="microphone-note" aria-live="polite" hidden></small>
+          </div>
         </div>
 
         <div class="toggle-list">
           <label class="toggle-row" id="row-hotkey"><div><strong>Global shortcut enabled</strong><span>Turn the system-wide shortcut off without quitting the app.</span><small class="capability-note" id="hotkey-note" hidden></small></div><input id="hotkey-enabled" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-instant-capture"><div><strong>Start listening as soon as the shortcut is held</strong><span>Helps catch your first word when you start speaking straight away. The microphone opens once the keys have been held for a moment, and anything captured before recording starts is thrown away unheard if you were pressing a different shortcut.</span><small class="capability-note" id="instant-capture-note" hidden></small></div><input id="instant-capture" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-auto-paste"><div><strong>Paste automatically</strong><span>Copy the transcript and send ${escapeHtml(context.platform.pasteLabel)} to the app you were using.</span><small class="capability-note" id="auto-paste-note" hidden></small></div><input id="auto-paste" type="checkbox" /><i></i></label>
-          <label class="toggle-row"><div><strong>Light cleanup</strong><span>For explicitly English dictation, remove “um”, “uh”, “erm”, and repair spacing without rewriting you.</span></div><input id="remove-fillers" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-restore-clipboard"><div><strong>Put my clipboard back</strong><span>After pasting, Vocette restores what you had copied. Turn off to keep each transcript on the clipboard.</span><small class="capability-note" id="restore-clipboard-note" hidden></small></div><input id="restore-clipboard" type="checkbox" /><i></i></label>
+          ${pasteLastRow}
+          <label class="toggle-row"><div><strong>Remove filler words</strong><span>Drops “um”, “uh”, stutters like “I I”, and a filler “like” or “you know” set off by commas. Your own words are never rewritten.</span></div><input id="remove-fillers" type="checkbox" /><i></i></label>
+          <label class="toggle-row"><div><strong>Follow spoken corrections</strong><span>Say “scratch that” to drop the last sentence, or fix a word as you go: “Tuesday, no sorry, Wednesday” becomes “Wednesday”. English.</span></div><input id="spoken-corrections" type="checkbox" /><i></i></label>
+          <label class="toggle-row"><div><strong>Spoken line breaks</strong><span>Say “new line” or “new paragraph”. English.</span></div><input id="spoken-formatting" type="checkbox" /><i></i></label>
           <label class="toggle-row"><div><strong>Play sounds</strong><span>A short beep when recording starts, two when the transcript is ready.</span></div><input id="play-sounds" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-launch"><div><strong>${escapeHtml(launchLabel)}</strong><span>Keep the shortcut ready after you sign in.</span><small class="capability-note" id="launch-note" hidden></small></div><input id="launch-at-login" type="checkbox" /><i></i></label>
         </div>
@@ -231,10 +344,24 @@ export function renderSettings(context: AppContext): SettingsView {
   const query = <T extends HTMLElement>(selector: string): T | null =>
     context.content.querySelector<T>(selector)
 
+  // AI polish keeps its own controls; Save collects them with the rest.
+  const polishCard = createPolishCard(
+    query,
+    window.murmur,
+    settings,
+    context.licence.plan !== 'free',
+    (next) => context.applySettings(next)
+  )
+
   const holdDelay = query<HTMLSelectElement>('#hold-delay')
   const hotkeyEnabled = query<HTMLInputElement>('#hotkey-enabled')
+  const instantCapture = query<HTMLInputElement>('#instant-capture')
   const autoPaste = query<HTMLInputElement>('#auto-paste')
+  const restoreClipboard = query<HTMLInputElement>('#restore-clipboard')
+  const pasteLastShortcut = query<HTMLInputElement>('#paste-last-shortcut')
   const removeFillers = query<HTMLInputElement>('#remove-fillers')
+  const spokenCorrections = query<HTMLInputElement>('#spoken-corrections')
+  const spokenFormatting = query<HTMLInputElement>('#spoken-formatting')
   const playSounds = query<HTMLInputElement>('#play-sounds')
   const launchAtLogin = query<HTMLInputElement>('#launch-at-login')
   const retention = query<HTMLSelectElement>('#history-retention')
@@ -242,6 +369,9 @@ export function renderSettings(context: AppContext): SettingsView {
   const modelCustom = query<HTMLInputElement>('#model-custom')
   const languageSelect = query<HTMLSelectElement>('#language')
   const endpointInput = query<HTMLInputElement>('#api-endpoint')
+  const apiKeyInput = query<HTMLInputElement>('#api-key')
+  const testButton = query<HTMLButtonElement>('#test-connection')
+  const testLine = query<HTMLElement>('#connection-result')
   const keyBadge = query<HTMLElement>('#key-badge')
   const chips = query<HTMLSpanElement>('#shortcut-chips')
   const shortcutButton = query<HTMLButtonElement>('#shortcut-capture')
@@ -254,6 +384,61 @@ export function renderSettings(context: AppContext): SettingsView {
   const vocabulary = query<HTMLTextAreaElement>('#vocabulary')
   const vocabularyNote = query<HTMLElement>('#vocabulary-note')
   const vocabularyBadge = query<HTMLElement>('#vocabulary-badge')
+  const replacements = query<HTMLTextAreaElement>('#replacements')
+  const replacementsNote = query<HTMLElement>('#replacements-note')
+  const engineLocal = query<HTMLInputElement>('#engine-local')
+  const engineCloud = query<HTMLInputElement>('#engine-cloud')
+  const localFields = query<HTMLElement>('#local-fields')
+  const cloudFields = query<HTMLElement>('#cloud-fields')
+  const languageNote = query<HTMLElement>('#language-note')
+  const transcriptionSummary = query<HTMLElement>('#transcription-summary')
+
+  /**
+   * The engine shown as chosen. It can run ahead of the saved one: the setup
+   * card's "use your own API key instead" opens this page with the cloud
+   * picked, and clicking either option picks it. Neither switches anything
+   * until Save settings, like every other control here.
+   */
+  let chosenEngine: TranscriptionEngine = intent.engine ?? settings.engine
+  /**
+   * True while that choice differs from what is saved. An out-of-band repaint
+   * must not take it back from under the fields it revealed — the promise
+   * `vocabularyDirty` makes for the word list, made for the engine.
+   */
+  let engineDirty = chosenEngine !== settings.engine
+
+  /**
+   * On this PC the language only tunes cleanup — unless the model cannot
+   * recognise it at all, which is a warning. Stated from the control, so it
+   * is true before Save; the cloud has no such limit, so says nothing.
+   */
+  const paintLanguageNote = (): void => {
+    if (!languageNote) return
+    const note =
+      chosenEngine === 'local'
+        ? localLanguageNote(languageSelect?.value || settings.language)
+        : null
+    languageNote.textContent = note?.text ?? ''
+    languageNote.hidden = note === null
+    languageNote.className = `language-note${note?.warning ? ' is-warning' : ''}`
+  }
+
+  /** Shows the section for the chosen engine, and only that one. */
+  const syncEngineChoice = (): void => {
+    const local = chosenEngine === 'local'
+    if (engineLocal) engineLocal.checked = local
+    if (engineCloud) engineCloud.checked = !local
+    if (localFields) localFields.hidden = !local
+    if (cloudFields) cloudFields.hidden = local
+    // A key is none of the on-device engine's business; "Key required" over
+    // it would simply be untrue.
+    if (keyBadge) keyBadge.hidden = local
+    if (keyActions) keyActions.hidden = local
+    if (transcriptionSummary) {
+      transcriptionSummary.textContent = local ? LOCAL_SUMMARY : CLOUD_SUMMARY
+    }
+    paintLanguageNote()
+  }
 
   /**
    * True once the user has typed in the box and not yet saved.
@@ -262,7 +447,7 @@ export function renderSettings(context: AppContext): SettingsView {
    * switch saves — and each of those repaints this page. Without this flag,
    * `syncControlValues` would overwrite a half-written vocabulary with the
    * saved one. The shortcut editor already makes the same promise through
-   * `pendingKeys`; this is the same promise for the only free-text field long
+   * `pendingKeys`; this is the same promise for a free-text field long
    * enough to hurt when it is lost.
    */
   let vocabularyDirty = false
@@ -273,11 +458,17 @@ export function renderSettings(context: AppContext): SettingsView {
    *
    * Honesty matters more here than brevity: the two biasing channels behave
    * differently, and a user whose terms are riding the prompt should know that
-   * most of a long list will not be sent.
+   * most of a long list will not be sent. The on-device engine has neither
+   * channel, so for it the note describes only the correction.
    */
   const paintVocabularyNote = (): void => {
     if (!vocabularyNote && !vocabularyBadge) return
     const terms = parseVocabulary(vocabulary?.value ?? '')
+    // What a dictation uses on the plan in force: the first terms, up to its
+    // limit. The list itself is never cut, so the badge counts all of it.
+    const plan = context.licence.plan
+    const limit = vocabularyTermLimit(plan !== 'free')
+    const inUse = terms.slice(0, limit)
     const selected = modelSelect?.value ?? settings.model
     const model =
       selected === CUSTOM_MODEL_OPTION ? modelCustom?.value.trim() ?? '' : selected
@@ -287,7 +478,7 @@ export function renderSettings(context: AppContext): SettingsView {
       const count =
         terms.length === 0 ? 'No terms' : terms.length === 1 ? '1 term' : `${terms.length} terms`
       // Never claim saved state for text that has not been saved: the green
-      // badge means "this is what Murmur will send", not "this is typed".
+      // badge means "this is what Vocette will send", not "this is typed".
       vocabularyBadge.textContent = vocabularyDirty ? `${count} — unsaved` : count
       vocabularyBadge.className = `configured-badge ${
         terms.length > 0 && !vocabularyDirty ? 'is-configured' : ''
@@ -295,36 +486,155 @@ export function renderSettings(context: AppContext): SettingsView {
     }
     if (!vocabularyNote) return
 
-    const limits = `One term per line, up to ${MAX_VOCABULARY_TERMS} terms of ${MAX_VOCABULARY_TERM_CHARS} characters. They are sent to your transcription provider with every dictation.`
-    if (supportsKeywordList(model, endpoint)) {
-      vocabularyNote.textContent = `${limits} ${model} takes them as a dedicated keyword list, so every term is used.`
-      return
+    const format = `One term per line, up to ${limit} terms of ${MAX_VOCABULARY_TERM_CHARS} characters.`
+    // Said only when the plan changes what is used: a list inside Free's
+    // limit is the same on every plan, and hears nothing about Pro.
+    const planNote = vocabularyPlanNote(plan, terms.length)
+    const lead = planNote ? `${format} ${planNote}` : format
+    const describe = (): string => {
+      // True of every engine: the correction runs on this computer, after
+      // recognition. For the on-device engine it is the whole mechanism —
+      // that engine takes no prompt, and nothing is sent anywhere.
+      if (settings.engine === 'local') return `${lead} ${VOCABULARY_CORRECTION_NOTE}`
+      const limits = `${lead} They are sent to your transcription provider with every dictation.`
+      if (supportsKeywordList(model, endpoint)) {
+        // One request carries no more keywords than it always did; a longer
+        // Pro list still corrects near-misses after recognition.
+        const keywords =
+          inUse.length > MAX_KEYWORD_TERMS
+            ? `${model} takes the first ${MAX_KEYWORD_TERMS} as a dedicated keyword list, and the rest still correct near-misses.`
+            : `${model} takes them as a dedicated keyword list, so every term is used.`
+        return `${limits} ${keywords} ${VOCABULARY_CORRECTION_NOTE}`
+      }
+      const sent = budgetPromptTerms(inUse).length
+      const dropped = inUse.length - sent
+      const fit =
+        dropped > 0
+          ? ` Only the first ${sent} fit, so ${dropped} ${dropped === 1 ? 'is' : 'are'} not being sent — shorten the list.`
+          : ''
+      return `${limits} ${model || 'This model'} has no keyword field, so they are added to the transcription prompt, which has room for about ${MAX_PROMPT_TERM_CHARS} characters of terms.${fit} ${VOCABULARY_CORRECTION_NOTE}`
     }
-    const sent = budgetPromptTerms(terms).length
-    const dropped = terms.length - sent
-    const fit =
-      dropped > 0
-        ? ` Only the first ${sent} fit, so ${dropped} ${dropped === 1 ? 'is' : 'are'} not being sent — shorten the list.`
-        : ''
     // textContent, not innerHTML: the model name is user input and must not be
-    // parsed as markup, and must not be double-escaped either.
-    vocabularyNote.textContent = `${limits} ${model || 'This model'} has no keyword field, so they are added to the transcription prompt, which has room for about ${MAX_PROMPT_TERM_CHARS} characters of terms.${fit}`
+    // parsed as markup, and must not be double-escaped either. Written only
+    // when it changes: the note is a live region, and a repaint that changes
+    // nothing — the window coming back into focus — must not read it out again.
+    const text = describe()
+    if (vocabularyNote.textContent !== text) vocabularyNote.textContent = text
+  }
+
+  /**
+   * The same promise as `vocabularyDirty`, for the rules box: a list of rules
+   * and snippets is the other free-text field long enough to hurt when an
+   * out-of-band repaint takes it back.
+   */
+  let replacementsDirty = false
+
+  /**
+   * How to write a rule, then how many the box holds right now — counted by
+   * the parser the dictation uses, so the number is the one that will apply.
+   * A line that cannot be a rule is reported rather than left to fail in
+   * silence; the reason covers every way a line can fail, because the count
+   * does not say which one it was.
+   */
+  const paintReplacementsNote = (): void => {
+    if (!replacementsNote) return
+    const { rules, ignored } = parseReplacements(replacements?.value ?? '')
+    const skipped =
+      ignored === 0
+        ? ''
+        : `${ignored} ${ignored === 1 ? 'line' : 'lines'} ignored: a rule needs => with something on both sides, at most ${MAX_SPOKEN_CHARS} characters before it and ${MAX_WRITTEN_CHARS.toLocaleString('en-GB')} after`
+    // A list longer than Free's limit hears how much of it the plan uses, in
+    // place of the plain count, so the number is said once. Every rule stays
+    // in the box whatever the plan.
+    const planNote = replacementsPlanNote(context.licence.plan, rules.length)
+    let text: string
+    if (planNote) {
+      text = `${REPLACEMENTS_HELP} ${planNote}${skipped ? ` ${skipped}.` : ''}`
+    } else {
+      const count =
+        rules.length === 0 ? 'No rules yet' : rules.length === 1 ? '1 rule' : `${rules.length} rules`
+      const full = rules.length >= MAX_REPLACEMENT_RULES ? ', the most Vocette will use' : ''
+      text = `${REPLACEMENTS_HELP} ${count}${full}${skipped ? ` — ${skipped}` : ''}.`
+    }
+    // textContent, not innerHTML: the rules are user input, and `=>` must
+    // read as typed. Written only when it changes, because the note is a live
+    // region and would otherwise be read out in full on every keystroke.
+    if (replacementsNote.textContent !== text) replacementsNote.textContent = text
+  }
+
+  /** True while Test connection's one request is out. */
+  let testing = false
+  /**
+   * The last answer, and the saved connection it was about. It stays on show
+   * through repaints and other saves, until that connection changes.
+   */
+  let testAnswer: { text: string; ok: boolean; about: string } | null = null
+
+  /** What an answer is about: where the request goes, which model, and whether a key goes too. */
+  const savedConnection = (): string =>
+    JSON.stringify([settings.apiEndpoint, settings.model, settings.apiKeySource])
+
+  /** The model the controls name, as Save would store it. */
+  const modelFromControls = (): string => {
+    const selected = modelSelect?.value ?? settings.model
+    return selected === CUSTOM_MODEL_OPTION ? modelCustom?.value.trim() ?? '' : selected
+  }
+
+  /**
+   * True while the endpoint, model or key fields hold something unsaved. The
+   * test sends only saved settings — the saved key goes nowhere but the saved
+   * endpoint — so rather than test something other than what is on screen, it
+   * waits for Save and says so.
+   */
+  const connectionUnsaved = (): boolean =>
+    (endpointInput?.value.trim() ?? settings.apiEndpoint) !== settings.apiEndpoint ||
+    modelFromControls() !== settings.model ||
+    (apiKeyInput?.value.trim() ?? '') !== ''
+
+  /** The button and the line under the endpoint, from where the test stands. */
+  const paintConnectionTest = (): void => {
+    if (testAnswer && testAnswer.about !== savedConnection()) testAnswer = null
+    const unsaved = connectionUnsaved()
+    if (testButton) {
+      testButton.disabled = testing || unsaved
+      testButton.textContent = testing ? 'Testing…' : 'Test connection'
+    }
+    if (!testLine) return
+    const line = testing
+      ? { text: TEST_SENDING, tone: '' }
+      : unsaved
+        ? { text: TEST_NEEDS_SAVE, tone: '' }
+        : testAnswer
+          ? { text: testAnswer.text, tone: testAnswer.ok ? ' is-connected' : ' is-failed' }
+          : null
+    const text = line?.text ?? ''
+    // Written only when it changes: the line is a live region, and every
+    // keystroke in the endpoint repaints it.
+    if (testLine.textContent !== text) testLine.textContent = text
+    testLine.hidden = line === null
+    testLine.className = `connection-result${line?.tone ?? ''}`
   }
 
   const syncControlValues = (next: PublicSettings): void => {
     settings = next
     if (holdDelay) holdDelay.value = String(next.holdDelayMs)
     if (hotkeyEnabled) hotkeyEnabled.checked = next.hotkeyEnabled
+    if (instantCapture) instantCapture.checked = next.instantCapture
     if (autoPaste) autoPaste.checked = next.autoPaste
+    if (restoreClipboard) restoreClipboard.checked = next.restoreClipboard
+    if (pasteLastShortcut) pasteLastShortcut.checked = next.pasteLastShortcut
     if (removeFillers) removeFillers.checked = next.removeFillers
+    if (spokenCorrections) spokenCorrections.checked = next.spokenCorrections
+    if (spokenFormatting) spokenFormatting.checked = next.spokenFormatting
     if (playSounds) playSounds.checked = next.playSounds
     if (launchAtLogin) launchAtLogin.checked = next.launchAtLogin
     if (retention) retention.value = String(next.historyRetentionDays)
     if (languageSelect) languageSelect.value = next.language
     if (endpointInput) endpointInput.value = next.apiEndpoint
     if (keyBadge) {
-      keyBadge.textContent = keyBadgeText(next.apiKeySource)
-      keyBadge.className = `configured-badge ${next.apiKeySource !== 'none' ? 'is-configured' : ''}`
+      const badge = keyBadgeState(next)
+      keyBadge.textContent = badge.text
+      keyBadge.className = `configured-badge ${badge.configured ? 'is-configured' : ''}`
     }
     if (modeHold) modeHold.checked = next.recordingMode === 'hold'
     if (modeToggle) modeToggle.checked = next.recordingMode === 'toggle'
@@ -350,6 +660,17 @@ export function renderSettings(context: AppContext): SettingsView {
     // outranks the stored shortcut.
     if (vocabulary && !vocabularyDirty) vocabulary.value = next.vocabulary
     paintVocabularyNote()
+    if (replacements && !replacementsDirty) replacements.value = next.replacements
+    paintReplacementsNote()
+    polishCard.apply(next)
+    // An unsaved engine choice outranks the stored one, as a pending chord
+    // does — until the store catches up with it.
+    if (chosenEngine === next.engine) engineDirty = false
+    if (!engineDirty) chosenEngine = next.engine
+    syncEngineChoice()
+    // What is saved decides whether the last answer still applies, and the
+    // fields just repainted from it decide whether the test must wait.
+    paintConnectionTest()
   }
 
   // --- Capability-driven state --------------------------------------------
@@ -420,6 +741,15 @@ export function renderSettings(context: AppContext): SettingsView {
       pasteNote.textContent = reason ?? ''
       pasteNote.hidden = reason === null
     }
+    // Nothing is borrowed where nothing is pasted, so the clipboard switch has
+    // nothing to do: disabled for the same reason, given in the same words.
+    if (restoreClipboard) restoreClipboard.disabled = !autoPasteSupported(map)
+    const restoreNote = query<HTMLElement>('#restore-clipboard-note')
+    if (restoreNote) {
+      const reason = clipboardOnlyReason(map)
+      restoreNote.textContent = reason ?? ''
+      restoreNote.hidden = reason === null
+    }
 
     if (launchAtLogin) launchAtLogin.disabled = !isAvailable(map.launchAtLogin)
     note(query<HTMLElement>('#launch-note'), map.launchAtLogin)
@@ -427,6 +757,9 @@ export function renderSettings(context: AppContext): SettingsView {
     // Holding needs a key-up the platform may never report.
     const holdPossible = isAvailable(map.globalHold)
     if (modeHold) modeHold.disabled = !holdPossible
+    // Esc is seen by the same watched keyboard, so without one it is not offered.
+    const modeEscape = query<HTMLElement>('#mode-escape')
+    if (modeEscape) modeEscape.hidden = !holdPossible
     const modeNote = query<HTMLElement>('#mode-note')
     if (modeNote) {
       const forced = recordingModeIsForced(settings.recordingMode, map)
@@ -437,6 +770,21 @@ export function renderSettings(context: AppContext): SettingsView {
           : ''
       modeNote.textContent = text
       modeNote.hidden = text === ''
+    }
+
+    // Listening early needs the key going down, which only a watched keyboard
+    // reports. Without one the switch could do nothing, so it says why; the
+    // saved choice underneath is kept for a session that can.
+    if (instantCapture) instantCapture.disabled = !holdPossible
+    const instantNote = query<HTMLElement>('#instant-capture-note')
+    if (instantNote) {
+      const text = holdPossible
+        ? ''
+        : shortcutUsable
+          ? INSTANT_CAPTURE_NEEDS_KEYS
+          : map.globalToggle.reason
+      instantNote.textContent = text
+      instantNote.hidden = text === ''
     }
 
     // A desktop-registered shortcut cannot be recorded from live keystrokes.
@@ -470,6 +818,31 @@ export function renderSettings(context: AppContext): SettingsView {
     }
   }
 
+  /**
+   * Says so when Alt + Shift + V is switched on but not in force. Asked of the
+   * main process rather than inferred from the setting, because the usual
+   * reason is another app that already owns the combination — and a switch
+   * that shows as on while doing nothing is the failure to avoid.
+   */
+  const paintPasteLastNote = async (): Promise<void> => {
+    const pasteLastNote = query<HTMLElement>('#paste-last-note')
+    if (!pasteLastShortcut || !pasteLastNote) return
+    let status: PasteLastStatus
+    try {
+      status = await window.murmur.getPasteLastStatus()
+    } catch {
+      // Unknown is not the same as refused: say nothing rather than guess.
+      return
+    }
+    if (disposed) return
+    const text =
+      settings.pasteLastShortcut && !status.pasteLastRegistered
+        ? 'Alt + Shift + V is in use by another app.'
+        : ''
+    pasteLastNote.textContent = text
+    pasteLastNote.hidden = text === ''
+  }
+
   // --- Shortcut capture ---------------------------------------------------
 
   const paintChips = (keys: readonly number[]): void => {
@@ -482,8 +855,9 @@ export function renderSettings(context: AppContext): SettingsView {
   // button looked fine but did nothing.
   syncControlValues(settings)
   syncCapabilities()
+  void paintPasteLastNote()
 
-  const setFeedback = (text: string, tone: 'muted' | 'warn' | 'error' = 'muted'): void => {
+  const setFeedback =(text: string, tone: 'muted' | 'warn' | 'error' = 'muted'): void => {
     if (!shortcutFeedback) return
     shortcutFeedback.textContent = text
     shortcutFeedback.className = `shortcut-feedback tone-${tone}`
@@ -554,6 +928,35 @@ export function renderSettings(context: AppContext): SettingsView {
     commitCapture(button.dataset.keys.split(',').map(Number))
   })
 
+  // --- Engine and the speech model ----------------------------------------
+
+  const chooseEngine = (engine: TranscriptionEngine): void => {
+    chosenEngine = engine
+    engineDirty = engine !== settings.engine
+    syncEngineChoice()
+  }
+  engineLocal?.addEventListener('change', () => {
+    if (engineLocal.checked) chooseEngine('local')
+  })
+  engineCloud?.addEventListener('change', () => {
+    if (engineCloud.checked) chooseEngine('cloud')
+  })
+
+  // The same row as History's setup step, drawn by the same module. Choosing
+  // this PC while the model is missing is allowed: the row offers the
+  // download, and the Record button says what it is waiting for.
+  const modelHost = query<HTMLElement>('#model-row')
+  const modelRow = modelHost
+    ? createModelRow(modelHost, {
+        variant: 'settings',
+        bridge: window.murmur,
+        onStatus: (status) => context.applyEngine(status),
+        confirm: (message) => window.confirm(message)
+      })
+    : null
+  modelRow?.setDictating(dictationIsBusy(context.workflow.phase))
+  modelRow?.apply(context.engine)
+
   // --- Model / language ---------------------------------------------------
 
   modelSelect?.addEventListener('change', () => {
@@ -567,6 +970,10 @@ export function renderSettings(context: AppContext): SettingsView {
 
   modelCustom?.addEventListener('input', paintVocabularyNote)
 
+  // Whether the on-device model can hear the language is part of this
+  // control's state too.
+  languageSelect?.addEventListener('change', paintLanguageNote)
+
   // --- Vocabulary ---------------------------------------------------------
 
   vocabulary?.addEventListener('input', () => {
@@ -578,7 +985,77 @@ export function renderSettings(context: AppContext): SettingsView {
   // the model, so the note is part of this control's state too.
   endpointInput?.addEventListener('input', paintVocabularyNote)
 
+  // --- Replacements -------------------------------------------------------
+
+  replacements?.addEventListener('input', () => {
+    replacementsDirty = true
+    paintReplacementsNote()
+  })
+
+  // --- Test connection ----------------------------------------------------
+
+  // Each of these can make the fields differ from what is saved, which is
+  // all the test will send.
+  endpointInput?.addEventListener('input', paintConnectionTest)
+  apiKeyInput?.addEventListener('input', paintConnectionTest)
+  modelSelect?.addEventListener('change', paintConnectionTest)
+  modelCustom?.addEventListener('input', paintConnectionTest)
+
+  testButton?.addEventListener('click', async () => {
+    if (testing || connectionUnsaved()) return
+    testing = true
+    const about = savedConnection()
+    paintConnectionTest()
+    let answer: { text: string; ok: boolean }
+    try {
+      const result = await window.murmur.testTranscription()
+      answer = result.ok
+        ? {
+            ok: true,
+            text: `Connected — the server answered in ${result.ms.toLocaleString('en-GB')} ms`
+          }
+        : { ok: false, text: result.error }
+    } catch (error) {
+      answer = { ok: false, text: friendlyError(error) }
+    }
+    testing = false
+    if (disposed) return
+    testAnswer = { ...answer, about }
+    paintConnectionTest()
+  })
+
   // --- Microphones --------------------------------------------------------
+
+  /**
+   * The operating system's name for each microphone last listed, by device
+   * id. The `default` entry is kept here although the picker leaves it out:
+   * its name is the only way to know which device "Windows default
+   * microphone" will open.
+   */
+  let microphoneLabels = new Map<string, string>()
+
+  /**
+   * Opening a Bluetooth headset's microphone drops the user's headphones to
+   * call quality until it closes, so the note says so while one is chosen —
+   * before Save as well as after. With no name to go on (access not granted
+   * yet, or a saved microphone that is not connected) it stays hidden rather
+   * than guess. It sits outside the picker's <label>, as the Language note
+   * does: inside, its three sentences would become part of the picker's
+   * accessible name.
+   */
+  const paintMicrophoneNote = (): void => {
+    const select = query<HTMLSelectElement>('#microphone')
+    const microphoneNote = query<HTMLElement>('#microphone-note')
+    if (!select || !microphoneNote) return
+    // "Windows default microphone" is the empty value; the OS lists the
+    // device it stands for under the id `default`.
+    const label = microphoneLabels.get(select.value || 'default') ?? ''
+    const text = looksLikeBluetoothHeadset(label) ? BLUETOOTH_HEADSET_NOTE : ''
+    // Written only when it changes: the note is a live region, and a refresh
+    // that finds the same headset should not read it out again.
+    if (microphoneNote.textContent !== text) microphoneNote.textContent = text
+    microphoneNote.hidden = text === ''
+  }
 
   const populateMicrophones = async (requestPermission: boolean): Promise<void> => {
     const select = query<HTMLSelectElement>('#microphone')
@@ -597,6 +1074,9 @@ export function renderSettings(context: AppContext): SettingsView {
       const devices = (await navigator.mediaDevices.enumerateDevices()).filter(
         (device) => device.kind === 'audioinput'
       )
+      // Replaced together with the list, so the note and the picker never
+      // disagree about which microphones exist.
+      microphoneLabels = new Map(devices.map((device) => [device.deviceId, device.label] as const))
 
       select.replaceChildren()
       select.add(new Option('Windows default microphone', ''))
@@ -612,6 +1092,7 @@ export function renderSettings(context: AppContext): SettingsView {
         select.add(new Option('Saved microphone (not connected)', saved))
       }
       select.value = saved
+      paintMicrophoneNote()
 
       if (feedback) {
         feedback.textContent = devices.length
@@ -629,6 +1110,7 @@ export function renderSettings(context: AppContext): SettingsView {
   query('#refresh-microphones')?.addEventListener('click', () => {
     void populateMicrophones(true)
   })
+  query('#microphone')?.addEventListener('change', paintMicrophoneNote)
 
   // --- Microphone test ----------------------------------------------------
 
@@ -758,37 +1240,55 @@ export function renderSettings(context: AppContext): SettingsView {
         : selectedModel
 
     const update: SettingsUpdate = {
+      // Saved like everything else. Choosing this PC before the model is
+      // there is allowed; the model row and the Record button say what is
+      // still missing.
+      engine: chosenEngine,
       shortcut: { keys: currentKeys() },
       holdDelayMs: Number(holdDelay?.value ?? 250),
       // Saved as chosen. A platform that cannot hold downgrades it at use
       // time, so the preference survives a move to one that can.
       recordingMode: modeToggle?.checked ? 'toggle' : 'hold',
       hotkeyEnabled: hotkeyEnabled?.checked ?? true,
+      // Kept as saved when it cannot apply here: the switch is only disabled.
+      instantCapture: instantCapture?.checked ?? settings.instantCapture,
       microphoneId: microphoneSelect?.value ?? '',
       autoPaste: autoPaste?.checked ?? true,
+      restoreClipboard: restoreClipboard?.checked ?? true,
+      // Not drawn on other desktops, where the saved choice is kept as it is.
+      pasteLastShortcut: pasteLastShortcut?.checked ?? settings.pasteLastShortcut,
       removeFillers: removeFillers?.checked ?? true,
+      spokenCorrections: spokenCorrections?.checked ?? true,
+      spokenFormatting: spokenFormatting?.checked ?? true,
       playSounds: playSounds?.checked ?? true,
       launchAtLogin: launchAtLogin?.checked ?? false,
       historyRetentionDays: Number(retention?.value ?? 0),
       model,
       language: languageSelect?.value ?? 'en',
       vocabulary: vocabulary?.value ?? '',
+      replacements: replacements?.value ?? '',
       apiEndpoint: endpointInput?.value.trim() ?? '',
       ...(apiKey
         ? { apiKey, apiKeyScope: sessionScope?.checked ? ('session' as const) : ('persist' as const) }
-        : {})
+        : {}),
+      ...polishCard.collect()
     }
 
     try {
       const next = await window.murmur.saveSettings(update)
       context.applySettings(next)
       pendingKeys = null
-      // Saved: the box may now be repainted from the stored value again, and
-      // the clamp is shown by repainting it from what actually persisted.
+      // Saved: the boxes may now be repainted from the stored values again,
+      // and a clamp is shown by repainting them from what actually persisted.
       vocabularyDirty = false
+      replacementsDirty = false
+      engineDirty = false
+      polishCard.saved(next)
       // Update in place: a full re-render would drop the view reference the
       // shell holds and orphan the capture listener.
       syncControlValues(next)
+      // Saving is what registers or releases Alt + Shift + V.
+      void paintPasteLastNote()
       if (apiKey) {
         const keyInput = query<HTMLInputElement>('#api-key')
         if (keyInput) {
@@ -796,6 +1296,8 @@ export function renderSettings(context: AppContext): SettingsView {
           keyInput.placeholder = 'Enter a new key to replace the current key'
         }
       }
+      // The key box has just been emptied, so the test need not wait for it.
+      paintConnectionTest()
       if (feedback) {
         feedback.textContent = 'Settings saved.'
         window.setTimeout(() => {
@@ -814,6 +1316,15 @@ export function renderSettings(context: AppContext): SettingsView {
       // A tray toggle must not discard a chord the user picked but has not
       // saved yet — repaint the pending chips over the refreshed controls.
       if (pendingKeys) paintChips(pendingKeys)
+    },
+    applyEngine: (next) => modelRow?.apply(next),
+    applyWorkflow: (status) => modelRow?.setDictating(dictationIsBusy(status.phase)),
+    // Read from the context, which the shell has already updated; the trial
+    // can end while this page is open.
+    applyLicence: () => {
+      paintVocabularyNote()
+      paintReplacementsNote()
+      polishCard.applyPlan(context.licence.plan !== 'free')
     },
     dispose: () => {
       disposed = true

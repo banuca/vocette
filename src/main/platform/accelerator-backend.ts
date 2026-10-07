@@ -23,6 +23,8 @@ export interface AcceleratorApi {
 export class AcceleratorShortcutBackend implements ShortcutBackend {
   readonly supportsHold = false
   readonly supportsCapture = false
+  /** The desktop reports the registered shortcut and nothing else. */
+  readonly supportsEscape = false
 
   private chord: ShortcutChord
   private enabled = true
