@@ -106,6 +106,27 @@ describe('cleanupTranscript', () => {
       })
     ).toBe('So I think we should move the meeting to Wednesday.')
   })
+
+  it('follows a correction with a hesitation beside its marker', () => {
+    // Hand test 0.5.0, step 8: each of these was pasted as "Move to Tuesday.
+    // No sorry, Wednesday." because the hesitation hid the marker.
+    for (const spoken of [
+      'Um, move to Tuesday. Uh, no sorry, Wednesday.',
+      'Um, move to Tuesday. Uh no sorry, Wednesday.',
+      'Um, move to Tuesday. Um. No sorry, Wednesday.',
+      'Um, move to Tuesday. No sorry, um Wednesday.',
+      'Um, move to Tuesday. No sorry, uh, Wednesday.'
+    ]) {
+      expect(clean(spoken), spoken).toBe('Move to Wednesday.')
+    }
+    expect(clean('Send it to John, uh, I mean Sarah.')).toBe('Send it to Sarah.')
+  })
+
+  it('leaves hesitations to the corrections when fillers are switched off', () => {
+    expect(clean('Move to Tuesday. Uh, no sorry, Wednesday.', { removeFillers: false })).toBe(
+      'Move to Tuesday. Uh, no sorry, Wednesday.'
+    )
+  })
 })
 
 describe('technical text', () => {

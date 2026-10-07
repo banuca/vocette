@@ -147,10 +147,16 @@ const ENGLISH_FILLERS: FillerRule[] = [
   }
 ]
 
-const FILLER_RULES: Record<EnglishRules, FillerRule[]> = {
-  full: [...ENGLISH_FILLERS, ...hesitationRules(ENGLISH_HESITATIONS)],
-  tentative: [...ENGLISH_FILLERS, ...hesitationRules(TENTATIVE_HESITATIONS, ENGLISH_HESITATIONS)],
+const HESITATION_RULES: Record<EnglishRules, FillerRule[]> = {
+  full: hesitationRules(ENGLISH_HESITATIONS),
+  tentative: hesitationRules(TENTATIVE_HESITATIONS, ENGLISH_HESITATIONS),
   none: hesitationRules(UNIVERSAL_HESITATIONS)
+}
+
+const FILLER_RULES: Record<EnglishRules, FillerRule[]> = {
+  full: [...ENGLISH_FILLERS, ...HESITATION_RULES.full],
+  tentative: [...ENGLISH_FILLERS, ...HESITATION_RULES.tentative],
+  none: HESITATION_RULES.none
 }
 
 /**
@@ -285,6 +291,15 @@ export function removeFillerWords(text: string, rules: EnglishRules): string {
   return result
 }
 
+/**
+ * Only the hesitation sounds, which are never words the speaker meant. The
+ * rest of the filler pass waits until after spoken corrections, because it
+ * lifts out a sentence-opening "I mean," that a correction needs to see.
+ */
+function removeHesitations(text: string, rules: EnglishRules): string {
+  return HESITATION_RULES[rules].reduce(applyFillerRule, text)
+}
+
 function capitalise(text: string): string {
   // A leading quote is skipped, but a leading number is the start: "3 apples".
   const first = text.search(/[\p{L}\p{N}]/u)
@@ -346,7 +361,14 @@ export function cleanupTranscript(input: string, options: CleanupOptions): strin
   const rules = englishRulesFor(options.language, text)
   const english = rules !== 'none'
   if (spokenFormatting && english) text = applySpokenFormatting(text)
-  if (spokenCorrections && english) text = applySpokenCorrections(text)
+  if (spokenCorrections && english) {
+    // A hesitation beside a marker hides it: in "Tuesday. Uh, no sorry,
+    // Wednesday." the sentence opens with "Uh", not "No sorry". With fillers
+    // switched on they go first, and the punctuation they leave is tidied so
+    // the sentence boundaries are where the corrections expect them.
+    if (removeFillers) text = repairPunctuation(removeHesitations(text, rules))
+    text = applySpokenCorrections(text)
+  }
   if (removeFillers) text = removeFillerWords(text, rules)
   return repairPunctuation(text)
 }
