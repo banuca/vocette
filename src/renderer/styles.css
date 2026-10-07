@@ -1757,6 +1757,10 @@ a:focus-visible {
 }
 
 .toggle-row {
+  /* Holds the hidden checkbox. Without it the checkbox is placed against the
+     window, below the page, and focusing it scrolls the whole window away
+     from the app: switching on AI polish left a blank window. */
+  position: relative;
   display: flex;
   gap: 16px;
   align-items: flex-start;
