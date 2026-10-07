@@ -111,6 +111,8 @@ describe('cleanupTranscript', () => {
     // Hand test 0.5.0, step 8: each of these was pasted as "Move to Tuesday.
     // No sorry, Wednesday." because the hesitation hid the marker.
     for (const spoken of [
+      // What the recogniser actually heard in step 8.
+      'Um move to Tuesday. No sorry, uh Wednesday.',
       'Um, move to Tuesday. Uh, no sorry, Wednesday.',
       'Um, move to Tuesday. Uh no sorry, Wednesday.',
       'Um, move to Tuesday. Um. No sorry, Wednesday.',

@@ -6,6 +6,10 @@ Smoke-tested 5 Oct: the packaged app downloads the model (20 s) and dictates wit
 correction. Owner's real profile backed up to
 `C:\Users\KIRINDE\murmur-backups\Murmur-profile-2026-10-05-before-hand-test` (89 files).
 
+From step 8 (retest) on: `%LOCALAPPDATA%\vocette-release\0.5.0-cd77be1\Vocette-0.5.0-win-x64.exe`,
+built at 1ec368e with the step 8 fix (cd77be1); its app.asar holds `HESITATION_RULES`, the
+first build's does not. Same version number, installed over the top.
+
 Starting state of the owner's profile: settings v5, a saved OpenAI key, so the upgrade
 keeps the **cloud** engine; 1,389 history entries; hold to talk on Left Ctrl + Left Shift;
 no vocabulary or replacements; no speech model in `%LOCALAPPDATA%\Murmur\models`. No other
@@ -24,12 +28,12 @@ is dealt with. Pass/fail recorded here, not in the chat.
 | 5 | Alt + Shift + V in Notepad | Last dictation pasted again | 4 | **Pass** (owner) |
 | 6 | Hold the chord and speak immediately | First word kept | 9 | **Pass** (owner) |
 | 7 | Settings → Your words: add "Kirinde" and "ITU-T", save; dictate them | Spelled as written | 8 | **Pass** (owner) |
-| 8 | Say "um, move it to Tuesday, no sorry, Wednesday" | "Move it to Wednesday." | 2 | **Fail** 7 Oct: pasted "Move to Tuesday. No sorry, Wednesday." Settings correct (corrections and fillers on, English, local engine). The current source turns that exact text into "Move to Wednesday.", so the recogniser's raw text was different, and raw text is not stored. Probable cause, reproduced: a hesitation sound beside the marker ("Tuesday. Uh, no sorry, Wednesday." or "No sorry, um Wednesday") hides the marker, because corrections run before filler removal; the fillers are removed afterwards, which leaves exactly the pasted text. Planned fix: remove hesitation sounds only (um, uh, er…) before the corrections pass, then run the full filler pass as now (it must stay after corrections because it removes a sentence-opening "I mean,"). ("it" missing: the recogniser's, not cleanup's) |
-| 9 | Replacement `my email => …` then say "my email" | Expands | 3 | |
-| 10 | Start dictating, switch to another window before letting go | Not pasted; "Copied — paste manually (focus moved)" | 4 | |
-| 11 | Settings → Press to start and stop; press, speak, Esc | Cancelled, nothing pasted; hint shows Esc | R3 | |
-| 12 | History: Edit one entry, Delete + Undo, Show original; "ready in …s" | All work | 13, 10 | |
-| 13 | About → Check now | "You have the latest version (0.5.0)." | 14 | |
-| 14 | Win + L, unlock, dictate | Shortcut still works | R5 | |
+| 8 | Say "um, move it to Tuesday, no sorry, Wednesday" | "Move it to Wednesday." | 2 | **Fail** 7 Oct: pasted "Move to Tuesday. No sorry, Wednesday." Settings correct (corrections and fillers on, English, local engine). History's `heardText` (I first missed it) shows the recogniser heard "Um move to Tuesday. No sorry, uh Wednesday." — confirmed cause: a hesitation sound beside the marker ("Tuesday. Uh, no sorry, Wednesday." or "No sorry, um Wednesday") hides the marker, because corrections run before filler removal; the fillers are removed afterwards, which leaves exactly the pasted text. Planned fix: remove hesitation sounds only (um, uh, er…) before the corrections pass, then run the full filler pass as now (it must stay after corrections because it removes a sentence-opening "I mean,"). ("it" missing: the recogniser's, not cleanup's). **Retest Pass** (owner) on the cd77be1 build: heard "Um moving to Tuesday. No, sorry, uh Wednesday." → pasted "Moving to Wednesday." |
+| 9 | Replacement `my email => …` then say "my email" | Expands | 3 | **Pass** (owner) |
+| 10 | Start dictating, switch to another window before letting go | Not pasted; "Copied — paste manually (focus moved)" | 4 | **Pass** (owner) |
+| 11 | Settings → Press to start and stop; press, speak, Esc | Cancelled, nothing pasted; hint shows Esc | R3 | **Pass** (owner) |
+| 12 | History: Edit one entry, Delete + Undo, Show original; "ready in …s" | All work | 13, 10 | 12a Show original **Pass** (owner): showed the heard text exactly; 12b Edit **Pass** (owner), kept after leaving the page; 12c Delete + Undo **Pass** (owner); "ready in 0.4s" seen on the owner's screenshot. **Pass** |
+| 13 | About → Check now | "You have the latest version (0.5.0)." | 14 | **Pass** (owner, screenshot); daily check left off |
+| 14 | Win + L, unlock, dictate | Shortcut still works | R5 | **Pass** (owner); mode back on hold to talk |
 | 15 | (If willing) AI polish with the OpenAI preset, Professional; dictate a casual sentence | Polished text, "Polished" tag; a question in the dictation is tidied, not answered | 12 (real model) | |
 | 16 | Pro page | Trial days shown; Yearly/Monthly "opens soon" (no Polar links yet); "Your subscription" key field | 11, 18 | |
