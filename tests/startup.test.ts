@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/settings-store'
+import {
+  CHECKOUT_URL_MONTHLY,
+  CHECKOUT_URL_YEARLY,
+  CUSTOMER_PORTAL_URL,
+  POLAR_ORGANIZATION_ID,
+  POLAR_PRO_BENEFIT_IDS
+} from '../src/shared/product'
 import type { EngineStatus } from '../src/shared/engine'
 import type {
   HistorySaveStatus,
@@ -1424,15 +1431,20 @@ describe('Pro over IPC', () => {
     expect(app.polarRequests()).toEqual([])
   })
 
-  it('asks Polar nothing while purchases are not configured', async () => {
+  it('ships configured for Polar, without telling the window the identifiers', async () => {
+    // Unconfigured purchases ask Polar nothing; that is held in licence.test.ts.
     const app = await startApp({ polarReply: granted })
-    const result = (await app.invoke('licence:activate', true, 'MURMUR-KEY')) as LicenceActivation
-    expect(result).toMatchObject({
-      ok: false,
-      error: 'Pro subscriptions are not open yet in this version of Vocette.'
+    const status = app.invoke('licence:status', true) as LicenceStatus
+    expect(status).toMatchObject({
+      purchasesConfigured: true,
+      monthlyCheckoutAvailable: true,
+      yearlyCheckoutAvailable: true,
+      portalAvailable: true
     })
-    expect(app.polarRequests()).toEqual([])
-    expect((app.invoke('licence:status', true) as LicenceStatus).purchasesConfigured).toBe(false)
+    const shown = JSON.stringify(status)
+    for (const id of [POLAR_ORGANIZATION_ID, ...POLAR_PRO_BENEFIT_IDS, CHECKOUT_URL_MONTHLY]) {
+      expect(shown).not.toContain(id)
+    }
   })
 
   it('activates with one request, keeps the licence, and tells the window', async () => {
@@ -1557,13 +1569,18 @@ describe('Pro over IPC', () => {
     expect(licenceBroadcasts(app).at(-1)?.trialEndNoticeDue).toBe(false)
   })
 
-  it('opens the checkout and the portal only once they are configured', async () => {
+  it('opens the two checkouts and the portal, and nothing it does not know', async () => {
     const app = await startApp()
     await app.invoke('app:open-external', true, 'checkout')
-    await app.invoke('app:open-external', true, 'customer-portal')
     expect(app.openedExternally()).toEqual([])
-    await app.invoke('app:open-external', true, 'api-keys')
-    expect(app.openedExternally()).toEqual(['https://platform.openai.com/api-keys'])
+    await app.invoke('app:open-external', true, 'checkout-monthly')
+    await app.invoke('app:open-external', true, 'checkout-yearly')
+    await app.invoke('app:open-external', true, 'customer-portal')
+    expect(app.openedExternally()).toEqual([
+      CHECKOUT_URL_MONTHLY,
+      CHECKOUT_URL_YEARLY,
+      CUSTOMER_PORTAL_URL
+    ])
   })
 
   it("applies Free's limits from the next take once the trial ends, with no restart", async () => {

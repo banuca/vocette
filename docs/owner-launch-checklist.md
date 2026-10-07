@@ -36,13 +36,18 @@ renewals, and issues the licence keys the app activates and checks daily.
    complete. Still to do: the payout details (Settings → Payouts) so money can reach you.
    Polar suggests testing the whole flow with a 100% discount code before going live,
    which can replace the sandbox test in step 9.
-2. **The licence-key benefit:** Products → Benefits (`polar.sh/to/dashboard/products/benefits`)
+2. **Done 7 October 2026** — "Vocette Pro licence key." (visible), id
+   `8dd90d99-a5d5-4ba3-89d4-c301de309d28`: prefix VOCETTE, never expires, 10 activations,
+   customers can deactivate, usage unlimited. Not yet attached to any product.
+   **The licence-key benefit:** Products → Benefits (`polar.sh/to/dashboard/products/benefits`)
    → **+ New Benefit** → Type **License Keys**.
    - Prefix: `VOCETTE`.
    - Expiry: **none** (a subscription's key follows the subscription by itself).
    - **Activation limit: 10**, and allow customers to deactivate devices themselves.
      Without an activation limit, activation in the app fails.
-3. **The two products** — Polar has one product per billing interval:
+3. **Done 7 October 2026:** "Vocette Pro (monthly)" US$4.99 every 1 month and "Vocette Pro
+   (yearly)" US$49 every 1 year, both carrying the one licence-key benefit, public, with no
+   Polar trial. **The two products** — Polar has one product per billing interval:
    - Products → **New product** → **Subscription**, **monthly**, US$4.99 → name "Vocette Pro
      (monthly)" → Automated Benefits → attach the licence-key benefit.
    - The same again, **yearly**, US$49 → "Vocette Pro (yearly)" → attach **the same**
@@ -66,7 +71,11 @@ renewals, and issues the licence keys the app activates and checks daily.
    refundable within 30 days, no questions; later renewals are not, but cancelling stops
    the next one. Put the same sentences in both product descriptions. A refund revokes
    the key, and the app notices at its next daily check.
-6. **The launch offer** (owner, 7 October 2026), two discounts, each **Percentage**,
+6. **Done 7 October 2026:** "Launch offer: 25% off forever" (monthly product) and "Launch
+   offer: half price forever" (yearly product). Both have no code, run forever, end
+   1 January 2027 (shown as "Jan 1, 2027"; that the time is midnight UTC has not been
+   checked), allow 0/100 redemptions and 1 per customer.
+   **The launch offer** (owner, 7 October 2026), two discounts, each **Percentage**,
    duration **Forever**, **Maximum redemptions 100**, ending **1 January 2027 00:00 UTC**
    (the instant `LAUNCH_OFFER_ENDS_AT` in `src/shared/product.ts`):
    - "Launch, monthly": **25%**, restricted to the monthly product (US$3.74).
@@ -75,7 +84,12 @@ renewals, and issues the licence keys the app activates and checks daily.
    terms say so in one line; the headline says "half price forever" / "25% off forever".
    The app says "the first 100 subscribers" because it cannot tell when the places are
    gone; Polar's checkout shows the price that applies.
-7. **The checkout links:** Products → **Checkout Links** → **New Link** → the monthly
+7. **Done 7 October 2026**, each with its launch discount preset and discount codes off.
+   Both answer 200 with their product titles:
+   - monthly ("App – monthly"): `https://buy.polar.sh/polar_cl_AqgJRn1rgMJ06D64awrQjFmSKUWEnB3J5gD934gYOeD`
+   - yearly ("App – yearly"): `https://buy.polar.sh/polar_cl_Nts3HO2r5iMwHTJRYbJWhEzAIyWTIc9Fwdzcg4HILVK`
+   - The portal `https://polar.sh/vocette/portal` answers 200 ("Customer Portal | Vocette").
+   **The checkout links:** Products → **Checkout Links** → **New Link** → the monthly
    product, with the monthly launch discount **pinned** to the link so nobody types a code;
    then the same for the yearly product and its discount. Copy both URLs. After the offer,
    unpin the discounts from the links: the URLs, and so the app, stay the same.

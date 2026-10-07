@@ -60,11 +60,13 @@ export const FREE_REPLACEMENT_RULES = 20
 export const PRO_REPLACEMENT_RULES = 200
 
 /** Owner: the checkout link of the monthly product, `https://buy.polar.sh/polar_cl_…`. Empty disables it. */
-export const CHECKOUT_URL_MONTHLY = ''
+export const CHECKOUT_URL_MONTHLY =
+  'https://buy.polar.sh/polar_cl_AqgJRn1rgMJ06D64awrQjFmSKUWEnB3J5gD934gYOeD'
 /** Owner: the checkout link of the yearly product. Empty disables it. */
-export const CHECKOUT_URL_YEARLY = ''
+export const CHECKOUT_URL_YEARLY =
+  'https://buy.polar.sh/polar_cl_Nts3HO2r5iMwHTJRYbJWhEzAIyWTIc9Fwdzcg4HILVK'
 /** Owner: the customer portal, `https://polar.sh/<slug>/portal`. Empty hides "Manage subscription". */
-export const CUSTOMER_PORTAL_URL = ''
+export const CUSTOMER_PORTAL_URL = 'https://polar.sh/vocette/portal'
 export const POLAR_API_BASE = 'https://api.polar.sh'
 
 /**
@@ -74,10 +76,10 @@ export const POLAR_API_BASE = 'https://api.polar.sh'
  */
 export const UPDATE_REPOSITORY = 'banuca/murmur'
 /** Owner: Polar → Settings → Organization → Identifier. A public identifier, safe to ship. */
-export const POLAR_ORGANIZATION_ID = ''
+export const POLAR_ORGANIZATION_ID = '42817033-36a1-44d0-8596-febd6f20e293'
 /**
  * Owner: the id of the Licence Keys benefit on the Pro products — one id when
  * both the monthly and the yearly product carry the same benefit (recommended:
  * switching plans then keeps the same key), two when each has its own.
  */
-export const POLAR_PRO_BENEFIT_IDS: readonly string[] = []
+export const POLAR_PRO_BENEFIT_IDS: readonly string[] = ['8dd90d99-a5d5-4ba3-89d4-c301de309d28']
