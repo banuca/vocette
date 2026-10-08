@@ -63,6 +63,9 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Vocette
+  # The name in Windows' Apps list: the product alone, not the default
+  # "Vocette 0.6.0". The version is shown in its own column.
+  uninstallDisplayName: ${productName}
   # Uninstalling keeps settings, history and the speech model: a reinstall
   # picks up where the user left off. They are removed by hand, and the
   # website's FAQ says where.
@@ -111,7 +114,7 @@ linux:
       arch: [x64]
   icon: resources/icon.png
   category: Utility;AudioVideo;
-  maintainer: Vocette contributors
+  maintainer: Vocette
   synopsis: Push-to-talk dictation with your own transcription API key
   artifactName: ${productName}-${version}-linux-${arch}.${ext}
   # The desktop file name has to match `app.setDesktopName` in the main
