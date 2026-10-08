@@ -102,6 +102,8 @@ interface StartupHarness {
   savedLicences: () => Array<Record<string, unknown>>
   licenceCleared: () => number
   openedExternally: () => string[]
+  /** What the app last told the operating system about its palette. */
+  themeSource: () => string
 }
 
 async function settle(): Promise<void> {
@@ -202,6 +204,12 @@ async function startApp(options: {
   const polarRequests: Array<{ url: string; init: RequestInit }> = []
   const githubRequests: Array<{ url: string; init: RequestInit }> = []
   const openedExternally: string[] = []
+  const nativeThemeFake = {
+    shouldUseDarkColors: true,
+    shouldUseDarkColorsForSystemIntegratedUI: true,
+    themeSource: 'system',
+    on: vi.fn()
+  }
   const fullyCapable = {
     globalHold: { state: 'available', reason: '', pane: null },
     globalToggle: { state: 'available', reason: '', pane: null },
@@ -287,7 +295,7 @@ async function startApp(options: {
       createFromPath: vi.fn(() => ({})),
       createEmpty: vi.fn(() => ({ addRepresentation: vi.fn() }))
     },
-    nativeTheme: { shouldUseDarkColors: true, shouldUseDarkColorsForSystemIntegratedUI: true, on: vi.fn() },
+    nativeTheme: nativeThemeFake,
     dialog: {
       showMessageBox: vi.fn((box: { title?: string; message?: string; detail?: string }) => {
         timeline.push('dialog')
@@ -650,7 +658,8 @@ async function startApp(options: {
     storedUpdateCheck: () => storedSettings.updateCheck,
     savedLicences: () => savedLicences,
     licenceCleared: () => licenceClears,
-    openedExternally: () => openedExternally
+    openedExternally: () => openedExternally,
+    themeSource: () => nativeThemeFake.themeSource
   }
 }
 
@@ -1565,6 +1574,15 @@ describe('Pro over IPC', () => {
     expect(app.licenceCleared()).toBe(1)
     expect(after.licence).toBeNull()
     expect(licenceBroadcasts(app).at(-1)?.licence).toBeNull()
+  })
+
+  it('tells Windows the palette, so the title bar matches the window', async () => {
+    const app = await startApp()
+    expect(app.themeSource()).toBe('system')
+    await app.invoke('settings:save', true, { theme: 'dark' })
+    expect(app.themeSource()).toBe('dark')
+    await app.invoke('settings:save', true, { theme: 'light' })
+    expect(app.themeSource()).toBe('light')
   })
 
   it('tells the window when the trial notice is dismissed', async () => {

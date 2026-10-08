@@ -759,8 +759,18 @@ function hardenWebContents(window: BrowserWindow): void {
   })
 }
 
+/**
+ * Tells the operating system which palette Vocette is in, so the parts it draws itself — the
+ * window's title bar on Windows — match the page. `system` hands the choice back to the
+ * operating system, which is what following Windows means.
+ */
+function applyNativeTheme(): void {
+  nativeTheme.themeSource = settingsStore.getInternal().theme
+}
+
 /** The Graphite ground of the palette the window opens in, so no flash of the other. */
 function windowBackdrop(): string {
+  applyNativeTheme()
   const theme = settingsStore.getInternal().theme
   const dark = theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors)
   return dark ? '#0e0e11' : '#f4f4f6'
@@ -846,6 +856,7 @@ async function createWindows(): Promise<void> {
 
 /** Sends only the palette, and only to the window that cannot look it up. */
 function broadcastTheme(): void {
+  applyNativeTheme()
   overlayWindow?.webContents.send('app:theme', settingsStore.getInternal().theme)
 }
 
