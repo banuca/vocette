@@ -363,6 +363,22 @@ describe('v4 → v5 migration', () => {
   })
 })
 
+describe('zoom', () => {
+  it('starts at 100%, keeps a size it knows, and ignores one it does not', () => {
+    expect(normaliseSettings({}).uiZoom).toBe(1)
+    expect(normaliseSettings({ uiZoom: 1.25 }).uiZoom).toBe(1.25)
+    expect(normaliseSettings({ uiZoom: 3 }).uiZoom).toBe(1)
+    expect(normaliseSettings({ uiZoom: '1.25' }).uiZoom).toBe(1)
+  })
+
+  it('remembers the size between sessions', () => {
+    const store = new SettingsStore(file)
+    store.setUiZoom(1.5)
+    store.setUiZoom(1.3)
+    expect(new SettingsStore(file).getInternal().uiZoom).toBe(1.5)
+  })
+})
+
 describe('cleanup switches', () => {
   /** A v5 file written before the two switches existed. */
   const withoutSwitches = (): Record<string, unknown> => {

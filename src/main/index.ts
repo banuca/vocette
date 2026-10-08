@@ -43,6 +43,7 @@ import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform
 import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { rearmPlan } from './rearm-plan'
+import { DEFAULT_ZOOM, stepZoom, zoomKey } from './zoom'
 import { listeningBars, trayFrame, writingAlphas, type TrayFrame, type TrayState } from './tray-icon'
 import { UpdateChecker } from './update-check'
 import { polishText, requestPolish } from './polish-service'
@@ -798,6 +799,19 @@ async function createWindows(): Promise<void> {
     webPreferences: { ...sharedPreferences, preload }
   })
   mainWindow.setMenuBarVisibility(false)
+  // Zoom, as in a browser: the main window only, remembered between sessions.
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow?.webContents.setZoomFactor(settingsStore.getInternal().uiZoom)
+  })
+  mainWindow.webContents.on('zoom-changed', (_event, direction) => {
+    setZoom(stepZoom(settingsStore.getInternal().uiZoom, direction === 'in' ? 1 : -1))
+  })
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const key = zoomKey(input)
+    if (!key) return
+    event.preventDefault()
+    setZoom(key === 'reset' ? DEFAULT_ZOOM : stepZoom(settingsStore.getInternal().uiZoom, key === 'in' ? 1 : -1))
+  })
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault()
@@ -852,6 +866,12 @@ async function createWindows(): Promise<void> {
   // The overlay is a separate document with its own stylesheet, so it has to
   // be told the palette; it has no settings of its own to read.
   broadcastTheme()
+}
+
+/** Applies and keeps a zoom size for the main window. */
+function setZoom(factor: number): void {
+  settingsStore.setUiZoom(factor)
+  mainWindow?.webContents.setZoomFactor(settingsStore.getInternal().uiZoom)
 }
 
 /** Sends only the palette, and only to the window that cannot look it up. */

@@ -29,6 +29,7 @@ import {
 import { RECORDING_MODES, type RecordingMode } from '../shared/capabilities'
 import { clampReplacements } from '../shared/replacements'
 import { clampVocabulary } from '../shared/vocabulary'
+import { DEFAULT_ZOOM, isZoomStep } from './zoom'
 import {
   DEFAULT_POLISH,
   MAX_POLISH_INSTRUCTIONS_CHARS,
@@ -131,6 +132,8 @@ export interface StoredSettings {
   updateCheck: boolean
   /** When an update check last finished, so a restart cannot make it daily-plus. */
   lastUpdateCheckAt: string | null
+  /** The main window's zoom, one of `ZOOM_STEPS`; the pill never zooms. */
+  uiZoom: number
   /** AI polish (Pro); see `src/shared/polish.ts`. */
   polishEnabled: boolean
   polishStyle: PolishStyle
@@ -177,6 +180,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   licence: null,
   updateCheck: false,
   lastUpdateCheckAt: null,
+  uiZoom: DEFAULT_ZOOM,
   polishEnabled: DEFAULT_POLISH.enabled,
   polishStyle: DEFAULT_POLISH.style,
   polishInstructions: DEFAULT_POLISH.instructions,
@@ -417,7 +421,8 @@ export function normaliseSettings(value: unknown): StoredSettings {
       candidate.lastUpdateCheckAt.length <= 64 &&
       !Number.isNaN(Date.parse(candidate.lastUpdateCheckAt))
         ? candidate.lastUpdateCheckAt
-        : null
+        : null,
+    uiZoom: isZoomStep(candidate.uiZoom) ? candidate.uiZoom : DEFAULT_ZOOM
   }
 }
 
@@ -709,6 +714,13 @@ export class SettingsStore {
   /** Switches the daily update check on or off. */
   setUpdateCheck(enabled: boolean): void {
     this.settings = { ...this.settings, updateCheck: enabled }
+    this.write()
+  }
+
+  /** Keeps the main window's zoom for next time; a size that is not a step is ignored. */
+  setUiZoom(factor: number): void {
+    if (!isZoomStep(factor) || factor === this.settings.uiZoom) return
+    this.settings = { ...this.settings, uiZoom: factor }
     this.write()
   }
 
