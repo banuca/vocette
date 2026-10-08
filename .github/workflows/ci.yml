@@ -81,11 +81,9 @@ jobs:
         run: npx electron-vite build
 
       - name: Package
-        run: npm run ${{ matrix.script }}
-        env:
-          # Without a token electron-builder still packages; this only stops it
-          # trying to reach GitHub for a release it must never create.
-          GH_TOKEN: ''
+        # On CI electron-builder publishes by default, and fails for want of a
+        # token. This workflow never publishes: it only builds and uploads.
+        run: npm run ${{ matrix.script }} -- --publish never
 
       - name: Check the native modules survived packaging
         shell: bash
