@@ -15,8 +15,8 @@ Checked before handing over: tsc, lint, 1,507 tests.
 
 | # | Step | Expected | Result |
 |---|---|---|---|
-| 1 | Install 0.6.1 over 0.6.0; look in Settings → Apps → Installed apps | "Vocette", publisher Vocette, version 0.6.1 | |
-| 2 | Ctrl + mouse wheel up and down in the main window; Ctrl + 0 | Grows and shrinks in steps; resets | |
-| 3 | Zoom in, quit, reopen | Opens at the same size | |
-| 4 | Polish on: dictate 8 or more words | "Polishing…" with a running clock, then pasted | |
-| 5 | Polish on: dictate under 8 words | No "Polishing…"; pasted straight away | |
+| 1 | Install 0.6.1 over 0.6.0; look in Settings → Apps → Installed apps | "Vocette", publisher Vocette, version 0.6.1 | **Pass** (owner screenshot: "Vocette · 0.6.1 · Vocette") |
+| 2 | Ctrl + mouse wheel up and down in the main window; Ctrl + 0 | Grows and shrinks in steps; resets | **Pass** (owner, physical mouse wheel, screenshot zoomed in). Note: zoomed in, the window is effectively narrower, so the sidebar becomes the icon rail and the stats break into the ragged column (K2). Owner: "maybe interesting for the dashboard design next", so it goes into K9 |
+| 3 | Zoom in, quit, reopen | Opens at the same size | **Pass** (owner) |
+| 4 | Polish on: dictate 8 or more words | "Polishing…" with a running clock, then pasted | **Pass** (owner) on the second try. The first "no polishing" was the rule working: the takes were 7, 7 and 3 words. Watch whether 8 words is too high for the owner's habit of short dictations |
+| 5 | Polish on: dictate under 8 words | No "Polishing…"; pasted straight away | **Pass** (observed in the first attempts: 7-, 7- and 3-word takes were unpolished, waits of 253–834 ms) |
