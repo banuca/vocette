@@ -1,6 +1,6 @@
 import './overlay.css'
 import { formatWait, isMeasuredWait } from '../shared/format'
-import type { WorkflowStatus } from '../shared/types'
+import type { Theme, WorkflowStatus } from '../shared/types'
 import { levelToBars, restingBars } from './level-meter'
 
 const overlay = document.querySelector<HTMLDivElement>('#overlay')
@@ -119,6 +119,16 @@ window.murmur.onLevel((level) => {
  * window does. This window is transparent, and a colour scheme would have the
  * browser paint its own opaque canvas behind the card.
  */
+let themeSetting: Theme = 'system'
+const systemDark =
+  typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null
+const paintTheme = (): void => {
+  document.documentElement.dataset.theme =
+    themeSetting === 'system' ? (systemDark?.matches === false ? 'light' : 'dark') : themeSetting
+}
 window.murmur.onTheme((theme) => {
-  document.documentElement.dataset.theme = theme
+  themeSetting = theme
+  paintTheme()
 })
+// Following Windows means following it while the pill is up, too.
+systemDark?.addEventListener('change', paintTheme)

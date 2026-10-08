@@ -283,6 +283,7 @@ async function startApp(options: {
       })
     },
     nativeImage: { createFromPath: vi.fn(() => ({})) },
+    nativeTheme: { shouldUseDarkColors: true },
     dialog: {
       showMessageBox: vi.fn((box: { title?: string; message?: string; detail?: string }) => {
         timeline.push('dialog')

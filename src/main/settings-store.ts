@@ -162,7 +162,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   spokenFormatting: true,
   playSounds: true,
   launchAtLogin: false,
-  theme: 'dark',
+  theme: 'system',
   microphoneId: '',
   historyRetentionDays: 0,
   model: 'gpt-transcribe',

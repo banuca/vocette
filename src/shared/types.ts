@@ -161,14 +161,17 @@ export const LANGUAGE_OPTIONS = [
 export type ApiKeySource = 'none' | 'stored' | 'session'
 
 /**
- * The interface palette, chosen by the user and kept with the rest of their
- * settings so it survives a restart. Modern Dark is the default; `light`
- * follows Visual Studio Code's Light Modern theme. The overlay uses the same
+ * The interface palette, kept with the rest of the settings so it survives a
+ * restart. `system`, the default, follows the operating system's light or dark
+ * mode until someone presses the sun or the moon. The overlay uses the same
  * value, so a light window never has a black pill floating over it.
  */
-export type Theme = 'dark' | 'light'
+export type Theme = 'dark' | 'light' | 'system'
 
-export const THEMES: readonly Theme[] = ['dark', 'light']
+/** What `system` comes to at any moment: the palette actually on screen. */
+export type AppliedTheme = 'dark' | 'light'
+
+export const THEMES: readonly Theme[] = ['dark', 'light', 'system']
 
 /**
  * Where speech becomes text. `local` runs the downloaded speech model on this

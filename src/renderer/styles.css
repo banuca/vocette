@@ -394,39 +394,49 @@ a:focus-visible {
   padding-top: 10px;
 }
 
-.theme-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 30px;
-  padding: 6px 8px;
+/* The sun and the moon in one pill, the half in force raised. */
+.theme-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.theme-switch button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 24px;
+  padding: 0;
   color: var(--text-muted);
-  font-size: 12px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background-color 120ms ease;
+  border-radius: var(--radius-pill);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
-.theme-toggle:hover {
-  color: var(--text);
-  background: var(--surface-hover);
+.theme-switch button:hover {
+  color: var(--text-heading);
 }
 
-.theme-toggle:focus-visible {
+.theme-switch button[aria-pressed='true'] {
+  color: var(--text-heading);
+  background: var(--surface-card);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-sm);
+}
+
+.theme-switch button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.theme-toggle svg {
-  flex: none;
-}
-
 /* A theme that could not be saved says so where it happened. */
-.theme-toggle[data-error='true'] {
-  color: var(--status-bad);
+.theme-switch[data-error='true'] {
   border-color: var(--status-bad);
 }
 
@@ -2226,7 +2236,6 @@ a:focus-visible {
 
   .brand div:last-child,
   .nav-item span:last-child,
-  .theme-toggle span,
   .sidebar-footer {
     display: none;
   }
@@ -2239,9 +2248,9 @@ a:focus-visible {
     margin-top: auto;
   }
 
-  .theme-toggle {
-    justify-content: center;
-    padding: 8px 0;
+  /* In the narrow rail the pill stands on end, sun above moon. */
+  .theme-switch {
+    flex-direction: column;
   }
 
   /* Only the icon is left, so centre it and keep the hit area square. The

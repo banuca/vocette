@@ -344,15 +344,16 @@ describe('v3 → v4 migration', () => {
 })
 
 describe('v4 → v5 migration', () => {
-  it('gives a settings file with no theme the dark default', () => {
+  it('gives a settings file with no theme the follow-Windows default', () => {
     const v4 = { ...DEFAULT_SETTINGS, version: 4 } as Record<string, unknown>
     delete v4.theme
-    expect(normaliseSettings(v4).theme).toBe('dark')
+    expect(normaliseSettings(v4).theme).toBe('system')
   })
 
   it('keeps a theme it recognises and rejects one it does not', () => {
     expect(normaliseSettings({ theme: 'light' }).theme).toBe('light')
-    expect(normaliseSettings({ theme: 'solarized' }).theme).toBe('dark')
+    expect(normaliseSettings({ theme: 'solarized' }).theme).toBe('system')
+    expect(normaliseSettings({ theme: 'dark' }).theme).toBe('dark')
   })
 
   it('survives a restart, because a theme is a setting and not a browser cache', () => {

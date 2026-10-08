@@ -11,6 +11,7 @@ import {
   globalShortcut,
   ipcMain,
   nativeImage,
+  nativeTheme,
   net,
   powerMonitor,
   screen,
@@ -756,6 +757,13 @@ function hardenWebContents(window: BrowserWindow): void {
   })
 }
 
+/** The Graphite ground of the palette the window opens in, so no flash of the other. */
+function windowBackdrop(): string {
+  const theme = settingsStore.getInternal().theme
+  const dark = theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors)
+  return dark ? '#0e0e11' : '#f4f4f6'
+}
+
 async function createWindows(): Promise<void> {
   const icon = resourcePath('icon.png')
   const sharedPreferences = {
@@ -772,7 +780,8 @@ async function createWindows(): Promise<void> {
     minHeight: 620,
     show: false,
     title: 'Vocette',
-    backgroundColor: '#f4f4f6',
+    // The colour shown before the page paints: the palette the window will open in.
+    backgroundColor: windowBackdrop(),
     icon,
     webPreferences: { ...sharedPreferences, preload }
   })
