@@ -74,7 +74,7 @@ export const POLAR_API_BASE = 'https://api.polar.sh'
  * as `owner/name`. It must be public, with releases published there, or every
  * check says no release was found.
  */
-export const UPDATE_REPOSITORY = 'banuca/murmur'
+export const UPDATE_REPOSITORY = 'banuca/vocette'
 /** Owner: Polar → Settings → Organization → Identifier. A public identifier, safe to ship. */
 export const POLAR_ORGANIZATION_ID = '42817033-36a1-44d0-8596-febd6f20e293'
 /**

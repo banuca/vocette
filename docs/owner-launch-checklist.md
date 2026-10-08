@@ -19,7 +19,7 @@ month or US$49 a year, on up to 10 devices, with the launch offer below.
 4. **Trade mark:** ask an attorney for a clearance search on VOCETTE in classes 9 and 42
    (CH, EU, UK, US, including sound-alikes); if clear, file in Switzerland first, then
    the EU, UK and US through the Madrid system. See `docs/research/naming.md`.
-5. **Rename the GitHub repository** from `murmur` to `vocette` when you publish
+5. ~~**Rename the GitHub repository**~~ **Done** 8 October 2026: `banuca/vocette` (GitHub redirects the old address). `UPDATE_REPOSITORY` updated. Was: rename from `murmur` to `vocette` when you publish
    (Settings → General → Repository name; GitHub redirects the old address). Then change
    `UPDATE_REPOSITORY` in `src/shared/product.ts` to `banuca/vocette`.
 6. **Decide the copyright holder.** `LICENSE` says "Vocette contributors". For a product
@@ -115,7 +115,7 @@ renewals, and issues the licence keys the app activates and checks daily.
    `%LOCALAPPDATA%\vocette-release\0.5.0-polar` (8101885). **Activation in the app: Pass**
    (owner, real profile, live Polar): before it, the Pro page showed the offer line and the
    struck prices; after it, "Pro — thank you for supporting Vocette", "Subscription active on
-   this PC · key ending CCCC40 · confirmed today". **Check now: Pass** ("Your subscription is
+   this PC · key ending …… · confirmed today". **Check now: Pass** ("Your subscription is
    active."). **Manage subscription: Pass** (opens the customer portal in the browser).
    Friends link "Friends" (yearly, no preset, codes allowed):
    `https://buy.polar.sh/polar_cl_zGiWMgLwnQYDOr5oQk63CxrKyWUD7xYzFI1ih0BsCN2` + code FRIENDOFVOCETTE.

@@ -1832,7 +1832,7 @@ describe('the update check', () => {
     new Response(
       JSON.stringify({
         tag_name: 'v0.6.0',
-        html_url: 'https://github.com/banuca/murmur/releases/tag/v0.6.0'
+        html_url: 'https://github.com/banuca/vocette/releases/tag/v0.6.0'
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     )
@@ -1867,7 +1867,7 @@ describe('the update check', () => {
     expect(status).toMatchObject({ state: 'available', latest: 'v0.6.0' })
     expect(app.githubRequests()).toHaveLength(1)
     expect(app.githubRequests()[0]?.url).toBe(
-      'https://api.github.com/repos/banuca/murmur/releases/latest'
+      'https://api.github.com/repos/banuca/vocette/releases/latest'
     )
     expect(
       app.sentToMain().filter(({ channel }) => channel === 'update:status').at(-1)?.payload
@@ -1875,7 +1875,7 @@ describe('the update check', () => {
     expect(app.trayLabels()).toContain('Update available: 0.6.0 — open download page')
 
     await app.invoke('app:open-external', true, 'release')
-    expect(app.openedExternally()).toEqual(['https://github.com/banuca/murmur/releases/tag/v0.6.0'])
+    expect(app.openedExternally()).toEqual(['https://github.com/banuca/vocette/releases/tag/v0.6.0'])
   })
 
   it('shows no tray line when the check finds nothing newer or fails', async () => {

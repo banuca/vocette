@@ -137,7 +137,7 @@ Every dictation is timed from letting go until its text is ready to paste: the o
 Requires Node 22.12+ and npm 10+.
 
 ```bash
-git clone https://github.com/banuca/murmur.git
+git clone https://github.com/banuca/vocette.git
 cd murmur
 npm install
 npm run dev            # run against the dev server (HMR included)

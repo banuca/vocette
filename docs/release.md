@@ -52,7 +52,7 @@ The script prints whether the build it made is signed. Check afterwards with
    version and date, commit, and tag it: `git tag v<version>`.
 2. `npm run release:win` on that commit.
 3. Run the smoke test below on the result.
-4. On GitHub, draft a release for the tag (`https://github.com/banuca/murmur/releases/new`),
+4. On GitHub, draft a release for the tag (`https://github.com/banuca/vocette/releases/new`),
    attach the `.exe`, the `.zip` and `SHA256SUMS.txt`, paste the changelog section, and
    publish. The update check in the app reads this repository's latest published release:
    the tag must be the version (`v0.5.0`), and drafts and pre-releases are not offered.

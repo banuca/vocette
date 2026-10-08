@@ -10,7 +10,7 @@ import {
 } from '../src/main/update-check'
 import { compareVersions, isVersion, updateResultText } from '../src/shared/update'
 
-const REPO = 'banuca/murmur'
+const REPO = 'banuca/vocette'
 
 function reply(status: number, body: unknown): Response {
   return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
