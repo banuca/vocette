@@ -673,7 +673,9 @@ afterEach(() => {
 })
 
 describe('bootstrap', () => {
-  it('creates every window and the tray when startup retention succeeds', async () => {
+  // The first test here pays for loading the whole main process; under a full
+  // parallel run that has twice taken just over the default 5 s.
+  it('creates every window and the tray when startup retention succeeds', { timeout: 20_000 }, async () => {
     const app = await startApp()
 
     expect(app.pruneCalls).toEqual([30])
