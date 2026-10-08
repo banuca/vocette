@@ -43,6 +43,7 @@ import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform
 import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { rearmPlan } from './rearm-plan'
+import { listeningBars, trayFrame, writingAlphas, type TrayFrame, type TrayState } from './tray-icon'
 import { UpdateChecker } from './update-check'
 import { polishText, requestPolish } from './polish-service'
 import { OPENAI_POLISH_ENDPOINT, type PolishOutcome } from '../shared/polish'
@@ -239,6 +240,7 @@ function broadcastStatus(status: WorkflowStatus): void {
     error: `Vocette — ${status.detail ?? 'dictation failed'}`
   }
   tray?.setToolTip(tooltipByPhase[status.phase])
+  setTrayState(status.phase)
 
   if (status.phase === 'idle') {
     // Let the overlay play its exit animation before the window disappears.
@@ -1089,8 +1091,67 @@ function launchAtLoginLabel(): string {
   return 'Start when I sign in'
 }
 
+/** What the tray icon shows, and the timer that animates writing. */
+let trayState: TrayState = 'ready'
+let trayLevelAt = 0
+let trayWritingStep = 0
+let trayWritingTimer: NodeJS.Timeout | null = null
+
+/** The tray's frames are drawn at 16 and 32 px; Windows picks the one for its scale. */
+function trayImage(frame: TrayFrame): Electron.NativeImage {
+  const image = nativeImage.createEmpty()
+  image.addRepresentation({ scaleFactor: 1, dataURL: `data:image/png;base64,${frame.small.toString('base64')}` })
+  image.addRepresentation({ scaleFactor: 2, dataURL: `data:image/png;base64,${frame.large.toString('base64')}` })
+  return image
+}
+
+/** The taskbar's own light or dark, which the tray sits on; not the app's theme. */
+function darkTaskbar(): boolean {
+  return nativeTheme.shouldUseDarkColorsForSystemIntegratedUI
+}
+
+function paintTray(heights?: readonly number[], alphas?: readonly number[]): void {
+  tray?.setImage(trayImage(trayFrame(trayState, darkTaskbar(), heights, alphas)))
+}
+
+/** Ready, listening or writing, from the workflow phase. */
+function setTrayState(phase: WorkflowStatus['phase']): void {
+  const next: TrayState =
+    phase === 'recording' ? 'listening' : phase === 'processing' || phase === 'starting' ? 'writing' : 'ready'
+  if (next === trayState) return
+  trayState = next
+  trayWritingTimer = clearTimer(trayWritingTimer)
+  if (next === 'writing') {
+    // A light passes along the bars while the words are being worked out.
+    trayWritingTimer = setInterval(() => {
+      trayWritingStep += 1
+      paintTray(undefined, writingAlphas(trayWritingStep))
+    }, 140)
+    paintTray(undefined, writingAlphas(trayWritingStep))
+    return
+  }
+  paintTray(next === 'listening' ? listeningBars(0) : undefined)
+}
+
+/**
+ * While listening, the bars follow the microphone. Readings arrive about 14
+ * times a second; ten redraws a second is plenty for a 16 px icon and keeps
+ * the shell from churning.
+ */
+function trayLevel(level: number): void {
+  if (trayState !== 'listening') return
+  const now = Date.now()
+  if (now - trayLevelAt < 100) return
+  trayLevelAt = now
+  paintTray(listeningBars(level))
+}
+
 function createTray(): void {
-  tray = new Tray(nativeImage.createFromPath(resourcePath('tray.png')))
+  tray = new Tray(trayImage(trayFrame('ready', darkTaskbar())))
+  // Switching the taskbar between light and dark repaints the bars to match.
+  nativeTheme.on('updated', () => {
+    if (trayState !== 'writing') paintTray(trayState === 'listening' ? listeningBars(0) : undefined)
+  })
   tray.setToolTip('Vocette')
   tray.on('click', () => showMain('history'))
   rebuildTrayMenu()
@@ -1479,6 +1540,7 @@ function registerIpc(): void {
     if (typeof payload.level !== 'number' || !Number.isFinite(payload.level)) return
     if (!dictation.isRecordingRequest(payload.requestId)) return
     overlayWindow?.webContents.send('workflow:level', Math.min(1, Math.max(0, payload.level)))
+  trayLevel(Math.min(1, Math.max(0, payload.level)))
   })
 }
 

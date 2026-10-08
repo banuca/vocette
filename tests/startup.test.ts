@@ -249,6 +249,7 @@ async function startApp(options: {
     }
     setToolTip = vi.fn()
     setContextMenu = vi.fn()
+    setImage = vi.fn()
     on = vi.fn()
   }
 
@@ -282,8 +283,11 @@ async function startApp(options: {
         return {}
       })
     },
-    nativeImage: { createFromPath: vi.fn(() => ({})) },
-    nativeTheme: { shouldUseDarkColors: true },
+    nativeImage: {
+      createFromPath: vi.fn(() => ({})),
+      createEmpty: vi.fn(() => ({ addRepresentation: vi.fn() }))
+    },
+    nativeTheme: { shouldUseDarkColors: true, shouldUseDarkColorsForSystemIntegratedUI: true, on: vi.fn() },
     dialog: {
       showMessageBox: vi.fn((box: { title?: string; message?: string; detail?: string }) => {
         timeline.push('dialog')
