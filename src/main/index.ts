@@ -772,7 +772,7 @@ async function createWindows(): Promise<void> {
     minHeight: 620,
     show: false,
     title: 'Vocette',
-    backgroundColor: '#f4f6fb',
+    backgroundColor: '#f4f4f6',
     icon,
     webPreferences: { ...sharedPreferences, preload }
   })

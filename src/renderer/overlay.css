@@ -32,22 +32,22 @@ body {
 }
 
 /*
- * The same Modern Dark palette as the window, restated here because the
+ * The same Graphite palette as the window, restated here because the
  * overlay is a separate document with its own stylesheet — it deliberately
  * does not load the app's CSS just to draw one pill.
  */
 .overlay {
-  --accent: #7c6cf0;
-  --accent-soft: rgb(124 108 240 / 18%);
-  --card: rgb(31 31 36 / 97%);
-  --card-border: #2f2f37;
-  --card-text: #fafafa;
-  --card-muted: #9b9ba5;
+  --accent: #f2f2f5;
+  --accent-soft: rgb(242 242 245 / 12%);
+  --card: rgb(23 23 27 / 97%);
+  --card-border: #2a2a31;
+  --card-text: #f2f2f5;
+  --card-muted: #a0a0ab;
   --card-shadow:
     0 10px 28px rgb(0 0 0 / 45%),
     inset 0 1px 0 rgb(255 255 255 / 4%);
-  --wave: #63636e;
-  --wave-live: #d8d8de;
+  --wave: #5c5c66;
+  --wave-live: #e6e6ea;
   --badge-text: #ffffff;
 
   display: grid;
@@ -86,16 +86,19 @@ body {
 }
 
 .overlay.recording {
-  --accent: #f2777a;
-  --accent-soft: rgb(242 119 122 / 14%);
+  /* Red means one thing in Vocette: it is listening. The bars wear it too. */
+  --accent: #ff5a5f;
+  --accent-soft: rgb(255 90 95 / 14%);
+  --wave-live: #ff5a5f;
 
-  border-color: rgb(242 119 122 / 32%);
+  border-color: rgb(255 90 95 / 32%);
 }
 
 .overlay.processing,
 .overlay.starting {
-  --accent: #ddb159;
-  --accent-soft: rgb(221 177 89 / 14%);
+  /* Writing is quiet grey work, not a warning. */
+  --accent: #c3c3cb;
+  --accent-soft: rgb(195 195 203 / 12%);
 }
 
 .overlay.success {
@@ -312,30 +315,31 @@ body {
  * nowhere near enough contrast for a white badge sitting on a white card.
  */
 :root[data-theme='light'] .overlay {
-  --accent: #5b4fd6;
-  --accent-soft: rgb(91 79 214 / 10%);
+  --accent: #17171c;
+  --accent-soft: rgb(23 23 28 / 8%);
   --card: rgb(255 255 255 / 97%);
-  --card-border: #e0e0dc;
-  --card-text: #17171a;
-  --card-muted: #6b6b73;
+  --card-border: #e2e2e7;
+  --card-text: #17171c;
+  --card-muted: #5e5e69;
   --card-shadow:
     0 10px 28px rgb(0 0 0 / 18%),
     inset 0 1px 0 rgb(255 255 255 / 70%);
-  --wave: #bdbdbd;
-  --wave-live: #5a5a5a;
+  --wave: #c3c3cb;
+  --wave-live: #3d3d45;
 }
 
 :root[data-theme='light'] .overlay.recording {
-  --accent: #c4423f;
-  --accent-soft: rgb(196 66 63 / 10%);
+  --accent: #e5383b;
+  --accent-soft: rgb(229 56 59 / 10%);
+  --wave-live: #e5383b;
 
   border-color: rgb(196 66 63 / 32%);
 }
 
 :root[data-theme='light'] .overlay.processing,
 :root[data-theme='light'] .overlay.starting {
-  --accent: #856716;
-  --accent-soft: rgb(133 103 22 / 10%);
+  --accent: #4b4b55;
+  --accent-soft: rgb(75 75 85 / 9%);
 }
 
 :root[data-theme='light'] .overlay.success {

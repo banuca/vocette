@@ -1,3 +1,4 @@
+import { BRAND_MARK_SVG } from '../brand'
 import { icon } from '../icons'
 import type { AppContext } from '../app-context'
 import { escapeHtml } from '../dom'
@@ -93,7 +94,7 @@ export function renderAbout(context: AppContext): AboutView {
 
   context.content.innerHTML = `
     <div class="about-hero">
-      <div class="large-brand-mark" aria-hidden="true"><span></span></div>
+      <span class="large-brand-mark" aria-hidden="true">${BRAND_MARK_SVG}</span>
       <h2>Vocette</h2>
       <p>Open-source push-to-talk dictation for Windows, macOS and Linux.</p>
       <span class="version-badge">Version ${escapeHtml(context.appInfo.version)}</span>

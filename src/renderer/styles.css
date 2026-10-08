@@ -1,5 +1,5 @@
 /*
- * Modern Dark, driven entirely by the tokens below.
+ * Graphite, driven entirely by the tokens below.
  *
  * Every colour in this file is a token. That is the point: the palette is a
  * product decision, and it should be changeable in one place rather than hunted
@@ -15,28 +15,31 @@
      the step between surfaces and a low shadow, not from drawn lines: the
      borders below are close enough to their surface to read as an edge rather
      than as a grid. */
-  --surface-sunken: #141417;
-  --surface-base: #19191d;
-  --surface-card: #1f1f24;
-  --surface-raised: #26262c;
-  --surface-hover: #232329;
+  --surface-sunken: #0a0a0c;
+  --surface-base: #0e0e11;
+  --surface-card: #17171b;
+  --surface-raised: #1f1f24;
+  --surface-hover: #1c1c21;
 
-  --border: #26262c;
-  --border-strong: #35353d;
+  --border: #26262d;
+  --border-strong: #36363e;
 
   /* Its own token: the raised surface is white in light mode, which would
      leave the scrollbar thumb invisible against the track. */
-  --scrollbar-thumb: #303038;
-  --scrollbar-thumb-hover: #45454f;
+  --scrollbar-thumb: #2e2e35;
+  --scrollbar-thumb-hover: #474750;
 
-  --text: #e4e4e8;
-  --text-heading: #fafafa;
-  --text-muted: #9b9ba5;
-  --text-on-accent: #ffffff;
+  --text: #e6e6ea;
+  --text-heading: #f5f5f7;
+  --text-muted: #a0a0ab;
+  --text-on-accent: #111114;
 
-  --accent: #7c6cf0;
-  --accent-hover: #8d7ef5;
-  --accent-quiet: rgb(124 108 240 / 18%);
+  /* Graphite: the accent is the ink itself, white on the dark ground. Colour
+     is kept for meaning: red only while Vocette listens, and the statuses. */
+  --accent: #f2f2f5;
+  --accent-hover: #d9d9de;
+  --accent-quiet: rgb(242 242 245 / 10%);
+  --listen: #ff5a5f;
 
   /* Restrained status accents: readable on the dark ground, never shouted. */
   --status-good: #6fd08c;
@@ -44,7 +47,6 @@
   --status-bad: #f2777a;
   --status-warn-quiet: rgb(221 177 89 / 12%);
   --status-bad-quiet: rgb(242 119 122 / 12%);
-
   /* Depth, kept cheap: two static shadows, never animated. */
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 28%);
   --shadow-md:
@@ -73,7 +75,7 @@
 }
 
 /*
- * Light, after Visual Studio Code's Light Modern.
+ * Graphite light.
  *
  * Only the tokens are restated — no rule below this block knows which theme is
  * in force, which is why switching is a single attribute write on <html> and
@@ -82,33 +84,33 @@
  * are far too pale on white and are replaced rather than reused.
  */
 :root[data-theme='light'] {
-  --surface-sunken: #f3f3f1;
-  --surface-base: #fbfbfa;
+  --surface-sunken: #ececef;
+  --surface-base: #f4f4f6;
   --surface-card: #ffffff;
   --surface-raised: #ffffff;
-  --surface-hover: #ecece9;
+  --surface-hover: #ebebef;
 
-  --border: #e6e6e2;
-  --border-strong: #d5d5d0;
+  --border: #e2e2e7;
+  --border-strong: #d1d1d8;
 
-  --scrollbar-thumb: #d2d2cd;
-  --scrollbar-thumb-hover: #b3b3ad;
+  --scrollbar-thumb: #cfcfd6;
+  --scrollbar-thumb-hover: #a9a9b2;
 
-  --text: #2c2c31;
-  --text-heading: #17171a;
-  --text-muted: #6b6b73;
+  --text: #2a2a31;
+  --text-heading: #17171c;
+  --text-muted: #5e5e69;
   --text-on-accent: #ffffff;
 
-  --accent: #5b4fd6;
-  --accent-hover: #4f44c4;
-  --accent-quiet: rgb(91 79 214 / 10%);
+  --accent: #17171c;
+  --accent-hover: #2e2e36;
+  --accent-quiet: rgb(23 23 28 / 7%);
+  --listen: #e5383b;
 
   --status-good: #1f7a45;
   --status-warn: #856716;
   --status-bad: #c4423f;
   --status-warn-quiet: rgb(133 103 22 / 9%);
   --status-bad-quiet: rgb(196 66 63 / 9%);
-
   /* Far lighter than the dark theme's: on a pale ground a heavy shadow reads
      as dirt rather than as depth. */
   --shadow-sm: 0 1px 2px rgb(18 18 22 / 6%);
@@ -243,44 +245,19 @@ a:focus-visible {
 
 .brand-mark,
 .large-brand-mark {
-  position: relative;
+  display: grid;
   flex: none;
+  place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: var(--radius-md);
-  background: var(--accent);
+  color: var(--text-heading);
 }
 
-.brand-mark::before,
-.large-brand-mark::before,
-.brand-mark::after,
-.large-brand-mark::after,
-.brand-mark span,
-.large-brand-mark span {
-  position: absolute;
-  bottom: 7px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--text-on-accent);
-  content: '';
-}
-
-.brand-mark::before,
-.large-brand-mark::before {
-  left: 7px;
-  height: 7px;
-}
-
-.brand-mark::after,
-.large-brand-mark::after {
-  right: 7px;
-  height: 7px;
-}
-
-.brand-mark span,
-.large-brand-mark span {
-  left: 12px;
-  height: 12px;
+.brand-mark svg,
+.large-brand-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .navigation {
@@ -357,7 +334,7 @@ a:focus-visible {
 }
 
 .status-dot.recording {
-  background: var(--status-bad);
+  background: var(--listen);
   animation: dot-pulse 900ms ease-in-out infinite;
 }
 
@@ -571,7 +548,8 @@ a:focus-visible {
 
 .record-button.tone-recording,
 .record-button.tone-starting {
-  background: var(--status-bad);
+  color: #ffffff;
+  background: var(--listen);
 }
 
 /* Retry shares Cancel's look: they are never shown at the same time. */
@@ -1571,7 +1549,8 @@ a:focus-visible {
   font-size: 12px;
   background: none;
   border: 0;
-  border-bottom: 1px solid transparent;
+  /* With the accent now the ink itself, the underline is what says "link". */
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .link-button:hover:not(:disabled) {
@@ -1905,32 +1884,9 @@ a:focus-visible {
 }
 
 .large-brand-mark {
-  width: 44px;
-  height: 44px;
-  margin: 0 auto 12px;
-  border-radius: 10px;
-}
-
-.large-brand-mark::before,
-.large-brand-mark::after,
-.large-brand-mark span {
-  bottom: 12px;
-  width: 3px;
-}
-
-.large-brand-mark::before {
-  left: 13px;
-  height: 11px;
-}
-
-.large-brand-mark::after {
-  right: 13px;
-  height: 11px;
-}
-
-.large-brand-mark span {
-  left: 20px;
-  height: 19px;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 10px;
 }
 
 .about-hero h2 {

@@ -3,6 +3,7 @@ import type { AppContext, NavigationIntent } from './app-context'
 import { escapeHtml, friendlyError } from './dom'
 import { createHistorySaveWarning, trackHistorySaveStatus } from './history-save-warning'
 import { createRecordingControl } from './recording-control'
+import { BRAND_MARK_SVG } from './brand'
 import { icon } from './icons'
 import { trialBadge } from './licence-text'
 import { applyTheme, createThemeToggle, type ThemeToggle } from './theme'
@@ -45,7 +46,7 @@ async function microphoneAccess(): Promise<MicrophoneAccess> {
 async function mount(): Promise<void> {
   appRoot.innerHTML = `
     <div class="loading-screen">
-      <div class="brand-mark" aria-hidden="true"><span></span></div>
+      <span class="brand-mark" aria-hidden="true">${BRAND_MARK_SVG}</span>
       <p>Opening Vocette…</p>
     </div>
   `
@@ -86,7 +87,7 @@ async function mount(): Promise<void> {
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true"><span></span></div>
+          <span class="brand-mark" aria-hidden="true">${BRAND_MARK_SVG}</span>
           <div><strong>Vocette</strong><small>Open dictation</small></div>
         </div>
         <nav class="navigation" aria-label="Primary navigation">
