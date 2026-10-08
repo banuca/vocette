@@ -1147,8 +1147,10 @@ function paintTray(heights?: readonly number[], alphas?: readonly number[]): voi
 
 /** Ready, listening or writing, from the workflow phase. */
 function setTrayState(phase: WorkflowStatus['phase']): void {
+  // Starting the microphone already counts as listening: the bars turn red
+  // at once and rise as soon as the first sound arrives.
   const next: TrayState =
-    phase === 'recording' ? 'listening' : phase === 'processing' || phase === 'starting' ? 'writing' : 'ready'
+    phase === 'recording' || phase === 'starting' ? 'listening' : phase === 'processing' ? 'writing' : 'ready'
   if (next === trayState) return
   trayState = next
   trayWritingTimer = clearTimer(trayWritingTimer)

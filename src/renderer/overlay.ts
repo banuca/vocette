@@ -9,6 +9,10 @@ const detail = document.querySelector<HTMLDivElement>('#detail')
 const timerElement = document.querySelector<HTMLDivElement>('#timer')
 const levelBars = [...document.querySelectorAll<HTMLElement>('#level .level-bar')]
 const levelDot = document.querySelector<HTMLElement>('#level-dot')
+/** The waveform either side of the badge: left five, then right five, as in the page. */
+const waveBars = [...document.querySelectorAll<HTMLElement>('.waveform i')]
+const reduceMotion =
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /** A bar at rest is a dot this fraction of its height; the stylesheet starts it there too. */
 const BAR_REST_SCALE = 0.2
@@ -43,6 +47,14 @@ function paintLevel(): void {
     const loudest = Math.max(0, ...bars)
     levelDot.style.opacity = (DOT_REST_OPACITY + (1 - DOT_REST_OPACITY) * loudest).toFixed(3)
   }
+  // While listening the waveform follows the voice too, mirrored about the
+  // badge: each side takes the meter's five readings outwards from the middle.
+  // Where motion is reduced it stays still and the dot carries the level.
+  if (!recording || reduceMotion) return
+  waveBars.forEach((bar, index) => {
+    const reading = bars[index < 5 ? index : 9 - index] ?? 0
+    bar.style.transform = `scaleY(${(0.42 + 0.66 * reading).toFixed(3)})`
+  })
 }
 
 function render(status: WorkflowStatus): void {
@@ -61,6 +73,8 @@ function render(status: WorkflowStatus): void {
     watchForStaleLevel(nowRecording)
   }
   recording = nowRecording
+  // Out of listening, the stylesheet's own motion takes the bars back.
+  if (!recording) waveBars.forEach((bar) => bar.style.removeProperty('transform'))
 
   stopTimer()
   if (status.phase === 'recording' && status.startedAt) {
