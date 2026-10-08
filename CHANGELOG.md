@@ -5,7 +5,13 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
-## [0.5.0] — unreleased
+## [0.6.0] — unreleased
+
+The first Vocette release. It was hand-tested on Windows as 0.5.0 and never published under
+that number. 0.6 adds the Graphite look (cool greys, with red only while Vocette listens), a
+sun and moon theme switch that follows Windows until you choose, a bar icon with no tile, and
+a tray icon that moves with your voice. It also adds Pro at US$4.99 a month or US$49 a year on
+up to 10 devices, with a launch offer, and the first **Mac and Linux builds, as betas**.
 
 Vocette now transcribes on your PC by default — no key, no account — and gains a
 30-day Pro trial, Pro as a monthly or yearly subscription, AI polish, snippets, instant capture,
@@ -15,7 +21,7 @@ Windows release build that is checked before it is trusted.
 ### Changed — Murmur is now Vocette
 
 - The product is renamed **Vocette**: window titles, the tray, messages, the installer
-  (`Vocette-0.5.0-win-x64.exe`, installing `Vocette.exe`), the website and the documents.
+  (`Vocette-0.6.0-win-x64.exe`, installing `Vocette.exe`), the website and the documents.
   Your settings, history and downloaded speech model stay exactly where they were — the
   folders on disk keep the name `Murmur`, so nothing has to be moved or downloaded again.
   The app id is now `app.vocette`, so Vocette installs beside an older Murmur or Voice
