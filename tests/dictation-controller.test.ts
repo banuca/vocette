@@ -3211,13 +3211,15 @@ describe('AI polish', () => {
   })
 
   it('runs before the user’s own rules, so a snippet is pasted exactly as written', async () => {
-    const polish = polished('Send it to my email.')
+    const polish = polished('Please send the whole report to my email today.')
     const harness = makeHarness({
       settings: { polish: true, replacements: [{ spoken: 'my email', written: 'name@example.com' }] },
       polish
     })
-    await dictate(harness, 'send it to my email')
-    expect(harness.deps.writeClipboard).toHaveBeenCalledWith('Send it to name@example.com.')
+    await dictate(harness, 'please send the whole report to my email today')
+    expect(harness.deps.writeClipboard).toHaveBeenCalledWith(
+      'Please send the whole report to name@example.com today.'
+    )
   })
 
   it('pastes the text unpolished when polish could not finish, and says why', async () => {
@@ -3227,8 +3229,8 @@ describe('AI polish', () => {
       note: 'took too long'
     }))
     const harness = makeHarness({ settings: { polish: true }, polish })
-    await dictate(harness, 'hello world')
-    expect(harness.deps.writeClipboard).toHaveBeenCalledWith('Hello world')
+    await dictate(harness, 'please send the final report to the whole team today')
+    expect(harness.deps.writeClipboard).toHaveBeenCalledWith('Please send the final report to the whole team today')
     expect(lastSuccess(harness)?.message).toBe('Pasted — unpolished (took too long)')
     // Nothing was polished, so nothing is kept as the text before it.
     expect(harness.deps.recordHistory.mock.calls[0]?.[3]).not.toHaveProperty('originalText')
@@ -3244,7 +3246,7 @@ describe('AI polish', () => {
         })
     )
     const harness = makeHarness({ settings: { polish: true }, polish })
-    harness.deps.transcribe.mockResolvedValueOnce('hello world')
+    harness.deps.transcribe.mockResolvedValueOnce('please send the final report to the whole team today')
     const requestId = harness.beginRecording()
     harness.controller.onShortcutReleased()
     const done = harness.controller.onRecorderAudio({
@@ -3274,7 +3276,31 @@ describe('AI polish', () => {
         )
     )
     const harness = makeHarness({ settings: { polish: true }, polish })
-    await dictate(harness, 'hello world')
+    await dictate(harness, 'please send the final report to the whole team today')
     expect(harness.deps.recordHistory.mock.calls[0]?.[3]?.waitMs).toBeGreaterThanOrEqual(900)
+  })
+
+  it('says it is polishing, with its own clock, before the polish starts', async () => {
+    const polish = polished('Please send the final report to the whole team today.')
+    const harness = makeHarness({ settings: { polish: true }, polish })
+    await dictate(harness, 'please send the final report to the whole team today')
+    const statuses = harness.deps.broadcastStatus.mock.calls.map(([status]) => status)
+    const polishing = statuses.find((status) => status.message === 'Polishing…')
+    expect(polishing).toMatchObject({ phase: 'processing', detail: 'Rewriting it in your chosen style' })
+    expect(typeof polishing?.startedAt).toBe('number')
+    // It comes after transcription and before the paste.
+    expect(statuses.indexOf(polishing!)).toBeGreaterThan(statuses.findIndex((s) => s.message === 'Transcribing…'))
+    expect(statuses.indexOf(polishing!)).toBeLessThan(statuses.findIndex((s) => s.phase === 'success'))
+  })
+
+  it('pastes a short dictation straight away, without polishing it', async () => {
+    const polish = polished('Never.')
+    const harness = makeHarness({ settings: { polish: true }, polish })
+    await dictate(harness, 'hello world')
+    expect(polish).not.toHaveBeenCalled()
+    expect(harness.deps.writeClipboard).toHaveBeenCalledWith('Hello world')
+    expect(lastSuccess(harness)?.message).toBe('Pasted')
+    const statuses = harness.deps.broadcastStatus.mock.calls.map(([status]) => status.message)
+    expect(statuses).not.toContain('Polishing…')
   })
 })

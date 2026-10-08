@@ -11,6 +11,17 @@ export type PolishStyle = (typeof POLISH_STYLES)[number]
 export const POLISH_BUDGETS_MS = [2000, 4000, 8000] as const
 export type PolishBudgetMs = (typeof POLISH_BUDGETS_MS)[number]
 
+/**
+ * Below this many words polish adds little and costs a round trip of a few
+ * seconds, so a short dictation is pasted as it is.
+ */
+export const POLISH_MIN_WORDS = 8
+
+/** Whether a cleaned dictation is long enough to be worth polishing. */
+export function worthPolishing(text: string): boolean {
+  return text.trim().split(/\s+/u).filter(Boolean).length >= POLISH_MIN_WORDS
+}
+
 export const MAX_POLISH_INSTRUCTIONS_CHARS = 500
 
 /** A model name: letters, digits and `._:/@-`, so `llama3.2:3b` and `org/model` both fit. */

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { cleanupTranscript } from '../shared/cleanup'
 import { applyReplacements, type ReplacementRule } from '../shared/replacements'
 import { correctVocabulary, type CommonWordTest } from '../shared/vocabulary-correction'
-import type { PolishOutcome } from '../shared/polish'
+import { worthPolishing, type PolishOutcome } from '../shared/polish'
 import type { RecordingMode } from '../shared/capabilities'
 import type {
   HistoryEntry,
@@ -67,6 +67,8 @@ const PREVIEW_CHARS = 68
 const FINISH_HINT_MAX_LABEL = 24
 /** Shown while the cloud service, having answered busy, is asked once more. */
 const BUSY_RETRY_DETAIL = 'The service was busy — trying once more'
+/** Said under "Polishing…" while AI polish rewrites the text. */
+const POLISHING_DETAIL = 'Rewriting it in your chosen style'
 
 export type SoundKind = 'start' | 'success' | 'error'
 
@@ -1124,7 +1126,15 @@ export class DictationController {
       let finished = cleaned
       let polishedFrom: string | null = null
       let polishNote: string | null = null
-      if (settings.polish && this.deps.polish && cleaned.trim()) {
+      if (settings.polish && this.deps.polish && worthPolishing(cleaned)) {
+        // Its own stage, with its own timer in the overlay, so the wait has a
+        // visible reason rather than looking like slow transcription.
+        this.broadcast({
+          phase: 'processing',
+          message: 'Polishing…',
+          detail: POLISHING_DETAIL,
+          startedAt: Date.now()
+        })
         const outcome = await this.deps.polish(cleaned, attempt.controller.signal)
         if (!this.ownsAttempt(attempt)) return
         if (outcome.polished) {

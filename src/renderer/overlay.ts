@@ -71,6 +71,15 @@ function render(status: WorkflowStatus): void {
     tick()
     // 200ms is plenty for a seconds display and costs far less than rAF.
     timer = window.setInterval(tick, 200)
+  } else if (status.phase === 'processing' && status.startedAt) {
+    // Polishing has its own clock, so a slow provider shows as time spent
+    // polishing rather than as a stalled transcription.
+    const startedAt = status.startedAt
+    const tick = (): void => {
+      timerElement.textContent = formatWait(Date.now() - startedAt)
+    }
+    tick()
+    timer = window.setInterval(tick, 100)
   } else if (status.phase === 'success' && isMeasuredWait(status.waitMs)) {
     // Where the recording's time was: how long the text took after letting go.
     timerElement.textContent = formatWait(status.waitMs)
