@@ -17,13 +17,34 @@ evening notes join list 1. The visual version for the owner is published as an a
 
 ## List 1: known fixes (test day)
 
-- K1. In dark, the Windows title bar stays light. Fix: set `nativeTheme.themeSource` from the
-  theme setting (`system`/`light`/`dark`). The tray uses
-  `shouldUseDarkColorsForSystemIntegratedUI`, which does not change.
+- K1. In dark, the Windows title bar stays light. **Built 40c27e5**: `applyNativeTheme()` sets
+  `nativeTheme.themeSource` at start-up and on every theme change. Startup test added. Built app
+  checked: system → dark (moon) → light (sun). **Pass** (owner, 0.6.0, 8 Oct): the title bar is dark with the moon (screenshot).
 - K2. A narrow window (rail sidebar) breaks the stats row into a ragged indented column.
   Fix: let `.stats` wrap to two or three columns.
 - K3. Ctrl + mouse wheel zoom, plus Ctrl+0 to reset. Use `webContents.setZoomLevel` or Electron's
   zoom roles, kept in steps and remembered.
+
+- K4. Polish: show "Polishing" with its own timer, and skip polish for dictations under about
+  8 words. Owner agreed on 8 Oct.
+- K5. Motion **A, "Rise"**, in the shared overlay so that every platform animates the same.
+  Owner chose it on 8 Oct. Only the tray or menu-bar icon may differ by platform.
+- K6. The publisher in Windows' Apps list should be **"Vocette"**, not "Vocette contributors".
+  It comes from package.json `author`, and the same text is in electron-builder `copyright`.
+  Owner note, 8 Oct.
+- K7. The Apps list title should be just **"Vocette"**, not "Vocette 0.5.0". That is NSIS's
+  default `uninstallDisplayName` ("${productName} ${version}"); set it to "${productName}".
+  Owner note, 8 Oct.
+- K8. **Updates from inside the app**: check, then "update available", then install. Use
+  electron-updater with the GitHub provider (latest.yml and blockmaps are published with each
+  release). Honest limit: Windows (NSIS) and Linux (AppImage) can install themselves, but the
+  Mac can't until it's signed (Squirrel.Mac requires a signature), so the unsigned Mac beta
+  keeps a download link. The update check stays opt-in, or follows whatever S3 decides. Needs
+  its own visual plan. Owner note, 8 Oct.
+
+- K9. **Prettify the top dashboard** on History: the microphone hero and the stats row.
+  Owner note, 8 Oct: "it looks beautiful… the top dashboard section can be prettified". Needs
+  visual options, and K2 (the narrow-window stats) belongs in the same redesign.
 
 ## List 2: new findings
 
