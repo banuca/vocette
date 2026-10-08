@@ -46,6 +46,18 @@ input daemon, no `sudo`, no `uinput` group.
 
 ## Verification status
 
+**8 October 2026, branch `go-live`, GitHub Actions run 37781426122** (after the repository was
+renamed to `banuca/vocette`). Verify — typecheck, lint, 1,498 tests and the bundle — passed on
+`windows-latest`, `macos-latest` (Apple Silicon) and `ubuntu-latest`. Package passed on all
+three, with `--publish never`: Mac DMG and zip for arm64 and x64 (unsigned), Linux AppImage and
+deb (x64), and the Windows installer and zip. On each, `check-native-packaging` reported
+"Native packaging looks correct". Not yet done on any of them: running on real hardware. The Mac
+build is for the owner's brother's Mac and the Linux build for the owner's Linux machine. The
+x64 Mac build was made on an Apple Silicon runner, so its native modules are unproven on an
+Intel Mac.
+
+The table below is from 28 September and predates these runs.
+
 Last updated 28 September 2026, branch `launch`. The per-feature evidence for 0.5.0
 is in [launch-plan.md](launch-plan.md) §7.
 
