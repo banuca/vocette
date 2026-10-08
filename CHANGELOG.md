@@ -5,6 +5,12 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.6.2] — unreleased
+
+**Rise**, the pill's new motion, the same on every platform: it springs up from below and
+sinks back; while listening its bars follow your voice; while writing a light passes along
+them. Starting the microphone looks like listening, in the pill and the tray.
+
 ## [0.6.1] — unreleased
 
 Zoom the main window with Ctrl + mouse wheel or Ctrl + plus and minus (Ctrl + 0 resets);
