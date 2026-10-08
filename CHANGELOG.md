@@ -5,6 +5,12 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.6.1] — unreleased
+
+Zoom the main window with Ctrl + mouse wheel or Ctrl + plus and minus (Ctrl + 0 resets);
+the title bar follows the theme; AI polish says "Polishing…" with its own clock and skips
+dictations under eight words; Windows lists Vocette by name, published by Vocette.
+
 ## [0.6.0] — unreleased
 
 The first Vocette release. It was hand-tested on Windows as 0.5.0 and never published under

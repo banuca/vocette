@@ -1,6 +1,6 @@
 {
   "name": "murmur",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Dictation that runs on your PC: hold a shortcut, speak, and your words are typed where you are",
   "main": "./out/main/index.js",
   "author": "Vocette",
