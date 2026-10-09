@@ -5,6 +5,11 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.6.4] — unreleased
+
+After a paste lands, the open pill holds a green tick for a moment before it folds back, rather
+than collapsing at once.
+
 ## [0.6.3] — unreleased
 
 **The floating pill.** A small see-through pill rests at the bottom of the screen and springs
