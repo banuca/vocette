@@ -213,6 +213,7 @@ describe('validation', () => {
         'spokenFormatting',
         'playSounds',
         'launchAtLogin',
+        'restingPill',
         'theme',
         'microphoneId',
         'historyRetentionDays',
@@ -592,6 +593,40 @@ describe('listening from the keypress', () => {
     expect(store.update({ hotkeyEnabled: false }).instantCapture).toBe(false)
     store.update({ instantCapture: 'yes' as unknown as boolean })
     expect(store.getPublic().instantCapture).toBe(false)
+  })
+})
+
+describe('the resting pill', () => {
+  /** A file written before "Show the pill while idle" existed. */
+  const withoutSwitch = (): Record<string, unknown> => {
+    const older = { ...DEFAULT_SETTINGS, playSounds: false } as Record<string, unknown>
+    delete older.restingPill
+    return older
+  }
+
+  it('is on for a fresh install, and for an existing file that predates it', () => {
+    expect(DEFAULT_SETTINGS.restingPill).toBe(true)
+    expect(new SettingsStore(file).getPublic().restingPill).toBe(true)
+    const loaded = normaliseSettings(withoutSwitch())
+    expect(loaded.restingPill).toBe(true)
+    // What the file did say survives.
+    expect(loaded.playSounds).toBe(false)
+  })
+
+  it('keeps a stored false, and ignores a value that is not a boolean', () => {
+    expect(normaliseSettings({ restingPill: false }).restingPill).toBe(false)
+    expect(normaliseSettings({ restingPill: 'no' }).restingPill).toBe(true)
+    const store = new SettingsStore(file)
+    store.update({ restingPill: false })
+    store.update({ restingPill: 'yes' as unknown as boolean })
+    expect(store.getPublic().restingPill).toBe(false)
+  })
+
+  it('persists false and survives a reload', () => {
+    const store = new SettingsStore(file)
+    expect(store.update({ restingPill: false }).restingPill).toBe(false)
+    expect(JSON.parse(readFileSync(file, 'utf8')).restingPill).toBe(false)
+    expect(new SettingsStore(file).getInternal().restingPill).toBe(false)
   })
 })
 

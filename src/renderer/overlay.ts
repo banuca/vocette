@@ -173,5 +173,11 @@ window.murmur.onTheme((theme) => {
   themeSetting = theme
   paintTheme()
 })
+
+// Whether the pill rests on screen while idle, small and see-through. The
+// stylesheet does the rest: from here it springs open, and back to here it folds.
+window.murmur.onRestingPill((resting) => {
+  document.documentElement.classList.toggle('resting', resting)
+})
 // Following Windows means following it while the pill is up, too.
 systemDark?.addEventListener('change', paintTheme)

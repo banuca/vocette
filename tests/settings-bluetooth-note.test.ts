@@ -126,6 +126,7 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
     spokenFormatting: true,
     playSounds: false,
     launchAtLogin: false,
+    restingPill: true,
     theme: 'dark',
     microphoneId: '',
     historyRetentionDays: 0,

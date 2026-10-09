@@ -155,6 +155,16 @@ const api = {
     ipcRenderer.on('app:theme', listener)
     return () => ipcRenderer.removeListener('app:theme', listener)
   },
+  /**
+   * For the overlay: whether the pill rests on screen while idle. The main
+   * process decides, from the setting and whether a full-screen app is in
+   * front, and sends only the answer.
+   */
+  onRestingPill: (callback: (resting: boolean) => void): (() => void) => {
+    const listener = (_event: unknown, resting: boolean): void => callback(resting === true)
+    ipcRenderer.on('overlay:resting', listener)
+    return () => ipcRenderer.removeListener('overlay:resting', listener)
+  },
   onNavigate: (callback: (page: Page) => void): (() => void) => {
     const listener = (_event: unknown, page: Page): void => callback(page)
     ipcRenderer.on('app:navigate', listener)

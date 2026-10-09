@@ -159,6 +159,11 @@ export function renderSettings(
    * be a promise the app does not keep.
    */
   const pasteLastOffered = context.platform.platform === 'windows'
+  /** The full-screen part is only promised where the app can tell: Windows, for now. */
+  const restingPillHint =
+    context.platform.platform === 'windows'
+      ? 'A small see-through pill rests at the bottom of the screen and springs open when you speak. Clicks go through it, and it hides while a full-screen app is in front.'
+      : 'A small see-through pill rests at the bottom of the screen and springs open when you speak. Clicks go through it.'
   const pasteLastRow = pasteLastOffered
     ? '<label class="toggle-row" id="row-paste-last"><div><strong>Paste last dictation with Alt + Shift + V</strong><span>Handy when a paste went to the wrong place.</span><small class="capability-note" id="paste-last-note" hidden></small></div><input id="paste-last-shortcut" type="checkbox" /><i></i></label>'
     : ''
@@ -318,6 +323,7 @@ ${polishCardMarkup()}
           <label class="toggle-row"><div><strong>Follow spoken corrections</strong><span>Say “scratch that” to drop the last sentence, or fix a word as you go: “Tuesday, no sorry, Wednesday” becomes “Wednesday”. English.</span></div><input id="spoken-corrections" type="checkbox" /><i></i></label>
           <label class="toggle-row"><div><strong>Spoken line breaks</strong><span>Say “new line” or “new paragraph”. English.</span></div><input id="spoken-formatting" type="checkbox" /><i></i></label>
           <label class="toggle-row"><div><strong>Play sounds</strong><span>A short beep when recording starts, two when the transcript is ready.</span></div><input id="play-sounds" type="checkbox" /><i></i></label>
+          <label class="toggle-row"><div><strong>Show the pill while idle</strong><span>${escapeHtml(restingPillHint)}</span></div><input id="resting-pill" type="checkbox" /><i></i></label>
           <label class="toggle-row" id="row-launch"><div><strong>${escapeHtml(launchLabel)}</strong><span>Keep the shortcut ready after you sign in.</span><small class="capability-note" id="launch-note" hidden></small></div><input id="launch-at-login" type="checkbox" /><i></i></label>
         </div>
       </section>
@@ -363,6 +369,7 @@ ${polishCardMarkup()}
   const spokenCorrections = query<HTMLInputElement>('#spoken-corrections')
   const spokenFormatting = query<HTMLInputElement>('#spoken-formatting')
   const playSounds = query<HTMLInputElement>('#play-sounds')
+  const restingPill = query<HTMLInputElement>('#resting-pill')
   const launchAtLogin = query<HTMLInputElement>('#launch-at-login')
   const retention = query<HTMLSelectElement>('#history-retention')
   const modelSelect = query<HTMLSelectElement>('#model')
@@ -627,6 +634,7 @@ ${polishCardMarkup()}
     if (spokenCorrections) spokenCorrections.checked = next.spokenCorrections
     if (spokenFormatting) spokenFormatting.checked = next.spokenFormatting
     if (playSounds) playSounds.checked = next.playSounds
+    if (restingPill) restingPill.checked = next.restingPill
     if (launchAtLogin) launchAtLogin.checked = next.launchAtLogin
     if (retention) retention.value = String(next.historyRetentionDays)
     if (languageSelect) languageSelect.value = next.language
@@ -1261,6 +1269,7 @@ ${polishCardMarkup()}
       spokenCorrections: spokenCorrections?.checked ?? true,
       spokenFormatting: spokenFormatting?.checked ?? true,
       playSounds: playSounds?.checked ?? true,
+      restingPill: restingPill?.checked ?? settings.restingPill,
       launchAtLogin: launchAtLogin?.checked ?? false,
       historyRetentionDays: Number(retention?.value ?? 0),
       model,

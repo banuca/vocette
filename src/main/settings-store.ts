@@ -108,6 +108,8 @@ export interface StoredSettings {
   spokenFormatting: boolean
   playSounds: boolean
   launchAtLogin: boolean
+  /** The pill rests on screen while idle; see `PublicSettings.restingPill`. */
+  restingPill: boolean
   theme: Theme
   microphoneId: string
   historyRetentionDays: number
@@ -165,6 +167,8 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   spokenFormatting: true,
   playSounds: true,
   launchAtLogin: false,
+  // The pill at rest shows at a glance that Vocette is ready; one switch hides it.
+  restingPill: true,
   theme: 'system',
   microphoneId: '',
   historyRetentionDays: 0,
@@ -339,6 +343,10 @@ export function normaliseSettings(value: unknown): StoredSettings {
       typeof candidate.launchAtLogin === 'boolean'
         ? candidate.launchAtLogin
         : DEFAULT_SETTINGS.launchAtLogin,
+    restingPill:
+      typeof candidate.restingPill === 'boolean'
+        ? candidate.restingPill
+        : DEFAULT_SETTINGS.restingPill,
     theme:
       typeof candidate.theme === 'string' && themeSet.has(candidate.theme)
         ? (candidate.theme as Theme)
@@ -573,6 +581,7 @@ export class SettingsStore {
       spokenFormatting: stored.spokenFormatting,
       playSounds: stored.playSounds,
       launchAtLogin: stored.launchAtLogin,
+      restingPill: stored.restingPill,
       theme: stored.theme,
       microphoneId: stored.microphoneId,
       historyRetentionDays: stored.historyRetentionDays,
@@ -804,6 +813,7 @@ export class SettingsStore {
       this.settings.spokenFormatting = update.spokenFormatting
     }
     if (typeof update.launchAtLogin === 'boolean') this.settings.launchAtLogin = update.launchAtLogin
+    if (typeof update.restingPill === 'boolean') this.settings.restingPill = update.restingPill
     if (typeof update.microphoneId === 'string') {
       this.settings.microphoneId = update.microphoneId.slice(0, 512)
     }

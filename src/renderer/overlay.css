@@ -167,6 +167,51 @@ body {
   transition-delay: 160ms;
 }
 
+/*
+ * Resting: while idle the pill stays on screen, small and see-through, with
+ * Vocette's five bars, and springs open from here when a take starts. The
+ * main process sets it, and moves the pill aside for full-screen apps.
+ */
+:root.resting .overlay.idle {
+  opacity: 1;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity 200ms ease-out,
+    transform 300ms ease,
+    width 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rest-mark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.rest-mark i {
+  width: 2.5px;
+  border-radius: 999px;
+  background: var(--ink);
+  opacity: 0.75;
+}
+
+.rest-mark i:nth-child(1) { height: 4px; }
+.rest-mark i:nth-child(2) { height: 8px; }
+.rest-mark i:nth-child(3) { height: 12px; }
+.rest-mark i:nth-child(4) { height: 7px; }
+.rest-mark i:nth-child(5) { height: 4px; }
+
+:root.resting .overlay.idle .rest-mark {
+  opacity: 1;
+  transition: opacity 200ms ease 180ms;
+}
+
 .overlay.recording,
 .overlay.starting {
   /* Red means one thing in Vocette: it is listening. The bars wear it too.

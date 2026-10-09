@@ -220,6 +220,11 @@ export interface PublicSettings {
   spokenFormatting: boolean
   playSounds: boolean
   launchAtLogin: boolean
+  /**
+   * Keep the pill on screen while idle, small and see-through, so it springs
+   * open from where it rests. Off, it appears only while dictating.
+   */
+  restingPill: boolean
   theme: Theme
   microphoneId: string
   historyRetentionDays: number
@@ -263,6 +268,7 @@ export interface SettingsUpdate {
   spokenFormatting?: boolean
   playSounds?: boolean
   launchAtLogin?: boolean
+  restingPill?: boolean
   theme?: Theme
   microphoneId?: string
   historyRetentionDays?: number

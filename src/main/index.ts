@@ -40,6 +40,7 @@ import { migrateLegacyProfile } from './legacy-profile'
 import { HistoryStore, isRestorableEntry } from './history-store'
 import { createPlatformAdapter } from './platform'
 import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform/types'
+import { createFullScreenProbe } from './platform/full-screen'
 import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { rearmPlan } from './rearm-plan'
@@ -105,6 +106,8 @@ import {
 
 /** Long enough for the overlay's exit animation to finish. */
 const OVERLAY_HIDE_MS = 220
+/** How often the resting pill looks for a full-screen app in front of it (Windows). */
+const RESTING_PILL_POLL_MS = 1500
 /** Shortcut capture gives up on its own so the hook can never stay hijacked. */
 const CAPTURE_TIMEOUT_MS = 10_000
 /** Upper bound for waiting on the final history flush before quitting. */
@@ -167,6 +170,11 @@ let pendingNavigation: Page | null = null
 let overlayHideTimer: NodeJS.Timeout | null = null
 let captureTimeout: NodeJS.Timeout | null = null
 let overlayVisible = false
+/** What the overlay was last told: rest on screen while idle, or go. */
+let restingShown = false
+let restingPillPoll: NodeJS.Timeout | null = null
+/** Made on first use, and only on Windows; elsewhere nothing is full-screen in front. */
+let fullScreenProbe: (() => boolean) | null = null
 let quitFlushed = false
 let lastBroadcastPhase: WorkflowStatus['phase'] | null = null
 /** Whether Alt + Shift + V is actually registered, not merely switched on. */
@@ -202,10 +210,13 @@ async function loadWindow(
   await (search ? window.loadFile(file, { query }) : window.loadFile(file))
 }
 
-function positionOverlay(): void {
+/**
+ * Puts the overlay at the bottom centre of a display: the one with the
+ * pointer, unless a point on another is given.
+ */
+function positionOverlay(near: Electron.Point = screen.getCursorScreenPoint()): void {
   if (!overlayWindow) return
-  const point = screen.getCursorScreenPoint()
-  const { workArea } = screen.getDisplayNearestPoint(point)
+  const { workArea } = screen.getDisplayNearestPoint(near)
   const { width, height } = overlayWindow.getBounds()
   overlayWindow.setPosition(
     Math.round(workArea.x + (workArea.width - width) / 2),
@@ -215,6 +226,7 @@ function positionOverlay(): void {
 }
 
 function broadcastStatus(status: WorkflowStatus): void {
+  const previousPhase = lastBroadcastPhase
   mainWindow?.webContents.send('workflow:status', status)
   overlayWindow?.webContents.send('workflow:status', status)
 
@@ -244,24 +256,72 @@ function broadcastStatus(status: WorkflowStatus): void {
   setTrayState(status.phase)
 
   if (status.phase === 'idle') {
-    // Let the overlay play its exit animation before the window disappears.
-    overlayHideTimer = clearTimer(overlayHideTimer)
-    if (overlayVisible) {
-      overlayHideTimer = setTimeout(() => {
-        overlayHideTimer = null
-        overlayVisible = false
-        overlayWindow?.hide()
-      }, OVERLAY_HIDE_MS)
-    }
+    // The pill rests on screen if it should; otherwise it plays its exit
+    // animation before the window disappears.
+    if (restingShown) showOverlay()
+    else hideOverlaySoon()
     return
   }
 
+  // A take starts where the user is: on the display with the pointer, even
+  // when the pill was resting on another.
+  if ((previousPhase === 'idle' || previousPhase === null) && overlayVisible) positionOverlay()
+  showOverlay()
+}
+
+/** Shows the overlay where it belongs, if it is not on screen already. */
+function showOverlay(): void {
   overlayHideTimer = clearTimer(overlayHideTimer)
-  if (overlayWindow && !overlayVisible) {
-    positionOverlay()
-    overlayWindow.showInactive()
-    overlayVisible = true
+  if (!overlayWindow || overlayVisible) return
+  positionOverlay()
+  overlayWindow.showInactive()
+  overlayVisible = true
+}
+
+/** Hides the overlay once its exit animation has played. */
+function hideOverlaySoon(): void {
+  overlayHideTimer = clearTimer(overlayHideTimer)
+  if (!overlayVisible) return
+  overlayHideTimer = setTimeout(() => {
+    overlayHideTimer = null
+    overlayVisible = false
+    overlayWindow?.hide()
+  }, OVERLAY_HIDE_MS)
+}
+
+/** Whether a full-screen app, a slideshow or the lock screen is in front. Windows only. */
+function fullScreenInFront(): boolean {
+  if (process.platform !== 'win32') return false
+  fullScreenProbe ??= createFullScreenProbe()
+  return fullScreenProbe()
+}
+
+/**
+ * Puts the resting pill where it should be: on screen while idle when the
+ * user wants it and nothing full-screen is in front, and away otherwise. A
+ * take in progress owns the window, so then only the overlay is told.
+ */
+function syncRestingPill(): void {
+  const wanted = settingsStore.getInternal().restingPill && !fullScreenInFront()
+  if (wanted !== restingShown) {
+    restingShown = wanted
+    overlayWindow?.webContents.send('overlay:resting', wanted)
   }
+  if (dictation.getStatus().phase !== 'idle') return
+  if (wanted) showOverlay()
+  else hideOverlaySoon()
+}
+
+/** Starts or stops the resting pill, and on Windows its watch for full-screen apps. */
+function applyRestingPill(): void {
+  if (restingPillPoll) clearInterval(restingPillPoll)
+  restingPillPoll = null
+  if (settingsStore.getInternal().restingPill && process.platform === 'win32') {
+    restingPillPoll = setInterval(syncRestingPill, RESTING_PILL_POLL_MS)
+    // Never the reason the app stays running.
+    restingPillPoll.unref?.()
+  }
+  syncRestingPill()
 }
 
 /**
@@ -1230,6 +1290,7 @@ function registerIpc(): void {
     if (before.recordingMode !== after.recordingMode) applyRecordingMode()
     if (before.theme !== after.theme) broadcastTheme()
     if (before.launchAtLogin !== after.launchAtLogin) applyLaunchAtLogin(after.launchAtLogin)
+    if (before.restingPill !== after.restingPill) applyRestingPill()
     if (before.pasteLastShortcut !== after.pasteLastShortcut) {
       applyPasteLastShortcut(after.pasteLastShortcut)
     }
@@ -1698,11 +1759,27 @@ async function bootstrap(): Promise<void> {
   await createWindows()
   createTray()
   applyLaunchAtLogin(initial.launchAtLogin)
+  // The overlay has loaded, so it can be told whether to rest on screen.
+  applyRestingPill()
+  // A display added, removed or rearranged: the resting pill keeps to the
+  // bottom of the screen it was on, or the nearest one left.
+  const keepPillOnScreen = (): void => {
+    if (!overlayWindow || !overlayVisible || dictation.getStatus().phase !== 'idle') return
+    const { x, y, width, height } = overlayWindow.getBounds()
+    positionOverlay({ x: x + Math.round(width / 2), y: y + Math.round(height / 2) })
+  }
+  screen.on('display-added', keepPillOnScreen)
+  screen.on('display-removed', keepPillOnScreen)
+  screen.on('display-metrics-changed', keepPillOnScreen)
   shortcutController.start()
   powerMonitor.on('suspend', finishTakeBeforeAway)
   powerMonitor.on('lock-screen', finishTakeBeforeAway)
   powerMonitor.on('resume', rearmShortcut)
   powerMonitor.on('unlock-screen', rearmShortcut)
+  // The resting pill goes and comes back with the screen, without waiting
+  // for its next look.
+  powerMonitor.on('lock-screen', syncRestingPill)
+  powerMonitor.on('unlock-screen', syncRestingPill)
   // Sends nothing now: a minute from here, and only if switched on and due.
   updateChecker.start()
   // Likewise: a minute from here, and only with a key activated on this PC.
@@ -1801,6 +1878,8 @@ app.on('before-quit', (event) => {
   globalShortcut.unregisterAll()
   captureTimeout = clearTimer(captureTimeout)
   overlayHideTimer = clearTimer(overlayHideTimer)
+  if (restingPillPoll) clearInterval(restingPillPoll)
+  restingPillPoll = null
 
   if (quitFlushed || !historyStore) return
   // History writes are async and coalesced; quitting must wait for the last

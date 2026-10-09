@@ -104,6 +104,11 @@ interface StartupHarness {
   openedExternally: () => string[]
   /** What the app last told the operating system about its palette. */
   themeSource: () => string
+  /** How often the overlay window has been shown, and hidden. */
+  overlayShows: () => number
+  overlayHides: () => number
+  /** A full-screen app comes to the front, or goes. Read by the probe on Windows. */
+  setFullScreen: (on: boolean) => void
 }
 
 async function settle(): Promise<void> {
@@ -136,6 +141,8 @@ async function startApp(options: {
   polishKey?: string
   /** Polish settings as saved. */
   polish?: Partial<Pick<typeof DEFAULT_SETTINGS, 'polishEndpoint' | 'polishModel' | 'polishEnabled'>>
+  /** "Show the pill while idle", as saved; on by default. */
+  restingPill?: boolean
 } = {}): Promise<StartupHarness> {
   vi.resetModules()
 
@@ -186,8 +193,10 @@ async function startApp(options: {
     trialStartedAt: options.trialStartedAt ?? null,
     deviceTag: '7F3A',
     apiEndpoint: options.apiEndpoint ?? DEFAULT_SETTINGS.apiEndpoint,
-    ...options.polish
+    ...options.polish,
+    ...(options.restingPill === undefined ? {} : { restingPill: options.restingPill })
   }
+  let fullScreen = false
   // Confirmed a minute ago, so Pro holds and no check is due.
   let licence: Record<string, string> | null = options.licensed
     ? {
@@ -338,7 +347,8 @@ async function startApp(options: {
     },
     screen: {
       getCursorScreenPoint: () => ({ x: 0, y: 0 }),
-      getDisplayNearestPoint: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })
+      getDisplayNearestPoint: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }),
+      on: vi.fn()
     },
     session: {
       defaultSession: {
@@ -492,6 +502,11 @@ async function startApp(options: {
       dispose = disposeEngine
       prewarm = prewarmEngine
     }
+  }))
+
+  // The shell's answer is tested on its own in `full-screen`; here it is the test's to give.
+  vi.doMock('../src/main/platform/full-screen', () => ({
+    createFullScreenProbe: () => () => fullScreen
   }))
 
   // The platform boundary is exercised on its own in `platform-adapters`; here
@@ -659,7 +674,12 @@ async function startApp(options: {
     savedLicences: () => savedLicences,
     licenceCleared: () => licenceClears,
     openedExternally: () => openedExternally,
-    themeSource: () => nativeThemeFake.themeSource
+    themeSource: () => nativeThemeFake.themeSource,
+    overlayShows: () => overlayWindow?.showInactive.mock.calls.length ?? 0,
+    overlayHides: () => overlayWindow?.hide.mock.calls.length ?? 0,
+    setFullScreen: (on: boolean) => {
+      fullScreen = on
+    }
   }
 }
 
@@ -2093,4 +2113,56 @@ describe('the subscription check', () => {
       checkMessage: 'Could not reach Polar to confirm your subscription. Vocette tries again later.'
     })
   })
+})
+
+describe('the resting pill', () => {
+  const resting = (app: StartupHarness): unknown[] =>
+    app
+      .sentToOverlay()
+      .filter((message) => message.channel === 'overlay:resting')
+      .map((message) => message.payload)
+  const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+  it('rests on screen from start-up, and the overlay is told so', async () => {
+    const app = await startApp()
+    expect(resting(app)).toEqual([true])
+    expect(app.overlayShows()).toBe(1)
+  })
+
+  it('stays away from start-up when switched off', async () => {
+    const app = await startApp({ restingPill: false })
+    expect(resting(app)).toEqual([])
+    expect(app.overlayShows()).toBe(0)
+  })
+
+  it('goes once the switch is saved off, and comes back when it is saved on', async () => {
+    const app = await startApp()
+    await app.invoke('settings:save', true, { restingPill: false })
+    expect(resting(app)).toEqual([true, false])
+    // Its exit animation plays before the window goes.
+    expect(app.overlayHides()).toBe(0)
+    await wait(300)
+    expect(app.overlayHides()).toBe(1)
+
+    await app.invoke('settings:save', true, { restingPill: true })
+    expect(resting(app)).toEqual([true, false, true])
+    expect(app.overlayShows()).toBe(2)
+  })
+
+  it.runIf(process.platform === 'win32')(
+    'steps aside for a full-screen app or the lock screen, and comes back after',
+    async () => {
+      const app = await startApp()
+      app.setFullScreen(true)
+      app.powerEvent('lock-screen')
+      expect(resting(app)).toEqual([true, false])
+      await wait(300)
+      expect(app.overlayHides()).toBe(1)
+
+      app.setFullScreen(false)
+      app.powerEvent('unlock-screen')
+      expect(resting(app)).toEqual([true, false, true])
+      expect(app.overlayShows()).toBe(2)
+    }
+  )
 })
