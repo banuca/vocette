@@ -33,12 +33,24 @@ smoked glass, polishing look A, and the resting pill on by default (9 Oct). Brie
 - Readability over the owner's real apps, and the look in motion.
 - Mac and Linux: not built or run for this change.
 
+## 0.6.4: the fold fix for step 2
+
+- The owner picked timing B.
+- Fix b9d3194: a quiet success holds the open pill for 700 ms with a green-tick badge, then folds
+  over 550 ms. The tick stays on the small pill, and the controller resets a quiet success after
+  2.4 s.
+- e2e `quiet-check` on the dev build: the beat held at 216x48 for about 660 ms, folded to 56x20
+  by about 1165 ms, the tick showed from about 1079 ms, and the pill was back at rest at
+  2356 ms.
+- Build `%LOCALAPPDATA%\vocette-release\0.6.4`. Steps continue on 0.6.4 from the step 2
+  retest.
+
 ## Steps
 
 | # | Step | Expected | Result |
 |---|---|---|---|
-| 1 | Install 0.6.3 over 0.6.2 | A small see-through pill with five bars rests at the bottom centre | |
-| 2 | Dictate a sentence into Notepad | Springs open (red mic, bars follow voice, "Listening…", clock); "Transcribing…" with a passing light; pasted; folds back with a green tick, no "Pasted"; bars return | |
+| 1 | Install 0.6.3 over 0.6.2 | A small see-through pill with five bars rests at the bottom centre | **Pass** (owner: "I love the animation, it looks so slick. So cool.") |
+| 2 | Dictate a sentence into Notepad | Springs open (red mic, bars follow voice, "Listening…", clock); "Transcribing…" with a passing light; pasted; folds back with a green tick, no "Pasted"; bars return | **Not passed: fold too fast.** The open, listening, transcribing and paste parts are fine; the owner dictated into VS Code (screenshot: listening pill, readable). Owner: "it disappears super quick… it just collapses the pill really fast". Timing options A (now, 300 ms fold), B (a 700 ms beat with a green check in the open pill, then a 550 ms fold) and C (1.4 s beat, 650 ms fold) at https://claude.ai/artifact/6ZNq7uXTauJNQCofwnUy6M. Claude recommends B. Implementing it needs a quiet-success reset of about 2.4 s instead of `SUCCESS_RESET_MS` 1600 |
 | 3 | Polish on: dictate 8+ words | "Polishing…" with a white sparkle badge, twinkling bars, a shine on the word, a clock; then the tick | |
 | 4 | In Vocette's window, record with the big microphone button | The pill says "Copied to clipboard" with the start of the text, then rests | |
 | 5 | Full-screen video or F11 in the browser | The pill disappears within about 2 s; comes back after leaving full screen | |

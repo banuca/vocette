@@ -53,6 +53,59 @@ evening notes join list 1. The visual version for the owner is published as an a
   - Owner picks (9 Oct): smoked glass, polishing A, resting pill on by default.
   - **Built in 0.6.3** as four commits: dc70cda, 3212d5b, b5b412a and 26b3dca.
   - Hand test in `hand-test-0.6.3.md`.
+- K11. **Point at the pill and it fades.** Owner request, 9 Oct, during the 0.6.3 test: "if it's
+  bothering someone, how do they hide it?". Their screenshot shows the open pill over VS Code's
+  chat toolbar.
+  - Clicks already pass through the pill. What's missing is seeing what's behind it.
+  - Demo: https://claude.ai/artifact/JhbUvybjvr8Z17dnAuKXrd.
+  - Plan:
+    - The main process polls `screen.getCursorScreenPoint()` about 10 times a second while the
+      overlay is visible. It sends the point, relative to the overlay window, only while the
+      cursor is inside the window's bounds, plus one "away".
+    - The renderer hit-tests the pill's rect and toggles `.peek` (opacity 0.12, 160 ms).
+  - Not Electron's `setIgnoreMouseEvents(true, { forward: true })`: on Windows that installs a
+    WH_MOUSE_LL hook on the main thread, so a busy main thread would make the mouse lag
+    system-wide.
+  - Linux on Wayland has no global cursor position, so there is no fade there. Said on the page.
+  - Waiting for the owner's go. Build it after the 0.6.3 hand test.
+- K12. **Double-click the pill to dictate.** Owner request, 9 Oct: "if you double click the pill,
+  it starts recording without holding".
+  - The catch: the OS gives a click to the pill or to the window behind it, never both. A
+    passive global mouse hook would let the double-click reach the app behind too, which can
+    open a file or toggle a video to full screen. Rejected.
+  - Demo of the reconciled design: https://claude.ai/artifact/YaUKsuDs5kPn1zmL654RUf. It
+    supersedes the K11 page.
+    - At rest the small pill takes clicks: pointing wakes it with "Double-click to dictate", and
+      a double-click starts a hands-free take.
+    - In a pill-started take the open pill takes clicks: pointing shows a stop square and "Click
+      to finish". The shortcut finishes too, and Esc cancels.
+    - A take started from the keys keeps the open pill click-through and fading (K11).
+  - Plan, sharing K11's cursor watch:
+    - The renderer reports the pill's rect on resize.
+    - The main process sets `setIgnoreMouseEvents(false)` only while the cursor is over the pill
+      and the pill is clickable; otherwise it stays true.
+    - The window stays `focusable: false`, so the paste target stays the user's app.
+    - New IPC: `overlay:start` (dblclick at rest) and `overlay:finish` (click during a pill
+      take), checked to come from the overlay.
+    - The controller gets a `pill` source: hands-free whatever the recording mode, and it
+      captures the foreground target like a shortcut take, not clipboard-only.
+  - Risks to check:
+    - dblclick delivery after flipping WS_EX_TRANSPARENT at runtime, with up to 100 ms of poll
+      latency.
+    - The hint bubble needs room above the pill in the 96 px window.
+  - Wayland: no global cursor position, so no wake, double-click or fade. Shortcut only.
+  - Proposed order: one build with two commits (K11, then K12), each hand-tested on its own,
+    after the 0.6.3 test.
+  - Owner then asked which is better for users, click-through or double-click. Claude's
+    recommendation (9 Oct): keep the pill click-through for launch and build only K11, the fade.
+    Park K12 as a possible opt-in setting, off by default, if users ask for a mouse start. The
+    reasons:
+    - The shortcut is the product, and the pill is a signal.
+    - A click-through pill can never turn the microphone on by accident, which matters for trust.
+    - It's the same on every platform.
+    - It's a smaller change before launch.
+    - Mouse starts already exist: the window's microphone button and the tray.
+  - Awaiting the owner's answer.
 
 ## List 2: new findings
 
