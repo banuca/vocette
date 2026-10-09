@@ -49,7 +49,10 @@ evening notes join list 1. The visual version for the owner is published as an a
   a resting pill that is always there and springs open, no "Pasted" message, see-through rather
   than black, and polishing that looks different from transcribing. Options page published at
   https://claude.ai/artifact/MiUPpXaGC5aZsnUMrBcAfE. Plan and feasibility in
-  `briefs/20-floating-pill.md`. Waiting for the owner's three picks.
+  `briefs/20-floating-pill.md`.
+  - Owner picks (9 Oct): smoked glass, polishing A, resting pill on by default.
+  - **Built in 0.6.3** as four commits: dc70cda, 3212d5b, b5b412a and 26b3dca.
+  - Hand test in `hand-test-0.6.3.md`.
 
 ## List 2: new findings
 
