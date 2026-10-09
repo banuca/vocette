@@ -68,7 +68,8 @@ function paintLevel(): void {
 function render(status: WorkflowStatus): void {
   if (!overlay || !message || !detail || !timerElement) return
 
-  overlay.className = `overlay ${status.phase}`
+  // Polishing is processing with a look of its own.
+  overlay.className = `overlay ${status.phase}${status.stage === 'polishing' ? ' polishing' : ''}`
   message.textContent = status.message
   detail.textContent = status.detail ?? ''
 

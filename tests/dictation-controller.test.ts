@@ -1526,6 +1526,7 @@ describe('errors and retry', () => {
       phase: 'processing',
       message: 'Transcribing…',
       detail: 'The service was busy — trying once more',
+      stage: 'transcribing',
       canRetry: false
     })
     const processingDetails = deps.broadcastStatus.mock.calls
@@ -3286,11 +3287,26 @@ describe('AI polish', () => {
     await dictate(harness, 'please send the final report to the whole team today')
     const statuses = harness.deps.broadcastStatus.mock.calls.map(([status]) => status)
     const polishing = statuses.find((status) => status.message === 'Polishing…')
-    expect(polishing).toMatchObject({ phase: 'processing', detail: 'Rewriting it in your chosen style' })
+    expect(polishing).toMatchObject({
+      phase: 'processing',
+      detail: 'Rewriting it in your chosen style',
+      stage: 'polishing'
+    })
     expect(typeof polishing?.startedAt).toBe('number')
     // It comes after transcription and before the paste.
     expect(statuses.indexOf(polishing!)).toBeGreaterThan(statuses.findIndex((s) => s.message === 'Transcribing…'))
     expect(statuses.indexOf(polishing!)).toBeLessThan(statuses.findIndex((s) => s.phase === 'success'))
+  })
+
+  it('tells the overlay which work is under way, so polishing can look like polishing', async () => {
+    const polish = polished('Please send the final report to the whole team today.')
+    const harness = makeHarness({ settings: { polish: true }, polish })
+    await dictate(harness, 'please send the final report to the whole team today')
+    const stages = harness.deps.broadcastStatus.mock.calls
+      .map(([status]) => status)
+      .filter((status) => status.phase === 'processing')
+      .map((status) => status.stage)
+    expect(stages).toEqual(['transcribing', 'polishing'])
   })
 
   it('pastes a short dictation straight away, without polishing it', async () => {

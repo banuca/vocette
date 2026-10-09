@@ -18,6 +18,11 @@ export interface WorkflowStatus {
   detail?: string
   /** Epoch ms the recording began, for the overlay's elapsed timer. */
   startedAt?: number
+  /**
+   * While processing: which work is under way. Polishing has a look of its
+   * own in the overlay, so it is said here rather than read from the words.
+   */
+  stage?: 'transcribing' | 'polishing'
   /** On success: how long the text took after letting go, as History keeps it. */
   waitMs?: number
   /**

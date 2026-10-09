@@ -1064,7 +1064,7 @@ export class DictationController {
     detail: string,
     isRetry: boolean
   ): Promise<void> {
-    this.broadcast({ phase: 'processing', message: 'Transcribing…', detail })
+    this.broadcast({ phase: 'processing', message: 'Transcribing…', detail, stage: 'transcribing' })
 
     try {
       const settings = this.deps.getSettings()
@@ -1087,7 +1087,8 @@ export class DictationController {
             this.broadcast({
               phase: 'processing',
               message: 'Transcribing…',
-              detail: BUSY_RETRY_DETAIL
+              detail: BUSY_RETRY_DETAIL,
+              stage: 'transcribing'
             })
           }
         },
@@ -1133,7 +1134,8 @@ export class DictationController {
           phase: 'processing',
           message: 'Polishing…',
           detail: POLISHING_DETAIL,
-          startedAt: Date.now()
+          startedAt: Date.now(),
+          stage: 'polishing'
         })
         const outcome = await this.deps.polish(cleaned, attempt.controller.signal)
         if (!this.ownsAttempt(attempt)) return

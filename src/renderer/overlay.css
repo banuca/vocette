@@ -252,6 +252,60 @@ body {
   animation: check-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* A filled star reads better than an outline at this size. */
+.icon-sparkle {
+  fill: currentcolor;
+  stroke-width: 1.2;
+}
+
+/*
+ * Polishing: a look of its own, so the wait reads as the text being made
+ * nicer rather than as slow transcription. The badge turns to ink with a
+ * sparkle, the bars twinkle, a shine runs through the word, and its clock
+ * keeps running.
+ */
+.overlay.processing.polishing {
+  --accent: var(--ink);
+  --badge-text: #17171c;
+  --ink-dim: rgb(242 242 245 / 70%);
+}
+
+:root[data-theme='light'] .overlay.processing.polishing {
+  --accent: var(--ink);
+  --badge-text: #ffffff;
+  --ink-dim: rgb(23 23 28 / 62%);
+}
+
+.overlay.processing.polishing .icon-document {
+  opacity: 0;
+  transform: scale(0.55);
+  animation: none;
+}
+
+.overlay.processing.polishing .icon-sparkle {
+  opacity: 1;
+  transform: scale(1);
+  animation: sparkle-glint 1.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* The one animation in this file that repaints: a shine through one short
+   word, and only while polishing. */
+.overlay.processing.polishing .message {
+  color: transparent;
+  background: linear-gradient(
+    90deg,
+    var(--ink-dim) 0 35%,
+    var(--ink) 50%,
+    var(--ink-dim) 65% 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: none;
+  animation: shimmer 1.8s linear infinite;
+}
+
 /* --- Waveform ------------------------------------------------------------- */
 
 .waveform {
@@ -325,6 +379,23 @@ body {
 .overlay.processing .waveform i:nth-child(8) { animation-delay: 0.49s; }
 .overlay.processing .waveform i:nth-child(9) { animation-delay: 0.56s; }
 .overlay.processing .waveform i:nth-child(10) { animation-delay: 0.63s; }
+
+/* Polishing: the bars twinkle out of step, rather than a light passing along. */
+.overlay.processing.polishing .waveform i {
+  animation: twinkle 1.3s ease-in-out infinite;
+  animation-fill-mode: backwards;
+}
+
+.overlay.processing.polishing .waveform i:nth-child(1) { animation-delay: 0.5s; }
+.overlay.processing.polishing .waveform i:nth-child(2) { animation-delay: 0.1s; }
+.overlay.processing.polishing .waveform i:nth-child(3) { animation-delay: 0.8s; }
+.overlay.processing.polishing .waveform i:nth-child(4) { animation-delay: 0.3s; }
+.overlay.processing.polishing .waveform i:nth-child(5) { animation-delay: 0.65s; }
+.overlay.processing.polishing .waveform i:nth-child(6) { animation-delay: 0.2s; }
+.overlay.processing.polishing .waveform i:nth-child(7) { animation-delay: 0.9s; }
+.overlay.processing.polishing .waveform i:nth-child(8) { animation-delay: 0.45s; }
+.overlay.processing.polishing .waveform i:nth-child(9) { animation-delay: 0.05s; }
+.overlay.processing.polishing .waveform i:nth-child(10) { animation-delay: 0.7s; }
 
 /* --- Words ---------------------------------------------------------------- */
 
@@ -420,6 +491,41 @@ body {
   }
 }
 
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scaleY(0.62);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes sparkle-glint {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+
+  50% {
+    transform: scale(0.82) rotate(18deg);
+  }
+}
+
+/* The shine crosses the word, then rests off to the right before the next pass. */
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -50% 0;
+  }
+}
+
 @keyframes check-in {
   from {
     opacity: 0;
@@ -470,5 +576,11 @@ body {
      script brightens with the voice. */
   .overlay.recording .level-dot {
     display: block;
+  }
+
+  /* No shine to run: the word in plain ink, the badge still says polishing. */
+  .overlay.processing.polishing .message {
+    color: var(--ink);
+    background: none;
   }
 }
