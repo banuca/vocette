@@ -45,6 +45,11 @@ evening notes join list 1. The visual version for the owner is published as an a
 - K9. **Prettify the top dashboard** on History: the microphone hero and the stats row.
   Owner note, 8 Oct: "it looks beautiful… the top dashboard section can be prettified". Needs
   visual options, and K2 (the narrow-window stats) belongs in the same redesign.
+- K10. **Floating pill** (owner, 9 Oct, after testing Rise in 0.6.2): the bounce is good. Wanted:
+  a resting pill that is always there and springs open, no "Pasted" message, see-through rather
+  than black, and polishing that looks different from transcribing. Options page published at
+  https://claude.ai/artifact/MiUPpXaGC5aZsnUMrBcAfE. Plan and feasibility in
+  `briefs/20-floating-pill.md`. Waiting for the owner's three picks.
 
 ## List 2: new findings
 
