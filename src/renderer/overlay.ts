@@ -4,20 +4,32 @@ import type { Theme, WorkflowStatus } from '../shared/types'
 import { levelToBars, restingBars } from './level-meter'
 
 const overlay = document.querySelector<HTMLDivElement>('#overlay')
+const content = document.querySelector<HTMLDivElement>('#pill-content')
 const message = document.querySelector<HTMLDivElement>('#message')
 const detail = document.querySelector<HTMLDivElement>('#detail')
 const timerElement = document.querySelector<HTMLDivElement>('#timer')
-const levelBars = [...document.querySelectorAll<HTMLElement>('#level .level-bar')]
 const levelDot = document.querySelector<HTMLElement>('#level-dot')
-/** The waveform either side of the badge: left five, then right five, as in the page. */
+/** The waveform beside the badge, ten bars, left to right as in the page. */
 const waveBars = [...document.querySelectorAll<HTMLElement>('.waveform i')]
 const reduceMotion =
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** A bar at rest is a dot this fraction of its height; the stylesheet starts it there too. */
-const BAR_REST_SCALE = 0.2
 /** The reduced-motion dot with nothing heard; it brightens to full with the voice. */
 const DOT_REST_OPACITY = 0.3
+
+/**
+ * Sizes the pill to its content, which sits at its natural width inside, so
+ * the pill springs between sizes as the words change. While idle the pill
+ * keeps the width it had, so it sinks away as it was rather than shrinking
+ * to fit "Ready" on the way out.
+ */
+function fitPill(): void {
+  if (!overlay || !content || overlay.classList.contains('idle')) return
+  overlay.style.width = `${Math.ceil(content.getBoundingClientRect().width)}px`
+}
+
+// Text changes the content's width: a new message, a clock gaining a digit.
+if (content && typeof ResizeObserver === 'function') new ResizeObserver(fitPill).observe(content)
 
 function formatElapsed(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -39,16 +51,12 @@ function stopTimer(): void {
 }
 
 function paintLevel(): void {
-  levelBars.forEach((bar, index) => {
-    const scale = BAR_REST_SCALE + (1 - BAR_REST_SCALE) * (bars[index] ?? 0)
-    bar.style.transform = `scaleY(${scale.toFixed(3)})`
-  })
   if (levelDot) {
     const loudest = Math.max(0, ...bars)
     levelDot.style.opacity = (DOT_REST_OPACITY + (1 - DOT_REST_OPACITY) * loudest).toFixed(3)
   }
-  // While listening the waveform follows the voice too, mirrored about the
-  // badge: each side takes the meter's five readings outwards from the middle.
+  // While listening the waveform follows the voice: each half of the ten
+  // bars takes the meter's five readings, so the shape rises in two humps.
   // Where motion is reduced it stays still and the dot carries the level.
   if (!recording || reduceMotion) return
   waveBars.forEach((bar, index) => {
@@ -100,6 +108,9 @@ function render(status: WorkflowStatus): void {
   } else {
     timerElement.textContent = ''
   }
+
+  // Sized in the same frame as the phase changes, so both springs start together.
+  fitPill()
 }
 
 window.murmur.onWorkflowStatus(render)

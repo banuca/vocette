@@ -1,16 +1,17 @@
 /*
- * Overlay styling.
+ * Overlay styling: the pill.
  *
  * Performance rules for this file, since it animates while the microphone is
  * live and the user is waiting on transcription:
- *   - animate `transform` and `opacity` only, so everything stays on the
- *     compositor and never triggers layout or paint;
- *   - one class on `.overlay` drives every phase, via the `--accent` custom
- *     property, so a phase change is a single DOM write;
- *   - no JS animation loop, no audio analysis, no per-frame IPC. The live
- *     level meter is fed about 14 readings a second, measured in the hidden
- *     recorder window; each reading here is five `transform` writes and one
- *     `opacity` write.
+ *   - while a take is live, animate `transform` and `opacity` only, so the
+ *     waveform and badge stay on the compositor and never trigger layout or
+ *     paint. The pill's own size springs when its words change, which is a
+ *     layout of a handful of elements for under half a second;
+ *   - one class on `.overlay` drives every phase, via custom properties, so a
+ *     phase change is a single DOM write;
+ *   - no JS animation loop, no audio analysis, no per-frame IPC. The level is
+ *     fed about 14 readings a second, measured in the hidden recorder window;
+ *     each reading here is ten `transform` writes and one `opacity` write.
  */
 
 * {
@@ -32,63 +33,81 @@ body {
 }
 
 /*
- * The same Graphite palette as the window, restated here because the
- * overlay is a separate document with its own stylesheet — it deliberately
- * does not load the app's CSS just to draw one pill.
+ * Smoked glass: a tint you can see through, a fine edge and a soft shadow,
+ * with a faint glow under the words so they read over any page. The same on
+ * every platform: only the operating system can blur the apps behind a
+ * window, and only as a rectangle, so the pill is a tint everywhere.
+ *
+ * The Graphite palette, restated here because the overlay is a separate
+ * document with its own stylesheet; it deliberately does not load the app's
+ * CSS just to draw one pill.
  */
 .overlay {
-  --accent: #f2f2f5;
-  --accent-soft: rgb(242 242 245 / 12%);
-  --card: rgb(23 23 27 / 97%);
-  --card-border: #2a2a31;
-  --card-text: #f2f2f5;
-  --card-muted: #a0a0ab;
-  --card-shadow:
-    0 10px 28px rgb(0 0 0 / 45%),
-    inset 0 1px 0 rgb(255 255 255 / 4%);
-  --wave: #5c5c66;
-  --wave-live: #e6e6ea;
+  --glass: rgb(24 24 30 / 58%);
+  --glass-edge: rgb(255 255 255 / 22%);
+  --glass-shadow: 0 10px 28px -10px rgb(0 0 0 / 50%);
+  --ink: #f2f2f5;
+  --ink-muted: rgb(242 242 245 / 72%);
+  --glow: 0 1px 2px rgb(0 0 0 / 70%);
+  --accent: #9b9ba5;
   --badge-text: #ffffff;
+  --wave: rgb(242 242 245 / 45%);
+  --wave-live: #ff5a5f;
 
-  display: grid;
-  grid-template-columns: 108px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 13px;
-  width: calc(100% - 16px);
-  height: 74px;
-  margin: 8px;
-  padding: 10px 16px 10px 12px;
-  color: var(--card-text);
-  border: 1px solid var(--card-border);
-  border-radius: 16px;
-  background: var(--card);
-  box-shadow: var(--card-shadow);
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  width: 200px;
+  max-width: calc(100% - 16px);
+  height: 48px;
+  overflow: hidden;
+  color: var(--ink);
+  border-radius: 999px;
+  background: var(--glass);
+  box-shadow:
+    inset 0 0 0 1px var(--glass-edge),
+    var(--glass-shadow);
 
-  /* Rise: the window is shown by the main process, and the card springs up
+  /* Rise: the window is shown by the main process, and the pill springs up
      into it from below its bottom edge, overshooting a touch before it
-     settles. The same motion on every platform: it is all in this sheet. */
+     settles. Its width springs the same way whenever its words change. */
   opacity: 1;
-  transform: translateY(0);
-  /* Only opacity and transform are transitioned, both compositor-only.
-     The accent colours switch instantly and deliberately: Chromium does not
+  transform: translate(-50%, 0);
+  /* The accent colours switch instantly and deliberately: Chromium does not
      reliably re-target a transition whose value comes from a custom property,
      and the waveform motion plus icon transition already carries the phase
      change. */
   transition:
     opacity 160ms ease-out,
-    transform 420ms cubic-bezier(0.2, 1.3, 0.35, 1);
+    transform 420ms cubic-bezier(0.2, 1.3, 0.35, 1),
+    width 420ms cubic-bezier(0.2, 1.3, 0.35, 1);
   will-change: transform, opacity;
 }
 
-/* Resting/exit state: also what the card starts at before the first status.
+/* Resting/exit state: also what the pill starts at before the first status.
    It sinks back below the edge it rose from, quicker than it came, and well
    within the main process's 220 ms before the window is hidden. */
 .overlay.idle {
   opacity: 0;
-  transform: translateY(calc(100% + 14px));
+  transform: translate(-50%, calc(100% + 14px));
   transition:
     opacity 180ms ease-in,
     transform 200ms cubic-bezier(0.5, 0, 0.75, 0);
+}
+
+/* The content sits at its natural width, and the script sizes the pill to
+   match; while the pill springs, the words stay where they are. */
+.pill-content {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: 464px;
+  padding: 0 18px 0 9px;
 }
 
 .overlay.recording,
@@ -96,21 +115,16 @@ body {
   /* Red means one thing in Vocette: it is listening. The bars wear it too.
      Starting counts: the microphone is opening and the take has begun. */
   --accent: #ff5a5f;
-  --accent-soft: rgb(255 90 95 / 14%);
-  --wave-live: #ff5a5f;
-
-  border-color: rgb(255 90 95 / 32%);
 }
 
 .overlay.processing {
-  /* Writing is quiet grey work, not a warning. */
-  --accent: #c3c3cb;
-  --accent-soft: rgb(195 195 203 / 12%);
+  /* Writing is quiet grey work, not a warning: a clear badge, not a coloured one. */
+  --accent: rgb(255 255 255 / 16%);
+  --badge-text: var(--ink);
 }
 
 .overlay.success {
-  --accent: #6fd08c;
-  --accent-soft: rgb(111 208 140 / 14%);
+  --accent: #3fae6a;
 }
 
 /*
@@ -118,123 +132,64 @@ body {
  * colour. The user asked for this and only needs to see that it happened.
  */
 .overlay.cancelled {
-  --accent: #9b9ba5;
-  --accent-soft: rgb(155 155 165 / 14%);
+  --accent: #6b6b76;
 }
 
 .overlay.error {
-  --accent: #f2777a;
-  --accent-soft: rgb(242 119 122 / 14%);
+  --accent: #e5484d;
 
   animation: nudge 260ms ease-in-out;
 }
 
-/* --- State-driven voice animation ---------------------------------------- */
-
 /*
- * The supplied reference SVG is a fixed six-second story. This lightweight
- * version keeps the same waveform/microphone/document/check language, while
- * the real workflow phase controls how long each scene remains visible.
+ * Light: a pale tint with dark words. The phase colours are restated where
+ * white on them would be too faint.
  */
-.voice-visual {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 108px;
-  height: 44px;
+:root[data-theme='light'] .overlay {
+  --glass: rgb(250 250 252 / 66%);
+  --glass-edge: rgb(0 0 0 / 10%);
+  --glass-shadow: 0 10px 28px -12px rgb(0 0 0 / 30%);
+  --ink: #17171c;
+  --ink-muted: rgb(23 23 28 / 70%);
+  --glow: 0 0 2px rgb(255 255 255 / 90%);
+  --wave: rgb(23 23 28 / 35%);
+  --wave-live: #e5383b;
 }
 
-.waveform {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  width: 27px;
-  height: 34px;
+:root[data-theme='light'] .overlay.recording,
+:root[data-theme='light'] .overlay.starting {
+  --accent: #e5383b;
 }
 
-.waveform-left {
-  justify-content: flex-end;
+:root[data-theme='light'] .overlay.processing {
+  --accent: rgb(0 0 0 / 8%);
 }
 
-.waveform-right {
-  justify-content: flex-start;
+:root[data-theme='light'] .overlay.success {
+  --accent: #1f7a45;
 }
 
-.waveform i {
-  display: block;
-  flex: 0 0 3px;
-  width: 3px;
-  border-radius: 999px;
-  background: var(--wave);
-  opacity: 0.75;
-  transform-origin: center;
-  transition:
-    background-color 160ms ease,
-    opacity 160ms ease;
+:root[data-theme='light'] .overlay.cancelled {
+  --accent: #6b6b73;
 }
 
-.waveform-left i:nth-child(1) {
-  height: 9px;
-  animation-delay: -0.12s;
+:root[data-theme='light'] .overlay.error {
+  --accent: #c4423f;
 }
 
-.waveform-left i:nth-child(2) {
-  height: 19px;
-  animation-delay: -0.48s;
-}
-
-.waveform-left i:nth-child(3) {
-  height: 29px;
-  animation-delay: -0.7s;
-}
-
-.waveform-left i:nth-child(4) {
-  height: 15px;
-  animation-delay: -0.32s;
-}
-
-.waveform-left i:nth-child(5) {
-  height: 24px;
-  animation-delay: -0.6s;
-}
-
-.waveform-right i:nth-child(1) {
-  height: 25px;
-  animation-delay: -0.42s;
-}
-
-.waveform-right i:nth-child(2) {
-  height: 14px;
-  animation-delay: -0.66s;
-}
-
-.waveform-right i:nth-child(3) {
-  height: 29px;
-  animation-delay: -0.22s;
-}
-
-.waveform-right i:nth-child(4) {
-  height: 18px;
-  animation-delay: -0.54s;
-}
-
-.waveform-right i:nth-child(5) {
-  height: 9px;
-  animation-delay: -0.08s;
-}
+/* --- Badge ---------------------------------------------------------------- */
 
 .state-badge {
   position: relative;
   display: grid;
-  flex: 0 0 36px;
+  flex: 0 0 30px;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   color: var(--badge-text);
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 24%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 22%);
   /* Only `transform` is transitioned. Chromium does not reliably re-target a
      transition whose value comes from a custom property, so transitioning
      `background-color` here left the badge showing the previous phase's
@@ -253,13 +208,13 @@ body {
 }
 
 .state-icon {
-  width: 23px;
-  height: 23px;
+  width: 19px;
+  height: 19px;
   overflow: visible;
   stroke: currentcolor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.9;
+  stroke-width: 2;
 }
 
 .state-icon .icon {
@@ -283,10 +238,64 @@ body {
   transform: scale(1);
 }
 
+.overlay.recording .state-badge::after {
+  animation: badge-pulse 1.45s cubic-bezier(0.22, 0.7, 0.25, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.overlay.processing .icon-document {
+  animation: document-turn 1.35s linear infinite;
+  will-change: transform;
+}
+
+.overlay.success .icon-check {
+  animation: check-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- Waveform ------------------------------------------------------------- */
+
+.waveform {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+}
+
+/* An outcome needs the room for its words; the waveform has said its piece. */
+.overlay.success .waveform,
+.overlay.cancelled .waveform,
+.overlay.error .waveform {
+  display: none;
+}
+
+.waveform i {
+  display: block;
+  flex: 0 0 3px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--wave);
+  transform-origin: center;
+  transition:
+    background-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.waveform i:nth-child(1) { height: 7px; }
+.waveform i:nth-child(2) { height: 14px; }
+.waveform i:nth-child(3) { height: 22px; }
+.waveform i:nth-child(4) { height: 11px; }
+.waveform i:nth-child(5) { height: 18px; }
+.waveform i:nth-child(6) { height: 19px; }
+.waveform i:nth-child(7) { height: 11px; }
+.waveform i:nth-child(8) { height: 22px; }
+.waveform i:nth-child(9) { height: 14px; }
+.waveform i:nth-child(10) { height: 7px; }
+
 .overlay.recording .waveform i,
 .overlay.starting .waveform i {
   background: var(--wave-live);
-  opacity: 0.9;
+  opacity: 0.95;
   /* The bars follow the voice: the script scales each one from the live
      level, and this glides between readings. Silence leaves them low. */
   transform: scaleY(0.42);
@@ -296,169 +305,79 @@ body {
   will-change: transform;
 }
 
-.overlay.recording .state-badge::after {
-  animation: badge-pulse 1.45s cubic-bezier(0.22, 0.7, 0.25, 1) infinite;
-  will-change: transform, opacity;
-}
-
 .overlay.processing .waveform i {
   /* Writing: a light passes along the bars, left to right, as on the tray.
      Starting the microphone is not writing: it keeps the listening look. */
+  background: var(--ink);
   animation: write-sweep 1.2s ease-in-out infinite;
   /* Bars waiting for their turn already sit at the dim step, not full height. */
   animation-fill-mode: backwards;
   will-change: transform, opacity;
 }
 
-.overlay.processing .waveform-left i:nth-child(1) { animation-delay: 0s; }
-.overlay.processing .waveform-left i:nth-child(2) { animation-delay: 0.07s; }
-.overlay.processing .waveform-left i:nth-child(3) { animation-delay: 0.14s; }
-.overlay.processing .waveform-left i:nth-child(4) { animation-delay: 0.21s; }
-.overlay.processing .waveform-left i:nth-child(5) { animation-delay: 0.28s; }
-.overlay.processing .waveform-right i:nth-child(1) { animation-delay: 0.42s; }
-.overlay.processing .waveform-right i:nth-child(2) { animation-delay: 0.49s; }
-.overlay.processing .waveform-right i:nth-child(3) { animation-delay: 0.56s; }
-.overlay.processing .waveform-right i:nth-child(4) { animation-delay: 0.63s; }
-.overlay.processing .waveform-right i:nth-child(5) { animation-delay: 0.7s; }
+.overlay.processing .waveform i:nth-child(1) { animation-delay: 0s; }
+.overlay.processing .waveform i:nth-child(2) { animation-delay: 0.07s; }
+.overlay.processing .waveform i:nth-child(3) { animation-delay: 0.14s; }
+.overlay.processing .waveform i:nth-child(4) { animation-delay: 0.21s; }
+.overlay.processing .waveform i:nth-child(5) { animation-delay: 0.28s; }
+.overlay.processing .waveform i:nth-child(6) { animation-delay: 0.35s; }
+.overlay.processing .waveform i:nth-child(7) { animation-delay: 0.42s; }
+.overlay.processing .waveform i:nth-child(8) { animation-delay: 0.49s; }
+.overlay.processing .waveform i:nth-child(9) { animation-delay: 0.56s; }
+.overlay.processing .waveform i:nth-child(10) { animation-delay: 0.63s; }
 
-.overlay.processing .icon-document {
-  animation: document-turn 1.35s linear infinite;
-  will-change: transform;
-}
-
-.overlay.success .state-badge {
-  transform: scale(1.04);
-}
-
-.overlay.success .icon-check {
-  animation: check-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/*
- * Light, matching the window. The card colours are tokens above, so only they
- * are restated — but the phase accents are replaced rather than reused: the
- * dark theme's green, amber and red are chosen to glow on near-black and carry
- * nowhere near enough contrast for a white badge sitting on a white card.
- */
-:root[data-theme='light'] .overlay {
-  --accent: #17171c;
-  --accent-soft: rgb(23 23 28 / 8%);
-  --card: rgb(255 255 255 / 97%);
-  --card-border: #e2e2e7;
-  --card-text: #17171c;
-  --card-muted: #5e5e69;
-  --card-shadow:
-    0 10px 28px rgb(0 0 0 / 18%),
-    inset 0 1px 0 rgb(255 255 255 / 70%);
-  --wave: #c3c3cb;
-  --wave-live: #3d3d45;
-}
-
-:root[data-theme='light'] .overlay.recording,
-:root[data-theme='light'] .overlay.starting {
-  --accent: #e5383b;
-  --accent-soft: rgb(229 56 59 / 10%);
-  --wave-live: #e5383b;
-
-  border-color: rgb(196 66 63 / 32%);
-}
-
-:root[data-theme='light'] .overlay.processing {
-  --accent: #4b4b55;
-  --accent-soft: rgb(75 75 85 / 9%);
-}
-
-:root[data-theme='light'] .overlay.success {
-  --accent: #1f7a45;
-  --accent-soft: rgb(31 122 69 / 10%);
-}
-
-:root[data-theme='light'] .overlay.cancelled {
-  --accent: #6b6b73;
-  --accent-soft: rgb(107 107 115 / 10%);
-}
-
-:root[data-theme='light'] .overlay.error {
-  --accent: #c4423f;
-  --accent-soft: rgb(196 66 63 / 10%);
-}
-
-/* --- Copy ---------------------------------------------------------------- */
+/* --- Words ---------------------------------------------------------------- */
 
 .copy {
   min-width: 0;
+  max-width: 300px;
 }
 
 .message {
   overflow: hidden;
-  color: var(--card-text);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.005em;
   text-overflow: ellipsis;
+  text-shadow: var(--glow);
   white-space: nowrap;
 }
 
+/* Only an outcome has a second line: what was copied, or what went wrong. */
 .detail {
+  display: none;
   overflow: hidden;
-  margin-top: 4px;
-  color: var(--card-muted);
+  margin-top: 2px;
+  color: var(--ink-muted);
   font-size: 11px;
   text-overflow: ellipsis;
+  text-shadow: var(--glow);
   white-space: nowrap;
+}
+
+.overlay.success .detail:not(:empty),
+.overlay.cancelled .detail:not(:empty),
+.overlay.error .detail:not(:empty) {
+  display: block;
 }
 
 .timer {
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
   font-size: 11px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--glow);
 }
 
-/* --- Live level ---------------------------------------------------------- */
-
-/*
- * Five bars beside the timer that follow the microphone while recording, so
- * "is it hearing me?" is answered at a glance. The bars are unlike the
- * waveform either side of the badge, which only says a take is live: these
- * move with the voice, and stay still when nothing is heard. The heights
- * arrive already smoothed; the short transition glides between readings,
- * which come about every 70 ms.
- */
-.readout {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.level {
+.timer:empty {
   display: none;
-  align-items: center;
-  gap: 2px;
-  height: 16px;
 }
 
-.overlay.recording .level {
-  display: flex;
-}
-
-.level-bar {
-  display: block;
-  width: 3px;
-  height: 16px;
-  border-radius: 999px;
-  background: var(--accent);
-  /* At rest each bar is a dot, so the meter is there before the first word.
-     The script sets the same resting scale. */
-  transform: scaleY(0.2);
-  transform-origin: center;
-  transition: transform 90ms ease-out;
-  will-change: transform;
-}
-
-/* Stands in for the bars where motion is reduced; see the end of the file. */
+/* Stands in for the moving bars where motion is reduced; see the end of the file. */
 .level-dot {
   display: none;
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -466,7 +385,7 @@ body {
   opacity: 0.3;
 }
 
-/* --- Keyframes ----------------------------------------------------------- */
+/* --- Keyframes ------------------------------------------------------------ */
 
 @keyframes badge-pulse {
   0% {
@@ -513,18 +432,19 @@ body {
   }
 }
 
+/* The pill is centred by its transform, so the nudge keeps that and adds to it. */
 @keyframes nudge {
   0%,
   100% {
-    transform: translateX(0);
+    transform: translate(-50%, 0);
   }
 
   25% {
-    transform: translateX(-3px);
+    transform: translate(calc(-50% - 3px), 0);
   }
 
   75% {
-    transform: translateX(3px);
+    transform: translate(calc(-50% + 3px), 0);
   }
 }
 
@@ -547,12 +467,8 @@ body {
   }
 
   /* The level as brightness rather than movement: one still dot, which the
-     script brightens with the voice, in place of the moving bars. */
-  .level-bar {
-    display: none;
-  }
-
-  .level-dot {
+     script brightens with the voice. */
+  .overlay.recording .level-dot {
     display: block;
   }
 }

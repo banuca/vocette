@@ -15,12 +15,14 @@
       settings/history app just to draw this pill, which meant a second full
       renderer process running the entire UI.
     -->
+    <!--
+      The pill. Its content sits at its natural width inside, and the script
+      sizes the pill to match, so the pill can spring between sizes while the
+      words stay put.
+    -->
     <div class="overlay idle" id="overlay" role="status" aria-live="polite">
-      <div class="voice-visual" aria-hidden="true">
-        <span class="waveform waveform-left">
-          <i></i><i></i><i></i><i></i><i></i>
-        </span>
-        <span class="state-badge">
+      <div class="pill-content" id="pill-content">
+        <span class="state-badge" aria-hidden="true">
           <svg class="state-icon" viewBox="0 0 24 24" fill="none">
             <g class="icon icon-microphone">
               <rect x="9" y="4" width="6" height="10" rx="3" />
@@ -37,28 +39,19 @@
             </g>
           </svg>
         </span>
-        <span class="waveform waveform-right">
-          <i></i><i></i><i></i><i></i><i></i>
+        <span class="waveform" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
         </span>
-      </div>
-      <div class="copy">
-        <div class="message" id="message">Ready</div>
-        <div class="detail" id="detail"></div>
-      </div>
-      <div class="readout">
+        <div class="copy">
+          <div class="message" id="message">Ready</div>
+          <div class="detail" id="detail"></div>
+        </div>
         <!--
-          The live level while recording: five bars, or one dot that brightens
-          where motion is reduced. Hidden from assistive technology, which is
-          already told what is happening by the message.
+          Where motion is reduced the waveform stays still, and this dot
+          carries the live level instead, brightening with the voice. Hidden
+          from assistive technology, which the message already tells.
         -->
-        <span class="level" id="level" aria-hidden="true">
-          <i class="level-bar"></i>
-          <i class="level-bar"></i>
-          <i class="level-bar"></i>
-          <i class="level-bar"></i>
-          <i class="level-bar"></i>
-          <i class="level-dot" id="level-dot"></i>
-        </span>
+        <i class="level-dot" id="level-dot" aria-hidden="true"></i>
         <div class="timer" id="timer"></div>
       </div>
     </div>
