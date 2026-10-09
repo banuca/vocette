@@ -5,6 +5,15 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.6.3] — unreleased
+
+**The floating pill.** A small see-through pill rests at the bottom of the screen and springs
+open when you speak, then folds back to rest; Settings can hide it, and on Windows it steps
+aside for full-screen apps. The black card is now smoked glass in dark and light. Polishing
+has a look of its own: a sparkle, twinkling bars and a shine on the word. A paste that lands
+folds the pill away with a small tick instead of saying "Pasted"; anything you need to act
+on is still said.
+
 ## [0.6.2] — unreleased
 
 **Rise**, the pill's new motion, the same on every platform: it springs up from below and
