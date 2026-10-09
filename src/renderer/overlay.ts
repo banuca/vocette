@@ -17,15 +17,19 @@ const reduceMotion =
 /** The reduced-motion dot with nothing heard; it brightens to full with the voice. */
 const DOT_REST_OPACITY = 0.3
 
+/** The folded pill's width: what is left of it when it has nothing to say. */
+const FOLDED_WIDTH = 56
+
 /**
  * Sizes the pill to its content, which sits at its natural width inside, so
- * the pill springs between sizes as the words change. While idle the pill
- * keeps the width it had, so it sinks away as it was rather than shrinking
- * to fit "Ready" on the way out.
+ * the pill springs between sizes as the words change. Idle, or after a paste
+ * that landed, it folds to its small size instead.
  */
 function fitPill(): void {
-  if (!overlay || !content || overlay.classList.contains('idle')) return
-  overlay.style.width = `${Math.ceil(content.getBoundingClientRect().width)}px`
+  if (!overlay || !content) return
+  const folded = overlay.classList.contains('idle') || overlay.classList.contains('quiet')
+  const width = folded ? FOLDED_WIDTH : Math.ceil(content.getBoundingClientRect().width)
+  overlay.style.width = `${width}px`
 }
 
 // Text changes the content's width: a new message, a clock gaining a digit.
@@ -68,8 +72,12 @@ function paintLevel(): void {
 function render(status: WorkflowStatus): void {
   if (!overlay || !message || !detail || !timerElement) return
 
+  const classes = ['overlay', status.phase]
   // Polishing is processing with a look of its own.
-  overlay.className = `overlay ${status.phase}${status.stage === 'polishing' ? ' polishing' : ''}`
+  if (status.stage === 'polishing') classes.push('polishing')
+  // A success with nothing to say folds away with a tick.
+  if (status.phase === 'success' && status.quiet) classes.push('quiet')
+  overlay.className = classes.join(' ')
   message.textContent = status.message
   detail.textContent = status.detail ?? ''
 

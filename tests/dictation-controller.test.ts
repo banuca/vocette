@@ -609,6 +609,71 @@ describe('waiting for held modifier keys before pasting', () => {
   })
 })
 
+describe('quiet success', () => {
+  const lastSuccess = (harness: ReturnType<typeof makeHarness>): WorkflowStatus | undefined =>
+    harness.deps.broadcastStatus.mock.calls
+      .map(([status]) => status)
+      .filter((status) => status.phase === 'success')
+      .at(-1)
+
+  it('folds away quietly when the paste lands', async () => {
+    const harness = makeHarness()
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    expect(lastSuccess(harness)).toMatchObject({ message: 'Pasted', quiet: true })
+  })
+
+  it('is quiet when automatic paste is off, because the user chose the clipboard', async () => {
+    const harness = makeHarness({ settings: { autoPaste: false } })
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    expect(lastSuccess(harness)).toMatchObject({ message: 'Copied to clipboard', quiet: true })
+  })
+
+  it('says so when the user has to paste it themselves', async () => {
+    const harness = makeHarness()
+    await dictate(harness)
+    const success = lastSuccess(harness)
+    expect(success?.message).toBe('Copied — paste manually (focus could not be verified)')
+    expect(success).not.toHaveProperty('quiet')
+  })
+
+  it('says so when this platform cannot paste, so the text is only on the clipboard', async () => {
+    const harness = makeHarness({ settings: { pasteAvailable: false } })
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    const success = lastSuccess(harness)
+    expect(success?.message).toBe('Copied to clipboard')
+    expect(success).not.toHaveProperty('quiet')
+  })
+
+  it('says so when the take came from the window, so there was nowhere to paste', async () => {
+    const harness = makeHarness()
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    harness.controller.startDictation('ui')
+    const requestId = harness.lastRequestId()
+    harness.controller.onRecorderStarted({ requestId })
+    harness.controller.stopDictation()
+    await harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array([1]),
+      mimeType: 'audio/wav',
+      durationMs: 300
+    })
+    const success = lastSuccess(harness)
+    expect(success?.message).toBe('Copied to clipboard')
+    expect(success).not.toHaveProperty('quiet')
+  })
+
+  it('says so when "Paste last dictation" could only copy', async () => {
+    const harness = makeHarness()
+    await harness.controller.pasteLast('Earlier words.')
+    const success = lastSuccess(harness)
+    expect(success?.message).toBe('Copied — paste manually (focus could not be verified)')
+    expect(success).not.toHaveProperty('quiet')
+  })
+})
+
 describe('paste last dictation', () => {
   it('pastes into the window in front, borrowing the clipboard like a dictation', async () => {
     const { controller, deps } = makeHarness()
@@ -631,6 +696,7 @@ describe('paste last dictation', () => {
       phase: 'success',
       message: 'Pasted your last dictation',
       detail: 'Earlier words.',
+      quiet: true,
       canRetry: false
     })
     // Nothing is transcribed again, and nothing new goes into history.
@@ -3200,7 +3266,7 @@ describe('AI polish', () => {
         waitMs: expect.any(Number)
       }
     )
-    expect(lastSuccess(harness)?.message).toBe('Pasted')
+    expect(lastSuccess(harness)).toMatchObject({ message: 'Pasted', quiet: true })
   })
 
   it('is never asked while polish is off, or for a take with Pro gone', async () => {
@@ -3233,6 +3299,8 @@ describe('AI polish', () => {
     await dictate(harness, 'please send the final report to the whole team today')
     expect(harness.deps.writeClipboard).toHaveBeenCalledWith('Please send the final report to the whole team today')
     expect(lastSuccess(harness)?.message).toBe('Pasted — unpolished (took too long)')
+    // Polish was wanted and did not happen: that is said, not folded away.
+    expect(lastSuccess(harness)).not.toHaveProperty('quiet')
     // Nothing was polished, so nothing is kept as the text before it.
     expect(harness.deps.recordHistory.mock.calls[0]?.[3]).not.toHaveProperty('originalText')
     expect(harness.controller.canRetry()).toBe(false)

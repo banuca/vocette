@@ -23,6 +23,12 @@ export interface WorkflowStatus {
    * own in the overlay, so it is said here rather than read from the words.
    */
   stage?: 'transcribing' | 'polishing'
+  /**
+   * On success: nothing needs saying. The text landed where it was meant to,
+   * so the overlay folds away with a tick rather than a message. Set only
+   * when true; any success without it is said.
+   */
+  quiet?: boolean
   /** On success: how long the text took after letting go, as History keeps it. */
   waitMs?: number
   /**

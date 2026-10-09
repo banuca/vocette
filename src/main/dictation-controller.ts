@@ -69,6 +69,12 @@ const FINISH_HINT_MAX_LABEL = 24
 const BUSY_RETRY_DETAIL = 'The service was busy — trying once more'
 /** Said under "Polishing…" while AI polish rewrites the text. */
 const POLISHING_DETAIL = 'Rewriting it in your chosen style'
+/** A dictation's paste has landed. */
+const PASTED_MESSAGE = 'Pasted'
+/** "Paste last dictation" has landed. */
+const PASTED_LAST_MESSAGE = 'Pasted your last dictation'
+/** The delivery stopped at the clipboard, with no reason to name. */
+const COPIED_MESSAGE = 'Copied to clipboard'
 
 export type SoundKind = 'start' | 'success' | 'error'
 
@@ -865,11 +871,16 @@ export class DictationController {
         // safely at all still applies.
         paste: settings.pasteAvailable,
         restoreClipboard: settings.restoreClipboard,
-        pastedMessage: 'Pasted your last dictation',
+        pastedMessage: PASTED_LAST_MESSAGE,
         owns
       })
       if (!message || !owns()) return
-      this.broadcast({ phase: 'success', message, detail: previewOf(text) }, SUCCESS_RESET_MS)
+      // Landed where it was asked for: the overlay folds away with a tick.
+      const quiet = message === PASTED_LAST_MESSAGE
+      this.broadcast(
+        { phase: 'success', message, detail: previewOf(text), ...(quiet ? { quiet } : {}) },
+        SUCCESS_RESET_MS
+      )
     } catch (error) {
       if (!owns()) return
       this.broadcast(
@@ -931,7 +942,7 @@ export class DictationController {
     const { text, owns } = delivery
     if (!delivery.paste) {
       this.deps.writeClipboard(text)
-      return 'Copied to clipboard'
+      return COPIED_MESSAGE
     }
 
     // Checked before anything is written: a paste refused from the outset
@@ -1179,7 +1190,7 @@ export class DictationController {
         restoreClipboard: settings.restoreClipboard,
         // Not "Copied and pasted": once the clipboard is given back, the
         // transcript is no longer on it. "Pasted" is true either way.
-        pastedMessage: 'Pasted',
+        pastedMessage: PASTED_MESSAGE,
         owns: () => this.ownsAttempt(attempt)
       })
       if (!message || !this.ownsAttempt(attempt)) return
@@ -1190,13 +1201,21 @@ export class DictationController {
       this.setRetryTake(null)
       if (!this.ownsAttempt(attempt)) return
 
+      // Nothing to say when the text landed where it was meant to: pasted, or
+      // copied because the user turned automatic paste off. The overlay folds
+      // away with a tick. Anything else is said, polish that did not happen
+      // included.
+      const quiet =
+        !polishNote &&
+        (message === PASTED_MESSAGE || (message === COPIED_MESSAGE && !settings.autoPaste))
       this.broadcast(
         {
           phase: 'success',
           // Said plainly when polish was wanted and did not happen.
           message: polishNote ? `${message} — unpolished (${polishNote})` : message,
           detail: previewOf(text),
-          waitMs
+          waitMs,
+          ...(quiet ? { quiet } : {})
         },
         SUCCESS_RESET_MS
       )
