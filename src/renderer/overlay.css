@@ -106,13 +106,14 @@ body {
     height 200ms ease-in;
 }
 
-/* A paste that landed: the pill folds without a bounce and shows a tick. */
+/* A paste that landed, after its beat: the pill folds gently, without a
+   bounce, and shows a tick. */
 .overlay.quiet {
   transition:
     opacity 160ms ease-out,
-    transform 300ms ease,
-    width 300ms cubic-bezier(0.4, 0, 0.2, 1),
-    height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    transform 550ms ease,
+    width 550ms cubic-bezier(0.4, 0, 0.2, 1),
+    height 550ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* The content sits at its natural width, and the script sizes the pill to
@@ -132,10 +133,38 @@ body {
   transition: opacity 160ms ease 60ms;
 }
 
-.overlay.idle .pill-content,
-.overlay.quiet .pill-content {
+.overlay.idle .pill-content {
   opacity: 0;
   transition: opacity 90ms ease;
+}
+
+.overlay.quiet .pill-content {
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+/*
+ * A paste that landed, for its beat: the open pill keeps its size, its badge
+ * turns to a green tick, the bars settle and the words fade. Then it folds.
+ */
+.overlay.success.landed .waveform {
+  display: flex;
+}
+
+.overlay.landed .waveform i {
+  background: var(--ink);
+  opacity: 0.35;
+  transform: scaleY(0.5);
+  transition:
+    transform 250ms ease,
+    opacity 250ms ease;
+}
+
+.overlay.landed .message,
+.overlay.landed .detail,
+.overlay.landed .timer {
+  opacity: 0;
+  transition: opacity 200ms ease;
 }
 
 .tick {
@@ -164,7 +193,7 @@ body {
 .overlay.quiet .tick {
   opacity: 1;
   transform: scale(1);
-  transition-delay: 160ms;
+  transition-delay: 300ms;
 }
 
 /*

@@ -19,6 +19,8 @@ const DOT_REST_OPACITY = 0.3
 
 /** The folded pill's width: what is left of it when it has nothing to say. */
 const FOLDED_WIDTH = 56
+/** After a paste lands, the open pill shows a green tick for this long, then folds. */
+const LANDED_BEAT_MS = 700
 
 /**
  * Sizes the pill to its content, which sits at its natural width inside, so
@@ -27,6 +29,8 @@ const FOLDED_WIDTH = 56
  */
 function fitPill(): void {
   if (!overlay || !content) return
+  // Landed: the pill holds its size for the beat, whatever its words do.
+  if (overlay.classList.contains('landed')) return
   const folded = overlay.classList.contains('idle') || overlay.classList.contains('quiet')
   const width = folded ? FOLDED_WIDTH : Math.ceil(content.getBoundingClientRect().width)
   overlay.style.width = `${width}px`
@@ -43,6 +47,8 @@ function formatElapsed(milliseconds: number): string {
 }
 
 let timer: number | undefined
+/** Folds the pill once a landed paste's beat is over; any new status cancels it. */
+let foldTimer: number | undefined
 /** The meter's smoothed bar heights, 0–1 each; back to rest whenever a take starts or ends. */
 let bars = restingBars()
 let recording = false
@@ -72,11 +78,21 @@ function paintLevel(): void {
 function render(status: WorkflowStatus): void {
   if (!overlay || !message || !detail || !timerElement) return
 
+  if (foldTimer !== undefined) window.clearTimeout(foldTimer)
+  foldTimer = undefined
   const classes = ['overlay', status.phase]
   // Polishing is processing with a look of its own.
   if (status.stage === 'polishing') classes.push('polishing')
-  // A success with nothing to say folds away with a tick.
-  if (status.phase === 'success' && status.quiet) classes.push('quiet')
+  // A success with nothing to say: a beat with a green tick in the open
+  // pill, so the eye catches that it worked, then it folds away.
+  if (status.phase === 'success' && status.quiet) {
+    classes.push('landed')
+    foldTimer = window.setTimeout(() => {
+      foldTimer = undefined
+      overlay.classList.replace('landed', 'quiet')
+      fitPill()
+    }, LANDED_BEAT_MS)
+  }
   overlay.className = classes.join(' ')
   message.textContent = status.message
   detail.textContent = status.detail ?? ''
