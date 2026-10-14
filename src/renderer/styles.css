@@ -2265,7 +2265,6 @@ a:focus-visible {
     padding: 0 0 16px;
   }
 
-  .metrics,
   .about-grid,
   .mode-choice,
   .form-grid,
@@ -2280,6 +2279,21 @@ a:focus-visible {
 
   .record-hint {
     text-align: left;
+  }
+}
+
+/* The five numbers keep their row while each still has room for its label,
+   which holds down to the narrowest window at 100%. Zoomed in past that they
+   wrap to three columns, each row starting flush like the first. */
+@media (max-width: 700px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 14px;
+  }
+
+  .metric-card:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
   }
 }
 

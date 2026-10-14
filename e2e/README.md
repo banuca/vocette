@@ -44,6 +44,7 @@ node e2e/quiet-check.mjs
 | `switch-check` | The sun and moon theme switch |
 | `titlebar-check` | The window's title bar follows the theme (K1) |
 | `engine-download-check` | Settings: picking "On this PC" and pressing Download saves the engine (S4) |
+| `stats-narrow-check` | The History stats row at narrow widths and zoomed in, with screenshots (K2) |
 | `zoom-check` | Ctrl + wheel and Ctrl + = / - / 0 zoom, remembered (K3) |
 | `polishing-check` | "Polishing…" with its own clock, against a slow stand-in server (K4) |
 | `rise-check` | The pill's Rise motion and live waveform (K5) |
