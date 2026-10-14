@@ -455,6 +455,48 @@ describe('the speech model row in Settings', () => {
     expect(applyEngine).toHaveBeenCalledWith(engineStatus('downloading'))
   })
 
+  it('saves "On this PC" when Download is pressed, before the download starts', async () => {
+    // S4, the 0.5.0 hand test: a switcher from the cloud picked this PC and
+    // pressed Download, and the takes after it still went to the cloud.
+    const { choose, rowHost, saveSettings, downloadModel, at } = await makeHarness({
+      settings: { engine: 'cloud', apiKeySource: 'stored' },
+      engine: engineStatus('missing')
+    })
+    choose('local')
+    rowHost.part('download').emit('click')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(saveSettings).toHaveBeenCalledTimes(1)
+    expect(saveSettings).toHaveBeenCalledWith({ engine: 'local' })
+    expect(saveSettings.mock.invocationCallOrder[0]).toBeLessThan(
+      downloadModel.mock.invocationCallOrder[0] ?? 0
+    )
+    expect(at('#engine-local').checked).toBe(true)
+    expect(shown(at)).toBe('local')
+  })
+
+  it('leaves the user’s other unsaved edits alone when it saves the engine', async () => {
+    const { choose, rowHost, at } = await makeHarness({
+      settings: { engine: 'cloud', apiKeySource: 'stored', playSounds: true },
+      engine: engineStatus('missing')
+    })
+    at('#play-sounds').checked = false
+    choose('local')
+    rowHost.part('download').emit('click')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(at('#play-sounds').checked).toBe(false)
+  })
+
+  it('saves nothing on Download when this PC is already the saved engine', async () => {
+    const { rowHost, saveSettings, downloadModel } = await makeHarness({
+      settings: { engine: 'local' },
+      engine: engineStatus('missing')
+    })
+    rowHost.part('download').emit('click')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(downloadModel).toHaveBeenCalledTimes(1)
+    expect(saveSettings).not.toHaveBeenCalled()
+  })
+
   it('keeps Remove disabled, and says why, while a dictation runs', async () => {
     const { view, rowHost } = await makeHarness({
       engine: engineStatus('installed'),

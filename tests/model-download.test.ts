@@ -285,6 +285,29 @@ describe('createModelRow in Settings', () => {
     expect(host.at('cancel').hidden).toBe(false)
   })
 
+  it('runs its before-download step first, and a failure there stops the download', async () => {
+    const bridge = makeBridge()
+    const host = new FakeHost()
+    const beforeDownload = vi.fn(async () => {
+      throw new Error('The settings could not be saved.')
+    })
+    const view = createModelRow(host as unknown as HTMLElement, {
+      variant: 'settings',
+      bridge,
+      onStatus: vi.fn(),
+      confirm: vi.fn(() => true),
+      beforeDownload
+    })
+    view.apply(status('missing'))
+    host.at('download').click()
+    await flush()
+    expect(beforeDownload).toHaveBeenCalledTimes(1)
+    expect(bridge.downloadModel).not.toHaveBeenCalled()
+    expect(host.at('note').textContent).toBe('The settings could not be saved.')
+    expect(host.at('note').hidden).toBe(false)
+    expect(host.at('download').disabled).toBe(false)
+  })
+
   it('follows the progress it is sent, bar and count together', () => {
     const { host, view } = settingsRow()
     view.apply(status('downloading', { receivedBytes: 412_000_000 }))

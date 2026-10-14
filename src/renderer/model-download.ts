@@ -187,6 +187,8 @@ export interface SettingsRowOptions extends CommonRowOptions {
   variant: 'settings'
   /** Asks before removing; `window.confirm` in the app. */
   confirm(message: string): boolean
+  /** Runs before the download starts; a failure stops it and is said in the row. */
+  beforeDownload?(): Promise<void>
 }
 
 export type ModelRowOptions = SetupRowOptions | SettingsRowOptions
@@ -354,7 +356,12 @@ export function createModelRow(host: HTMLElement, options: ModelRowOptions): Mod
       )
   }
 
-  download?.addEventListener('click', () => run(() => options.bridge.downloadModel()))
+  download?.addEventListener('click', () =>
+    run(async () => {
+      if (options.variant === 'settings') await options.beforeDownload?.()
+      return options.bridge.downloadModel()
+    })
+  )
   cancel?.addEventListener('click', () => run(() => options.bridge.cancelModelDownload()))
   if (options.variant === 'settings') {
     remove?.addEventListener('click', () => {

@@ -959,7 +959,20 @@ ${polishCardMarkup()}
         variant: 'settings',
         bridge: window.murmur,
         onStatus: (status) => context.applyEngine(status),
-        confirm: (message) => window.confirm(message)
+        confirm: (message) => window.confirm(message),
+        // Pressing Download with "On this PC" picked means this PC: the choice
+        // is saved there and then, alone, so the takes after the download use
+        // the model without a trip to Save settings. Other unsaved edits wait.
+        beforeDownload: async () => {
+          if (chosenEngine !== 'local' || !engineDirty) return
+          const next = await window.murmur.saveSettings({ engine: 'local' })
+          context.applySettings(next)
+          // Only the engine is caught up: repainting every control from the
+          // store would throw away the user's other unsaved edits.
+          settings = next
+          engineDirty = false
+          syncEngineChoice()
+        }
       })
     : null
   modelRow?.setDictating(dictationIsBusy(context.workflow.phase))

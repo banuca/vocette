@@ -43,6 +43,7 @@ node e2e/quiet-check.mjs
 | `graphite-check` | Every page in light and dark, and the pill in each phase |
 | `switch-check` | The sun and moon theme switch |
 | `titlebar-check` | The window's title bar follows the theme (K1) |
+| `engine-download-check` | Settings: picking "On this PC" and pressing Download saves the engine (S4) |
 | `zoom-check` | Ctrl + wheel and Ctrl + = / - / 0 zoom, remembered (K3) |
 | `polishing-check` | "Polishing…" with its own clock, against a slow stand-in server (K4) |
 | `rise-check` | The pill's Rise motion and live waveform (K5) |
