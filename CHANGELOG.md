@@ -5,6 +5,10 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.6.5] — unreleased
+
+The green tick after a paste stays a little longer, about as long as the pill's other messages.
+
 ## [0.6.4] — unreleased
 
 After a paste lands, the open pill holds a green tick for a moment before it folds back, rather
