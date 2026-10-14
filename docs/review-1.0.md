@@ -67,7 +67,7 @@ evening notes join list 1. The visual version for the owner is published as an a
     WH_MOUSE_LL hook on the main thread, so a busy main thread would make the mouse lag
     system-wide.
   - Linux on Wayland has no global cursor position, so there is no fade there. Said on the page.
-  - Waiting for the owner's go. Build it after the 0.6.3 hand test.
+  - **Built 343a7c3 (15 Oct)**, after the owner's go ("Let's go ahead", which also leaves K12 out for launch). In 0.6.6.
 - K12. **Double-click the pill to dictate.** Owner request, 9 Oct: "if you double click the pill,
   it starts recording without holding".
   - The catch: the OS gives a click to the pill or to the window behind it, never both. A
@@ -113,7 +113,7 @@ evening notes join list 1. The visual version for the owner is published as an a
     - Ship "Vocette" as a built-in vocabulary term that is always added and that the user can't
       see.
     - Pre-fill it in the Words box on first run.
-  - Not started. It comes after the pill test.
+  - **Built c38d96b (15 Oct):** the name is always a term, and six heard spellings are built-in replacements. In 0.6.6.
 
 ## List 2: new findings
 
