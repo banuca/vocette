@@ -509,6 +509,12 @@ async function startApp(options: {
     createFullScreenProbe: () => () => fullScreen
   }))
 
+  // Every take now carries the app's own name as a term, so every take asks
+  // for the common-word list; reading the real one is tested in `common-words`.
+  vi.doMock('../src/main/common-words', () => ({
+    loadCommonWords: () => Promise.resolve(() => false)
+  }))
+
   // The platform boundary is exercised on its own in `platform-adapters`; here
   // it stands in for whichever desktop the app happens to be running on.
   vi.doMock('../src/main/platform', () => ({
@@ -1077,6 +1083,17 @@ describe('the on-device engine', () => {
       }
     ])
     expect(workflowErrors(app)).toEqual([])
+  })
+
+  it('spells its own name when the engine mishears it', async () => {
+    // The owner's 0.6.4 hand test, with an empty word list: "Vocette" came back as "Voset".
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    app.engine.transcribe.mockResolvedValueOnce('This sentence is typed by using Voset.')
+    await dictateFromWindow(app, wavBytes(1600))
+
+    expect(app.historyAdds().map((entry) => entry.text)).toEqual([
+      'This sentence is typed by using Vocette.'
+    ])
   })
 
   it('says plainly when a recording is not one it can read', async () => {

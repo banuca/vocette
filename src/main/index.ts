@@ -76,6 +76,7 @@ import {
   type Entitlement
 } from '../shared/entitlement'
 import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
+import { withOwnName, withOwnNameRules } from '../shared/own-name'
 import { SubscriptionChecker } from './subscription-check'
 import { displayVersion } from '../shared/update'
 import {
@@ -349,7 +350,7 @@ function polishRequest(text: string, signal?: AbortSignal): Parameters<typeof re
     text,
     style: settings.polishStyle,
     instructions: settings.polishInstructions,
-    terms: planVocabulary(settings.vocabulary, entitlement().pro),
+    terms: withOwnName(planVocabulary(settings.vocabulary, entitlement().pro)),
     endpoint: settings.polishEndpoint,
     model: settings.polishModel,
     apiKey: polishKey(),
@@ -407,9 +408,10 @@ function workflowSettings(): WorkflowSettings {
     // Pro only: a Free user's saved switch sends nothing anywhere.
     polish: pro && settings.polishEnabled,
     // The first 50 terms and 20 rules on Free, all of them with Pro. The
-    // terms feed both the cloud request and the correction after it.
-    vocabulary: planVocabulary(settings.vocabulary, pro),
-    replacements: planReplacements(settings.replacements, pro),
+    // terms feed both the cloud request and the correction after it. The
+    // app's own name rides along outside the limit (see own-name.ts).
+    vocabulary: withOwnName(planVocabulary(settings.vocabulary, pro)),
+    replacements: withOwnNameRules(planReplacements(settings.replacements, pro)),
     microphoneId: settings.microphoneId,
     transcriptionReady: status.ready,
     notReadyReason: status.notReadyReason
