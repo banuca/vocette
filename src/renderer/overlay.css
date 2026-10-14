@@ -33,6 +33,20 @@ body {
 }
 
 /*
+ * Point at the pill and it fades to a ghost, so what is behind it can be
+ * read; it comes back as the pointer leaves. Clicks already pass through.
+ * On the page rather than the pill, so the pill's own opacity, its sink,
+ * is left alone. A fade is not motion, so it stays where motion is reduced.
+ */
+body {
+  transition: opacity 160ms ease-out;
+}
+
+:root.peek body {
+  opacity: 0.12;
+}
+
+/*
  * Smoked glass: a tint you can see through, a fine edge and a soft shadow,
  * with a faint glow under the words so they read over any page. The same on
  * every platform: only the operating system can blur the apps behind a

@@ -77,6 +77,7 @@ import {
 } from '../shared/entitlement'
 import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
 import { withOwnName, withOwnNameRules } from '../shared/own-name'
+import { createOverlayPeek, type OverlayPeek } from './overlay-peek'
 import { SubscriptionChecker } from './subscription-check'
 import { displayVersion } from '../shared/update'
 import {
@@ -176,6 +177,8 @@ let restingShown = false
 let restingPillPoll: NodeJS.Timeout | null = null
 /** Made on first use, and only on Windows; elsewhere nothing is full-screen in front. */
 let fullScreenProbe: (() => boolean) | null = null
+/** Fades the pill under the pointer; watches only while the overlay is on screen. */
+let overlayPeek: OverlayPeek | null = null
 let quitFlushed = false
 let lastBroadcastPhase: WorkflowStatus['phase'] | null = null
 /** Whether Alt + Shift + V is actually registered, not merely switched on. */
@@ -277,6 +280,7 @@ function showOverlay(): void {
   positionOverlay()
   overlayWindow.showInactive()
   overlayVisible = true
+  overlayPeek?.start()
 }
 
 /** Hides the overlay once its exit animation has played. */
@@ -286,8 +290,17 @@ function hideOverlaySoon(): void {
   overlayHideTimer = setTimeout(() => {
     overlayHideTimer = null
     overlayVisible = false
+    overlayPeek?.stop()
     overlayWindow?.hide()
   }, OVERLAY_HIDE_MS)
+}
+
+/** A Linux desktop on Wayland, where no app can read the pointer outside its own windows. */
+function onWayland(): boolean {
+  return (
+    process.platform === 'linux' &&
+    (process.env.XDG_SESSION_TYPE === 'wayland' || Boolean(process.env.WAYLAND_DISPLAY))
+  )
 }
 
 /** Whether a full-screen app, a slideshow or the lock screen is in front. Windows only. */
@@ -919,6 +932,18 @@ async function createWindows(): Promise<void> {
   overlayWindow.setIgnoreMouseEvents(true)
   overlayWindow.setAlwaysOnTop(true, 'screen-saver')
   hardenWebContents(overlayWindow)
+  // Wayland gives an app no pointer position outside its own windows, so
+  // there the pill never fades.
+  if (!onWayland()) {
+    const overlay = overlayWindow
+    overlayPeek = createOverlayPeek({
+      cursor: () => screen.getCursorScreenPoint(),
+      bounds: () => (overlay.isDestroyed() || !overlay.isVisible() ? null : overlay.getBounds()),
+      send: (point) => {
+        if (!overlay.isDestroyed()) overlay.webContents.send('overlay:pointer', point)
+      }
+    })
+  }
 
   await Promise.all([
     loadWindow(mainWindow, 'index.html'),
@@ -1882,6 +1907,7 @@ app.on('before-quit', (event) => {
   overlayHideTimer = clearTimer(overlayHideTimer)
   if (restingPillPoll) clearInterval(restingPillPoll)
   restingPillPoll = null
+  overlayPeek?.stop()
 
   if (quitFlushed || !historyStore) return
   // History writes are async and coalesced; quitting must wait for the last

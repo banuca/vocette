@@ -52,6 +52,7 @@ node e2e/quiet-check.mjs
 | `polish-look-check` | Polishing looks different from transcribing (K10) |
 | `quiet-check` | A paste that lands: the tick beat, the fold, back to rest (K10) |
 | `resting-check` | The resting pill from start-up, springing open and back (K10) |
+| `peek-check` | Point at the pill and it fades; away and it comes back. Moves the real pointer (K11) |
 | `resting-switch-check` | The "Show the pill while idle" switch (K10) |
 | `offer-check` | The Pro page during and after the launch offer (checkout never clicked) |
 | `subscription-check` | Activation and renewal against a stand-in Polar over HTTPS |

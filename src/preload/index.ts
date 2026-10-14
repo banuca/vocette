@@ -165,6 +165,19 @@ const api = {
     ipcRenderer.on('overlay:resting', listener)
     return () => ipcRenderer.removeListener('overlay:resting', listener)
   },
+  /** The pointer over the overlay's window, relative to it; `null` once it has left. */
+  onOverlayPointer: (callback: (point: { x: number; y: number } | null) => void): (() => void) => {
+    const listener = (_event: unknown, point: unknown): void => {
+      const valid =
+        typeof point === 'object' &&
+        point !== null &&
+        Number.isFinite((point as { x: unknown }).x) &&
+        Number.isFinite((point as { y: unknown }).y)
+      callback(valid ? { x: (point as { x: number }).x, y: (point as { y: number }).y } : null)
+    }
+    ipcRenderer.on('overlay:pointer', listener)
+    return () => ipcRenderer.removeListener('overlay:pointer', listener)
+  },
   onNavigate: (callback: (page: Page) => void): (() => void) => {
     const listener = (_event: unknown, page: Page): void => callback(page)
     ipcRenderer.on('app:navigate', listener)

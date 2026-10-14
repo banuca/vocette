@@ -195,5 +195,24 @@ window.murmur.onTheme((theme) => {
 window.murmur.onRestingPill((resting) => {
   document.documentElement.classList.toggle('resting', resting)
 })
+/** How far around the pill the pointer still counts as on it, in pixels. */
+const PEEK_MARGIN = 4
+
+// The pointer over this window, sent by main about ten times a second while
+// it is here: on the pill, the pill fades so what is behind it can be read.
+// Hit-tested against the pill as drawn now, since it springs between sizes.
+window.murmur.onOverlayPointer((point) => {
+  const rect = overlay?.getBoundingClientRect()
+  const onPill =
+    point !== null &&
+    rect !== undefined &&
+    rect.width > 0 &&
+    point.x >= rect.left - PEEK_MARGIN &&
+    point.x <= rect.right + PEEK_MARGIN &&
+    point.y >= rect.top - PEEK_MARGIN &&
+    point.y <= rect.bottom + PEEK_MARGIN
+  document.documentElement.classList.toggle('peek', onPill)
+})
+
 // Following Windows means following it while the pill is up, too.
 systemDark?.addEventListener('change', paintTheme)
