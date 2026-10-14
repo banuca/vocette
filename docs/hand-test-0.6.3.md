@@ -61,3 +61,11 @@ smoked glass, polishing look A, and the resting pill on by default (9 Oct). Brie
 
 All seven steps pass on 0.6.4. One note: the quiet beat feels a little fast next to the said
 success's 1.6 s. Mac and Linux are still unproven.
+
+## 0.6.5: a longer tick hold (15 Oct)
+
+- e0d1f80: `LANDED_BEAT_MS` goes from 700 to 1500, and `QUIET_SUCCESS_RESET_MS` from 2400 to 3200.
+- e2e `quiet-check` on dev and on the packaged win-unpacked: the open pill holds the tick at
+  216x48 until about 1.5 s, is folded to 56x20 by about 2.05 s, and is back at rest at about
+  3.2 s.
+- Hand step: dictate once; the owner judges the feel. Result:
