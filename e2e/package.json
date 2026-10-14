@@ -1,0 +1,9 @@
+{
+  "name": "vocette-e2e",
+  "private": true,
+  "description": "Checks that launch the built Vocette and look at it. Not part of the app.",
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  }
+}
