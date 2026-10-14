@@ -50,9 +50,14 @@ smoked glass, polishing look A, and the resting pill on by default (9 Oct). Brie
 | # | Step | Expected | Result |
 |---|---|---|---|
 | 1 | Install 0.6.3 over 0.6.2 | A small see-through pill with five bars rests at the bottom centre | **Pass** (owner: "I love the animation, it looks so slick. So cool.") |
-| 2 | Dictate a sentence into Notepad | Springs open (red mic, bars follow voice, "Listening…", clock); "Transcribing…" with a passing light; pasted; folds back with a green tick, no "Pasted"; bars return | **Not passed: fold too fast.** The open, listening, transcribing and paste parts are fine; the owner dictated into VS Code (screenshot: listening pill, readable). Owner: "it disappears super quick… it just collapses the pill really fast". Timing options A (now, 300 ms fold), B (a 700 ms beat with a green check in the open pill, then a 550 ms fold) and C (1.4 s beat, 650 ms fold) at https://claude.ai/artifact/6ZNq7uXTauJNQCofwnUy6M. Claude recommends B. Implementing it needs a quiet-success reset of about 2.4 s instead of `SUCCESS_RESET_MS` 1600 |
-| 3 | Polish on: dictate 8+ words | "Polishing…" with a white sparkle badge, twinkling bars, a shine on the word, a clock; then the tick | |
-| 4 | In Vocette's window, record with the big microphone button | The pill says "Copied to clipboard" with the start of the text, then rests | |
-| 5 | Full-screen video or F11 in the browser | The pill disappears within about 2 s; comes back after leaving full screen | |
-| 6 | Settings: "Show the pill while idle" off, Save | The pill sinks away; a dictation still rises and opens, then sinks | |
-| 7 | Switch it back on, Save | The pill comes back | |
+| 2 | Dictate a sentence into Notepad | Springs open (red mic, bars follow voice, "Listening…", clock); "Transcribing…" with a passing light; pasted; folds back with a green tick, no "Pasted"; bars return | **Not passed: fold too fast.** The open, listening, transcribing and paste parts are fine; the owner dictated into VS Code (screenshot: listening pill, readable). Owner: "it disappears super quick… it just collapses the pill really fast". Timing options A (now, 300 ms fold), B (a 700 ms beat with a green check in the open pill, then a 550 ms fold) and C (1.4 s beat, 650 ms fold) at https://claude.ai/artifact/6ZNq7uXTauJNQCofwnUy6M. Claude recommends B. Implementing it needs a quiet-success reset of about 2.4 s instead of `SUCCESS_RESET_MS` 1600<br>**Retest on 0.6.4 (15 Oct): pass, with a note.** The text landed in the app. Owner: "I do feel it's a bit too fast, but that's fine. It's not a bummer." Timing C (a 1.4 s beat) stays an option if users say the same. The dictation also showed K13 ("Vocette" heard as "Voset") |
+| 3 | Polish on: dictate 8+ words | "Polishing…" with a white sparkle badge, twinkling bars, a shine on the word, a clock; then the tick | **Pass** (15 Oct, 0.6.4; casual polish typed "Send me the latest figures before Thursday's review meeting.") |
+| 4 | In Vocette's window, record with the big microphone button | The pill says "Copied to clipboard" with the start of the text, then rests | **Pass** (15 Oct). Owner: the green animation works perfectly from the button. The said success holds about 1.6 s, against the quiet beat of 0.7 s, which suggests a longer quiet beat (timing C) |
+| 5 | Full-screen video or F11 in the browser | The pill disappears within about 2 s; comes back after leaving full screen | **Pass** (15 Oct, Edge F11): hides on entering full screen and returns on leaving it |
+| 6 | Settings: "Show the pill while idle" off, Save | The pill sinks away; a dictation still rises and opens, then sinks | **Pass** (15 Oct): the pill disappears once the transcription is over |
+| 7 | Switch it back on, Save | The pill comes back | **Pass** (15 Oct) |
+
+## Outcome (15 Oct)
+
+All seven steps pass on 0.6.4. One note: the quiet beat feels a little fast next to the said
+success's 1.6 s. Mac and Linux are still unproven.

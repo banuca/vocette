@@ -106,6 +106,14 @@ evening notes join list 1. The visual version for the owner is published as an a
     - It's a smaller change before launch.
     - Mouse starts already exist: the window's microphone button and the tray.
   - Awaiting the owner's answer.
+- **K13, the app mishears its own name.** On 15 Oct, during the 0.6.4 step 2 retest, the
+  owner dictated "typed by using Vocette" and got "Voset". The default vocabulary is empty
+  (`settings-store.ts`, `vocabulary: ''`).
+  - Fix options:
+    - Ship "Vocette" as a built-in vocabulary term that is always added and that the user can't
+      see.
+    - Pre-fill it in the Words box on first run.
+  - Not started. It comes after the pill test.
 
 ## List 2: new findings
 
