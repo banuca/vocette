@@ -3,6 +3,13 @@ import { cleanupTranscript } from '../shared/cleanup'
 import { applyReplacements, type ReplacementRule } from '../shared/replacements'
 import { correctVocabulary, type CommonWordTest } from '../shared/vocabulary-correction'
 import { worthPolishing, type PolishOutcome } from '../shared/polish'
+import { wordCount } from '../shared/format'
+import {
+  allowanceUsedUp,
+  crossingNote,
+  usedUpStatus,
+  type WordAllowance
+} from '../shared/word-allowance'
 import type { RecordingMode } from '../shared/capabilities'
 import type {
   HistoryEntry,
@@ -133,6 +140,12 @@ export interface WorkflowSettings {
   transcriptionReady: boolean
   /** What to tell the user when it has not, already a sentence. */
   notReadyReason: string | null
+  /**
+   * Free's words this month; null on the trial and Pro, which have no limit.
+   * Once they are used no new take starts, but a take already under way is
+   * always delivered in full.
+   */
+  allowance: WordAllowance | null
 }
 
 /** Foreground-window verdict taken at paste time (null = tracking unavailable). */
@@ -204,6 +217,8 @@ export interface DictationDeps {
   broadcastStatus(status: WorkflowStatus): void
   showMain(page: Page): void
   recordHistory(text: string, durationMs: number, model: string, extras: HistoryExtras): void
+  /** Counts a delivered take's words; the caller counts them only on Free. */
+  countWords?(words: number): void
   /** Remembers which window has focus, for the paste-target check. */
   captureForeground(): void
   /** Forgets any captured target, so nothing can be pasted into it. */
@@ -405,7 +420,7 @@ export class DictationController {
       // words. Only a shortcut take may carry on with it, and only while it
       // could still be transcribed; anything else lets it go unheard first.
       const settings = this.deps.getSettings()
-      if (source === 'shortcut' && settings.transcriptionReady) {
+      if (source === 'shortcut' && settings.transcriptionReady && !allowanceUsedUp(settings.allowance)) {
         this.promoteProvisional(settings)
         return
       }
@@ -423,6 +438,12 @@ export class DictationController {
       // The reason names what is missing — the speech model, or a key — so
       // the user is not sent looking for the wrong thing.
       this.fail(settings.notReadyReason ?? 'Transcription is not set up yet.', true)
+      return
+    }
+    if (settings.allowance && allowanceUsedUp(settings.allowance)) {
+      // Said where the user is looking, with when it comes back. The window
+      // is not pushed in front: History and the Pro page say the rest.
+      this.broadcast({ phase: 'error', ...usedUpStatus(settings.allowance), limit: true }, ERROR_RESET_MS)
       return
     }
 
@@ -473,7 +494,9 @@ export class DictationController {
     if (this.activeAttempt) return
     const settings = this.deps.getSettings()
     // Not being ready is not news yet: a press that is held says so itself.
+    // Nor is a month's words being used up, and the microphone stays shut.
     if (!settings.instantCapture || !settings.transcriptionReady) return
+    if (allowanceUsedUp(settings.allowance)) return
 
     // What any shortcut take captures at its start, and nothing the user can
     // see. The status on screen, its timer and a kept retry take are all left
@@ -1183,6 +1206,11 @@ export class DictationController {
       if (heard !== text) extras.heardText = heard
       if (polishedFrom !== null) extras.originalText = polishedFrom
       this.deps.recordHistory(text, attempt.take.durationMs, settings.model, extras)
+      // Counted as it is kept, so a paste that fails still counts: the words
+      // are in History, one click from the clipboard.
+      const words = wordCount(text)
+      this.deps.countWords?.(words)
+      const allowanceNote = crossingNote(settings.allowance, words)
       if (!this.ownsAttempt(attempt)) return
 
       const message = await this.pasteOrExplain({
@@ -1210,15 +1238,17 @@ export class DictationController {
       // copied because the user turned automatic paste off. The overlay folds
       // away with a tick. Anything else is said, polish that did not happen
       // included.
+      // A take that crosses Free's notice line or its limit says so, once.
       const quiet =
         !polishNote &&
+        !allowanceNote &&
         (message === PASTED_MESSAGE || (message === COPIED_MESSAGE && !settings.autoPaste))
       this.broadcast(
         {
           phase: 'success',
           // Said plainly when polish was wanted and did not happen.
           message: polishNote ? `${message} — unpolished (${polishNote})` : message,
-          detail: previewOf(text),
+          detail: allowanceNote ?? previewOf(text),
           waitMs,
           ...(quiet ? { quiet } : {})
         },

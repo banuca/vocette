@@ -59,6 +59,15 @@ export const PRO_VOCABULARY_TERMS = 500
 export const FREE_REPLACEMENT_RULES = 20
 export const PRO_REPLACEMENT_RULES = 200
 
+/**
+ * Free dictates this many words a calendar month, counted on this PC; the
+ * trial and Pro have no limit. The take that crosses it is delivered in full,
+ * and the next one waits for the 1st (owner, 15 Oct 2026).
+ */
+export const FREE_MONTHLY_WORDS = 10_000
+/** From here History shows the month so far, and the pill says it once. */
+export const FREE_WORDS_NOTICE_AT = 8_000
+
 /** Owner: the checkout link of the monthly product, `https://buy.polar.sh/polar_cl_…`. Empty disables it. */
 export const CHECKOUT_URL_MONTHLY =
   'https://buy.polar.sh/polar_cl_AqgJRn1rgMJ06D64awrQjFmSKUWEnB3J5gD934gYOeD'

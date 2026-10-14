@@ -29,6 +29,8 @@ export interface WorkflowStatus {
    * when true; any success without it is said.
    */
   quiet?: boolean
+  /** On error: no take started because Free's words for the month are used. */
+  limit?: boolean
   /** On success: how long the text took after letting go, as History keeps it. */
   waitMs?: number
   /**

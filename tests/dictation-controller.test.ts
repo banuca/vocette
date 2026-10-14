@@ -42,6 +42,7 @@ function makeHarness(
     microphoneId: 'mic-1',
     transcriptionReady: true,
     notReadyReason: null,
+    allowance: null,
     ...overrides.settings
   }
 
@@ -55,6 +56,7 @@ function makeHarness(
   const broadcastStatus = vi.fn<(status: WorkflowStatus) => void>()
   const showMain = vi.fn<(page: Page) => void>()
   const recordHistory = vi.fn<DictationDeps['recordHistory']>()
+  const countWords = vi.fn<(words: number) => void>()
   const captureForeground = vi.fn<() => void>()
   const clearForeground = vi.fn<() => void>()
   const getForegroundState = vi.fn<() => ForegroundState | null>(() => null)
@@ -74,6 +76,7 @@ function makeHarness(
     broadcastStatus,
     showMain,
     recordHistory,
+    countWords,
     captureForeground,
     clearForeground,
     getForegroundState,
@@ -606,6 +609,100 @@ describe('waiting for held modifier keys before pasting', () => {
     await processing
     expect(modifiersHeld).toHaveBeenCalled()
     expect(deps.paste).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("Free's monthly words", () => {
+  const allowance = (used: number): WorkflowSettings['allowance'] => ({
+    used,
+    limit: 10_000,
+    monthName: 'October',
+    resetsOn: '1 November'
+  })
+  const statuses = (harness: ReturnType<typeof makeHarness>): WorkflowStatus[] =>
+    harness.deps.broadcastStatus.mock.calls.map(([status]) => status)
+  const recorderStarts = (harness: ReturnType<typeof makeHarness>): number =>
+    harness.deps.sendToRecorder.mock.calls.filter(([channel]) => channel === 'recorder:start').length
+
+  it('starts no take once they are used, and says when they come back', () => {
+    const harness = makeHarness({ settings: { pro: false, allowance: allowance(10_000) } })
+    harness.controller.startDictation('shortcut')
+    expect(recorderStarts(harness)).toBe(0)
+    expect(statuses(harness).at(-1)).toEqual({
+      phase: 'error',
+      message: 'Free words used up for October',
+      detail: 'Back on 1 November · Pro has no limit',
+      limit: true,
+      canRetry: false
+    })
+    expect(harness.deps.showMain).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(4500)
+    expect(harness.controller.getStatus().phase).toBe('idle')
+  })
+
+  it('refuses from the window just the same', () => {
+    const harness = makeHarness({ settings: { pro: false, allowance: allowance(10_412) } })
+    harness.controller.startDictation('ui')
+    harness.controller.toggleDictation('ui')
+    expect(recorderStarts(harness)).toBe(0)
+  })
+
+  it('never opens the microphone at the keypress once they are used', () => {
+    const harness = makeHarness({ settings: { pro: false, allowance: allowance(10_000) } })
+    harness.controller.prepareDictation()
+    expect(recorderStarts(harness)).toBe(0)
+  })
+
+  it('lets go of a keypress take if the words ran out under it', () => {
+    const harness = makeHarness({ settings: { pro: false, allowance: allowance(9_990) } })
+    harness.controller.prepareDictation()
+    expect(recorderStarts(harness)).toBe(1)
+    harness.settings.allowance = allowance(10_005)
+    harness.controller.startDictation('shortcut')
+    expect(harness.controller.isRecording()).toBe(false)
+    expect(statuses(harness).at(-1)).toMatchObject({ phase: 'error', limit: true })
+  })
+
+  it('still records with words to spare, and counts what it delivers', async () => {
+    const harness = makeHarness({ settings: { pro: false, allowance: allowance(9_999) } })
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    // "Hello world." is two words, and crosses the limit: delivered in full, and said.
+    expect(harness.deps.paste).toHaveBeenCalledTimes(1)
+    expect(harness.deps.countWords).toHaveBeenCalledWith(2)
+    const success = statuses(harness).filter((status) => status.phase === 'success').at(-1)
+    expect(success).toMatchObject({
+      message: 'Pasted',
+      detail: "That's your 10,000 free words for October · back on 1 November"
+    })
+    expect(success).not.toHaveProperty('quiet')
+  })
+
+  it('says the month so far once, as the take crosses 8,000', async () => {
+    const harness = makeHarness({ settings: { pro: false, allowance: allowance(7_999) } })
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    expect(statuses(harness).filter((status) => status.phase === 'success').at(-1)).toMatchObject({
+      message: 'Pasted',
+      detail: '8,001 of 10,000 free words this month'
+    })
+  })
+
+  it('stays quiet between the lines', async () => {
+    const harness = makeHarness({ settings: { pro: false, allowance: allowance(5_000) } })
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    expect(statuses(harness).filter((status) => status.phase === 'success').at(-1)).toMatchObject({
+      message: 'Pasted',
+      quiet: true
+    })
+  })
+
+  it('has no limit on the trial or Pro', async () => {
+    const harness = makeHarness({ settings: { pro: true, allowance: null } })
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await dictate(harness)
+    expect(harness.deps.paste).toHaveBeenCalledTimes(1)
   })
 })
 

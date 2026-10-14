@@ -55,7 +55,8 @@ function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
     replacements: [],
     microphoneId: 'mic-1',
     transcriptionReady: true,
-    notReadyReason: null
+    notReadyReason: null,
+    allowance: null
   }
 
   const sendToRecorder = vi.fn()

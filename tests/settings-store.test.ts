@@ -380,6 +380,34 @@ describe('zoom', () => {
   })
 })
 
+describe("Free's monthly words", () => {
+  it('start uncounted, and a broken record reads as none', () => {
+    expect(normaliseSettings({}).wordUsage).toBeNull()
+    expect(normaliseSettings({ wordUsage: { month: '2026-10', words: 412 } }).wordUsage).toEqual({
+      month: '2026-10',
+      words: 412
+    })
+    expect(normaliseSettings({ wordUsage: { month: 'soon', words: 412 } }).wordUsage).toBeNull()
+  })
+
+  it('add up, survive a restart, and start again in a new month', () => {
+    const store = new SettingsStore(file)
+    store.addWordUsage(25, new Date(2026, 9, 15))
+    store.addWordUsage(30, new Date(2026, 9, 16))
+    store.addWordUsage(0, new Date(2026, 9, 16))
+    expect(new SettingsStore(file).getInternal().wordUsage).toEqual({ month: '2026-10', words: 55 })
+    store.addWordUsage(12, new Date(2026, 10, 1))
+    expect(new SettingsStore(file).getInternal().wordUsage).toEqual({ month: '2026-11', words: 12 })
+  })
+
+  it('are never something the window can set', () => {
+    const store = new SettingsStore(file)
+    store.update({ wordUsage: { month: '2026-10', words: 0 } } as never)
+    expect(store.getInternal().wordUsage).toBeNull()
+    expect(store.getPublic()).not.toHaveProperty('wordUsage')
+  })
+})
+
 describe('cleanup switches', () => {
   /** A v5 file written before the two switches existed. */
   const withoutSwitches = (): Record<string, unknown> => {

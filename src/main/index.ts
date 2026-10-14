@@ -77,6 +77,7 @@ import {
 } from '../shared/entitlement'
 import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
 import { withOwnName, withOwnNameRules } from '../shared/own-name'
+import { allowanceFor } from '../shared/word-allowance'
 import { createOverlayPeek, type OverlayPeek } from './overlay-peek'
 import { SubscriptionChecker } from './subscription-check'
 import { displayVersion } from '../shared/update'
@@ -427,8 +428,17 @@ function workflowSettings(): WorkflowSettings {
     replacements: withOwnNameRules(planReplacements(settings.replacements, pro)),
     microphoneId: settings.microphoneId,
     transcriptionReady: status.ready,
-    notReadyReason: status.notReadyReason
+    notReadyReason: status.notReadyReason,
+    // Free's words this month; the trial and Pro have no limit.
+    allowance: pro ? null : allowanceFor(settings.wordUsage, new Date())
   }
+}
+
+/** Counts a delivered take's words on Free, and tells the window the new total. */
+function countWords(words: number): void {
+  if (entitlement().pro) return
+  settingsStore.addWordUsage(words)
+  broadcastLicenceStatus()
 }
 
 /** The plan in force right now: read fresh, because the trial ends on its own. */
@@ -806,6 +816,7 @@ function createDictationController(): DictationController {
     broadcastStatus,
     showMain,
     recordHistory,
+    countWords,
     captureForeground: () => foreground.capture(),
     clearForeground: () => foreground.clear(),
     getForegroundState: () => foreground.check(),

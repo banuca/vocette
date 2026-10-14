@@ -29,6 +29,7 @@ import {
 import { RECORDING_MODES, type RecordingMode } from '../shared/capabilities'
 import { clampReplacements } from '../shared/replacements'
 import { clampVocabulary } from '../shared/vocabulary'
+import { addWords, normaliseWordUsage, type WordUsage } from '../shared/word-allowance'
 import { DEFAULT_ZOOM, isZoomStep } from './zoom'
 import {
   DEFAULT_POLISH,
@@ -136,6 +137,11 @@ export interface StoredSettings {
   lastUpdateCheckAt: string | null
   /** The main window's zoom, one of `ZOOM_STEPS`; the pill never zooms. */
   uiZoom: number
+  /**
+   * Free's words this month, counted apart from History so that clearing or
+   * expiring History never hands words back. Null until the first one.
+   */
+  wordUsage: WordUsage | null
   /** AI polish (Pro); see `src/shared/polish.ts`. */
   polishEnabled: boolean
   polishStyle: PolishStyle
@@ -185,6 +191,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   updateCheck: false,
   lastUpdateCheckAt: null,
   uiZoom: DEFAULT_ZOOM,
+  wordUsage: null,
   polishEnabled: DEFAULT_POLISH.enabled,
   polishStyle: DEFAULT_POLISH.style,
   polishInstructions: DEFAULT_POLISH.instructions,
@@ -430,7 +437,8 @@ export function normaliseSettings(value: unknown): StoredSettings {
       !Number.isNaN(Date.parse(candidate.lastUpdateCheckAt))
         ? candidate.lastUpdateCheckAt
         : null,
-    uiZoom: isZoomStep(candidate.uiZoom) ? candidate.uiZoom : DEFAULT_ZOOM
+    uiZoom: isZoomStep(candidate.uiZoom) ? candidate.uiZoom : DEFAULT_ZOOM,
+    wordUsage: normaliseWordUsage(candidate.wordUsage)
   }
 }
 
@@ -730,6 +738,13 @@ export class SettingsStore {
   setUiZoom(factor: number): void {
     if (!isZoomStep(factor) || factor === this.settings.uiZoom) return
     this.settings = { ...this.settings, uiZoom: factor }
+    this.write()
+  }
+
+  /** Counts a Free take's words against this month; see `word-allowance.ts`. */
+  addWordUsage(words: number, now: Date = new Date()): void {
+    if (!(words > 0)) return
+    this.settings = { ...this.settings, wordUsage: addWords(this.settings.wordUsage, words, now) }
     this.write()
   }
 
