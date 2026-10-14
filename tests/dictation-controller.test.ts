@@ -705,8 +705,8 @@ describe('paste last dictation', () => {
 
     vi.advanceTimersByTime(750)
     expect(deps.restoreClipboard).toHaveBeenCalledWith(USER_CLIPBOARD, 'Earlier words.')
-    // A quiet success lingers for the pill's beat, fold and tick: 2.4 s in all.
-    vi.advanceTimersByTime(1600)
+    // A quiet success lingers for the pill's beat, fold and tick: 3.2 s in all.
+    vi.advanceTimersByTime(2400)
     expect(controller.getStatus().phase).toBe('success')
     vi.advanceTimersByTime(50)
     expect(controller.getStatus().phase).toBe('idle')
@@ -2460,8 +2460,8 @@ describe('instant capture: listening from the keypress', () => {
     deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
     await dictate(harness)
     expect(controller.getStatus().phase).toBe('success')
-    // A pasted take is a quiet success, which lingers 2.4 s.
-    vi.advanceTimersByTime(2300)
+    // A pasted take is a quiet success, which lingers 3.2 s.
+    vi.advanceTimersByTime(3100)
 
     controller.prepareDictation()
     const requestId = lastRequestId()

@@ -20,7 +20,7 @@ const DOT_REST_OPACITY = 0.3
 /** The folded pill's width: what is left of it when it has nothing to say. */
 const FOLDED_WIDTH = 56
 /** After a paste lands, the open pill shows a green tick for this long, then folds. */
-const LANDED_BEAT_MS = 700
+const LANDED_BEAT_MS = 1500
 
 /**
  * Sizes the pill to its content, which sits at its natural width inside, so

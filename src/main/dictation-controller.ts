@@ -33,7 +33,7 @@ const SUCCESS_RESET_MS = 1600
  * A quiet success lingers longer, for the pill's own timing: a beat with a
  * green tick in the open pill, the fold, then the tick on the small pill.
  */
-const QUIET_SUCCESS_RESET_MS = 2400
+const QUIET_SUCCESS_RESET_MS = 3200
 const ERROR_RESET_MS = 4500
 /** Cancellation is an acknowledgement, not news; it clears quickly. */
 const CANCELLED_RESET_MS = 1200
