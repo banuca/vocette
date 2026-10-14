@@ -894,6 +894,14 @@ a:focus-visible {
   font-size: 12px;
 }
 
+/* Zoomed in, the search box gives way; the count and the exports keep to
+   one line each instead of breaking "Export .txt" in two. */
+.result-count,
+.section-toolbar .text-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .toolbar-spacer {
   flex: 1;
 }
