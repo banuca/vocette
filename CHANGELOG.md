@@ -5,6 +5,16 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.6.6] — unreleased
+
+- Point at the pill and it fades, so you can read what is behind it; it comes back when the
+  pointer leaves. Clicks already went through it. (Not on Linux under Wayland.)
+- Vocette spells its own name, even with an empty word list.
+- In Settings, choosing "On this PC" and pressing Download switches to it straight away,
+  without Save settings.
+- In a narrow window the History numbers stay in one row, and zoomed in they wrap neatly;
+  the toolbar keeps "Export .txt" on one line.
+
 ## [0.6.5] — unreleased
 
 The green tick after a paste stays a little longer, about as long as the pill's other messages.
