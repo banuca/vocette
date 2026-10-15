@@ -172,7 +172,9 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   spokenCorrections: true,
   spokenFormatting: true,
   playSounds: true,
-  launchAtLogin: false,
+  // On for a new profile: a dictation tool that is not running after a
+  // restart is not used (owner, 15 Oct 2026). The first-run card says so.
+  launchAtLogin: true,
   // The pill at rest shows at a glance that Vocette is ready; one switch hides it.
   restingPill: true,
   theme: 'system',

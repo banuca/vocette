@@ -721,8 +721,9 @@ describe('bootstrap', () => {
     expect(app.trayCount()).toBe(1)
     expect(app.hookStarted()).toBe(true)
     // The platform adapter owns how launch-at-login is expressed; what
-    // matters here is that startup applied the stored preference at all.
-    expect(app.loginItems).toEqual([{ openAtLogin: false }])
+    // matters here is that startup applied the stored preference at all —
+    // on, the default for a new profile.
+    expect(app.loginItems).toEqual([{ openAtLogin: true }])
     expect(app.errorBoxes).toEqual([])
     expect(app.quitCalls()).toBe(0)
 
@@ -2045,7 +2046,7 @@ describe('an isolated profile', () => {
 
   it('does set it for the ordinary profile', async () => {
     const app = await startApp()
-    expect(app.loginItems).toEqual([{ openAtLogin: false }])
+    expect(app.loginItems).toEqual([{ openAtLogin: true }])
   })
 })
 

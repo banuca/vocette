@@ -380,6 +380,16 @@ describe('zoom', () => {
   })
 })
 
+describe('starting with the computer', () => {
+  it('is on for a new profile', () => {
+    expect(new SettingsStore(file).getPublic().launchAtLogin).toBe(true)
+  })
+
+  it('keeps an existing choice, off included', () => {
+    expect(normaliseSettings({ launchAtLogin: false }).launchAtLogin).toBe(false)
+  })
+})
+
 describe("Free's monthly words", () => {
   it('start uncounted, and a broken record reads as none', () => {
     expect(normaliseSettings({}).wordUsage).toBeNull()

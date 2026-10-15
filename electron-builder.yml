@@ -71,6 +71,9 @@ nsis:
   # website's FAQ says where.
   deleteAppDataOnUninstall: false
   license: resources/eula.txt
+  # Uninstalling removes the start-with-Windows entry, so nothing points at
+  # an app that is gone. An update leaves it: the app sets it again anyway.
+  include: build/installer.nsh
 
 mac:
   target:
