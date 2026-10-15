@@ -323,6 +323,21 @@ body {
   --accent: #c4423f;
 }
 
+/*
+ * Free's words for the month are used: not a failure, so no red and no
+ * nudge. A pause sign in the grey of a cancelled take, and the words say
+ * when dictation is back.
+ */
+.overlay.error.limit {
+  --accent: #6b6b76;
+
+  animation: none;
+}
+
+:root[data-theme='light'] .overlay.error.limit {
+  --accent: #6b6b73;
+}
+
 /* --- Badge ---------------------------------------------------------------- */
 
 .state-badge {
@@ -379,7 +394,8 @@ body {
 .overlay.processing .icon-document,
 .overlay.success .icon-check,
 .overlay.cancelled .icon-microphone,
-.overlay.error .icon-error {
+.overlay.error:not(.limit) .icon-error,
+.overlay.error.limit .icon-pause {
   opacity: 1;
   transform: scale(1);
 }

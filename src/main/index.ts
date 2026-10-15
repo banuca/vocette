@@ -469,7 +469,8 @@ function licenceStatus(): LicenceStatus {
     checkMessage: subscriptionChecker?.lastMessage() ?? null,
     monthlyCheckoutUrl: checkout.monthly,
     yearlyCheckoutUrl: checkout.yearly,
-    launchOfferEndsAt: checkout.launchOfferEndsAt
+    launchOfferEndsAt: checkout.launchOfferEndsAt,
+    words: allowanceFor(settingsStore.getInternal().wordUsage, new Date())
   })
 }
 

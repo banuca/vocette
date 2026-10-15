@@ -5,6 +5,7 @@ import { formatWait, isMeasuredWait, TYPICAL_WAIT_SAMPLE, typicalWait } from '..
 import { commandFailure, createModelRow, type ModelRowView } from '../model-download'
 import { setupHeading, setupSteps, type SetupStep } from '../setup-guide'
 import { createTrialEndNotice } from '../trial-end-notice'
+import { createWordAllowanceNote } from '../word-allowance-note'
 import { effectiveRecordingMode, globalShortcutUsable } from '../../shared/capabilities'
 import type { EngineStatus } from '../../shared/engine'
 import { chordLabel } from '../../shared/keycodes'
@@ -62,6 +63,7 @@ export function renderHistory(context: AppContext): HistoryView {
       <p class="hero-hint" id="hero-hint"></p>
     </section>
     <div id="trial-end-notice"></div>
+    <div id="word-allowance"></div>
     <div id="setup-guide"></div>
     <section class="metrics" aria-label="Dictation totals">
       <div class="metric-card"><span>Dictations</span><strong id="metric-count">0</strong></div>
@@ -116,6 +118,11 @@ export function renderHistory(context: AppContext): HistoryView {
           })
         }
       })
+    : null
+
+  const allowanceHost = context.content.querySelector<HTMLDivElement>('#word-allowance')
+  const allowanceNote = allowanceHost
+    ? createWordAllowanceNote(allowanceHost, { seePro: () => context.navigate('pro') })
     : null
 
   const setupHost = context.content.querySelector<HTMLDivElement>('#setup-guide')
@@ -619,6 +626,7 @@ export function renderHistory(context: AppContext): HistoryView {
 
   updateHeroHint()
   trialEndNotice?.apply(context.licence.trialEndNoticeDue)
+  allowanceNote?.apply(context.licence.words)
   renderSetup()
   renderMetrics()
   renderList()
@@ -627,11 +635,15 @@ export function renderHistory(context: AppContext): HistoryView {
     refresh: () => {
       updateHeroHint()
       trialEndNotice?.apply(context.licence.trialEndNoticeDue)
+      allowanceNote?.apply(context.licence.words)
       renderSetup()
       renderMetrics()
       renderList()
     },
     applyEngine: (status) => modelStep?.apply(status),
-    applyLicence: (status) => trialEndNotice?.apply(status.trialEndNoticeDue)
+    applyLicence: (status) => {
+      trialEndNotice?.apply(status.trialEndNoticeDue)
+      allowanceNote?.apply(status.words)
+    }
   }
 }

@@ -83,6 +83,8 @@ function render(status: WorkflowStatus): void {
   const classes = ['overlay', status.phase]
   // Polishing is processing with a look of its own.
   if (status.stage === 'polishing') classes.push('polishing')
+  // Free's words for the month are used: a pause, not a failure.
+  if (status.limit) classes.push('limit')
   // A success with nothing to say: a beat with a green tick in the open
   // pill, so the eye catches that it worked, then it folds away.
   if (status.phase === 'success' && status.quiet) {

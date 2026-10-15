@@ -610,8 +610,28 @@ describe('the status the window is told', () => {
       },
       devices: 10,
       trialEndNoticeDue: false,
-      deviceLabel: 'Vocette on Windows · 7F3A'
+      deviceLabel: 'Vocette on Windows · 7F3A',
+      // The trial has no limit.
+      words: null
     })
+  })
+
+  it("carries Free's words for the month, and none on the trial or Pro", () => {
+    const words = { used: 8_412, limit: 10_000, monthName: 'October', resetsOn: '1 November' }
+    const input = {
+      licence: null,
+      config,
+      trialEndNoticeDismissed: false,
+      deviceLabel: 'Vocette on Windows · 7F3A',
+      now: Date.parse(START) + 40 * DAY,
+      words
+    }
+    expect(
+      licenceStatusFor({ ...input, entitlement: entitlementFor({ trialStartedAt: START, subscribed: false, now: input.now }) }).words
+    ).toEqual(words)
+    expect(
+      licenceStatusFor({ ...input, entitlement: entitlementFor({ trialStartedAt: START, subscribed: true, now: input.now }) }).words
+    ).toBeNull()
   })
 
   it('makes the notice due once the trial has ended, until it is dismissed', () => {

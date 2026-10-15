@@ -34,6 +34,7 @@ export function licenceStatus(overrides: Partial<LicenceStatus> = {}): LicenceSt
     devices: 10,
     trialEndNoticeDue: false,
     deviceLabel: 'Vocette on Windows · 7F3A',
+    words: null,
     ...overrides
   }
 }

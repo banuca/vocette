@@ -2,6 +2,7 @@ import type { PolishSettings, PolishSettingsUpdate } from './polish'
 import type { PlatformStatus, RecordingMode } from './capabilities'
 import type { Plan } from './entitlement'
 import type { ShortcutChord } from './shortcuts'
+import type { WordAllowance } from './word-allowance'
 
 export type WorkflowPhase =
   | 'idle'
@@ -377,6 +378,8 @@ export interface LicenceStatus {
   trialEndNoticeDue: boolean
   /** What activation names this PC to Polar: "Vocette on Windows · 7F3A". */
   deviceLabel: string
+  /** Free's words this month; null on the trial and Pro, which have no limit. */
+  words: WordAllowance | null
 }
 
 /** Activating answers with the new status, or the sentence that says why not. */

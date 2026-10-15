@@ -215,6 +215,7 @@ describe('the Pro page', () => {
     const { at } = await makeHarness(licenceStatus({ plan: 'trial', trialDaysLeft: 23 }))
     expect(at('#pro-status').textContent).toBe('Pro trial — 23 days left')
     expect(at('#pro-adds').children.map((item) => item.textContent)).toEqual([
+      'Unlimited dictation, instead of 10,000 words a month',
       'Up to 500 vocabulary terms in use, instead of 50',
       'Up to 200 replacements and snippets in use, instead of 20',
       'AI polish: your dictation rewritten in the style you choose, with your own provider or a model on this PC'

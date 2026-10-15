@@ -208,20 +208,20 @@ describe('the notes under the lists', () => {
 describe('the words about the plans', () => {
   it('give the trial’s end in one notice, word for word', () => {
     expect(TRIAL_END_NOTICE).toBe(
-      'Your Pro trial has ended. Vocette keeps working as it did — AI polish and lists longer ' +
-        'than 50 terms or 20 rules are part of Pro.'
+      'Your Pro trial has ended. Free keeps 10,000 words of dictation a month, on this PC or ' +
+        'in the cloud. Unlimited dictation, AI polish and lists longer than 50 terms or 20 rules ' +
+        'are part of Pro.'
     )
   })
 
   it('list what Pro adds and what stays free, without promising what has not shipped', () => {
     expect(PRO_ADDS).toEqual([
+      'Unlimited dictation, instead of 10,000 words a month',
       'Up to 500 vocabulary terms in use, instead of 50',
       'Up to 200 replacements and snippets in use, instead of 20',
       'AI polish: your dictation rewritten in the style you choose, with your own provider or a model on this PC'
     ])
-    expect(FREE_FOREVER[0]).toBe(
-      'Dictation on this PC or in the cloud — any length, as often as you like'
-    )
+    expect(FREE_FOREVER[0]).toBe('10,000 words of dictation a month, on this PC or in the cloud')
     expect(FREE_FOREVER).toHaveLength(4)
   })
 })

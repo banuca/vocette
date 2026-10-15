@@ -1,4 +1,5 @@
 import {
+  FREE_MONTHLY_WORDS,
   FREE_REPLACEMENT_RULES,
   FREE_VOCABULARY_TERMS,
   PRO_REPLACEMENT_RULES,
@@ -180,12 +181,17 @@ export function replacementsPlanNote(plan: Plan, rules: number): string | null {
 }
 
 /** History's one notice, shown once the trial has ended, until it is dismissed. */
+/** "10,000". */
+const FREE_WORDS = FREE_MONTHLY_WORDS.toLocaleString('en-GB')
+
 export const TRIAL_END_NOTICE =
-  'Your Pro trial has ended. Vocette keeps working as it did — AI polish and lists longer ' +
-  `than ${FREE_VOCABULARY_TERMS} terms or ${FREE_REPLACEMENT_RULES} rules are part of Pro.`
+  `Your Pro trial has ended. Free keeps ${FREE_WORDS} words of dictation a month, on this PC ` +
+  'or in the cloud. Unlimited dictation, AI polish and lists longer than ' +
+  `${FREE_VOCABULARY_TERMS} terms or ${FREE_REPLACEMENT_RULES} rules are part of Pro.`
 
 /** The right-hand column of the plans: what Pro adds. */
 export const PRO_ADDS: readonly string[] = [
+  `Unlimited dictation, instead of ${FREE_WORDS} words a month`,
   `Up to ${PRO_VOCABULARY_TERMS} vocabulary terms in use, instead of ${FREE_VOCABULARY_TERMS}`,
   `Up to ${PRO_REPLACEMENT_RULES} replacements and snippets in use, instead of ${FREE_REPLACEMENT_RULES}`,
   'AI polish: your dictation rewritten in the style you choose, with your own provider or a model on this PC'
@@ -193,7 +199,7 @@ export const PRO_ADDS: readonly string[] = [
 
 /** The left-hand column: what never needs Pro. */
 export const FREE_FOREVER: readonly string[] = [
-  'Dictation on this PC or in the cloud — any length, as often as you like',
+  `${FREE_WORDS} words of dictation a month, on this PC or in the cloud`,
   'Cleanup, spoken corrections and spoken line breaks',
   'Clipboard restore, paste last dictation, Retry and history',
   `${FREE_VOCABULARY_TERMS} vocabulary terms and ${FREE_REPLACEMENT_RULES} replacements and snippets in use`

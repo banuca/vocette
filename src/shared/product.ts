@@ -2,10 +2,11 @@
  * What Vocette sells, and the limits Free and Pro differ by.
  *
  * Everyone gets Pro for the first 30 days. After that, anyone who has not
- * subscribed keeps a Free version that is genuinely good: dictation of any
- * length, on this PC or in the cloud, with cleanup, spoken corrections,
- * clipboard restore and history, is never limited. Pro is a monthly or yearly
- * subscription for power users — longer word lists, and AI polish — and
+ * subscribed keeps a Free version that is genuinely good for everyday use:
+ * 10,000 words of dictation a month, on this PC or in the cloud, with
+ * cleanup, spoken corrections, clipboard restore and history. Pro is a
+ * monthly or yearly subscription for power users — unlimited dictation,
+ * longer word lists, and AI polish — and
  * nothing is ever deleted when it lapses: a longer list keeps every line, and
  * only its first part is used.
  *
