@@ -228,6 +228,8 @@ export interface PublicSettings {
    * open from where it rests. Off, it appears only while dictating.
    */
   restingPill: boolean
+  /** The first-run card has been answered (start with the computer, updates); it never comes back. */
+  welcomeAnswered: boolean
   theme: Theme
   microphoneId: string
   historyRetentionDays: number
@@ -272,6 +274,8 @@ export interface SettingsUpdate {
   playSounds?: boolean
   launchAtLogin?: boolean
   restingPill?: boolean
+  /** Only ever set to true, by the first-run card's Done. */
+  welcomeAnswered?: true
   theme?: Theme
   microphoneId?: string
   historyRetentionDays?: number

@@ -6,6 +6,7 @@ import { commandFailure, createModelRow, type ModelRowView } from '../model-down
 import { setupHeading, setupSteps, type SetupStep } from '../setup-guide'
 import { createTrialEndNotice } from '../trial-end-notice'
 import { createWordAllowanceNote } from '../word-allowance-note'
+import { createWelcomeCard, welcomeSystemName } from '../welcome-card'
 import { effectiveRecordingMode, globalShortcutUsable } from '../../shared/capabilities'
 import type { EngineStatus } from '../../shared/engine'
 import { chordLabel } from '../../shared/keycodes'
@@ -65,6 +66,7 @@ export function renderHistory(context: AppContext): HistoryView {
     <div id="trial-end-notice"></div>
     <div id="word-allowance"></div>
     <div id="setup-guide"></div>
+    <div id="welcome"></div>
     <section class="metrics" aria-label="Dictation totals">
       <div class="metric-card"><span>Dictations</span><strong id="metric-count">0</strong></div>
       <div class="metric-card"><span>Words captured</span><strong id="metric-words">0</strong></div>
@@ -123,6 +125,26 @@ export function renderHistory(context: AppContext): HistoryView {
   const allowanceHost = context.content.querySelector<HTMLDivElement>('#word-allowance')
   const allowanceNote = allowanceHost
     ? createWordAllowanceNote(allowanceHost, { seePro: () => context.navigate('pro') })
+    : null
+
+  const welcomeHost = context.content.querySelector<HTMLDivElement>('#welcome')
+  const welcomeCard = welcomeHost
+    ? createWelcomeCard(welcomeHost, {
+        systemName: welcomeSystemName(
+          context.platform.platform,
+          context.platform.capabilities.launchAtLogin.state === 'available'
+        ),
+        launchAtLogin: context.settings.launchAtLogin,
+        done: async (choice) => {
+          await window.murmur.setUpdateCheck(choice.updateCheck)
+          const next = await window.murmur.saveSettings({
+            launchAtLogin: choice.launchAtLogin,
+            welcomeAnswered: true
+          })
+          context.applySettings(next)
+          welcomeCard?.apply(false)
+        }
+      })
     : null
 
   const setupHost = context.content.querySelector<HTMLDivElement>('#setup-guide')
@@ -627,6 +649,7 @@ export function renderHistory(context: AppContext): HistoryView {
   updateHeroHint()
   trialEndNotice?.apply(context.licence.trialEndNoticeDue)
   allowanceNote?.apply(context.licence.words)
+  welcomeCard?.apply(!context.settings.welcomeAnswered)
   renderSetup()
   renderMetrics()
   renderList()

@@ -111,6 +111,8 @@ export interface StoredSettings {
   launchAtLogin: boolean
   /** The pill rests on screen while idle; see `PublicSettings.restingPill`. */
   restingPill: boolean
+  /** See `PublicSettings.welcomeAnswered`. */
+  welcomeAnswered: boolean
   theme: Theme
   microphoneId: string
   historyRetentionDays: number
@@ -177,6 +179,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   launchAtLogin: true,
   // The pill at rest shows at a glance that Vocette is ready; one switch hides it.
   restingPill: true,
+  welcomeAnswered: false,
   theme: 'system',
   microphoneId: '',
   historyRetentionDays: 0,
@@ -356,6 +359,9 @@ export function normaliseSettings(value: unknown): StoredSettings {
       typeof candidate.restingPill === 'boolean'
         ? candidate.restingPill
         : DEFAULT_SETTINGS.restingPill,
+    // Absent in every file written before the card existed, so an existing
+    // user sees it once too: neither question was ever put to them.
+    welcomeAnswered: candidate.welcomeAnswered === true,
     theme:
       typeof candidate.theme === 'string' && themeSet.has(candidate.theme)
         ? (candidate.theme as Theme)
@@ -592,6 +598,7 @@ export class SettingsStore {
       playSounds: stored.playSounds,
       launchAtLogin: stored.launchAtLogin,
       restingPill: stored.restingPill,
+      welcomeAnswered: stored.welcomeAnswered,
       theme: stored.theme,
       microphoneId: stored.microphoneId,
       historyRetentionDays: stored.historyRetentionDays,
@@ -871,6 +878,7 @@ export class SettingsStore {
     }
     // Only ever set: once dismissed, the notice is gone for good.
     if (update.trialEndNoticeDismissed === true) this.settings.trialEndNoticeDismissed = true
+    if (update.welcomeAnswered === true) this.settings.welcomeAnswered = true
     if (update.polish && typeof update.polish === 'object') this.applyPolishUpdate(update.polish)
     if (typeof update.polishKey === 'string' && update.polishKey.trim()) {
       const polishKey = update.polishKey.trim()

@@ -214,6 +214,7 @@ describe('validation', () => {
         'playSounds',
         'launchAtLogin',
         'restingPill',
+        'welcomeAnswered',
         'theme',
         'microphoneId',
         'historyRetentionDays',

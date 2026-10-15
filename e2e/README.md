@@ -55,5 +55,6 @@ node e2e/quiet-check.mjs
 | `peek-check` | Point at the pill and it fades; away and it comes back. Moves the real pointer (K11) |
 | `resting-switch-check` | The "Show the pill while idle" switch (K10) |
 | `word-limit-check` | Free past its trial at 9,995 words: History line, the crossing take, the refused next take with its pause sign (N1) |
+| `welcome-check` | The first-run card: both ticked, Done saves, gone for good (S2, S3) |
 | `offer-check` | The Pro page during and after the launch offer (checkout never clicked) |
 | `subscription-check` | Activation and renewal against a stand-in Polar over HTTPS |

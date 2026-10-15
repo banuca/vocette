@@ -2204,6 +2204,35 @@ a:focus-visible {
   align-items: center;
 }
 
+/* The two first-run questions; answered once, then gone. */
+.welcome-card {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.welcome-card h2 {
+  margin: 0 0 6px;
+  color: var(--text-heading);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.welcome-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.welcome-failure {
+  margin: 0;
+  color: var(--status-bad);
+  font-size: 12px;
+}
+
 /* Free's month so far: a hairline bar and one line, quiet until it matters. */
 .allowance-note {
   display: flex;
