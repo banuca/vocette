@@ -79,6 +79,7 @@ import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
 import { withOwnName, withOwnNameRules } from '../shared/own-name'
 import { allowanceFor } from '../shared/word-allowance'
 import { createOverlayPeek, type OverlayPeek } from './overlay-peek'
+import { AppUpdater } from './app-updater'
 import { SubscriptionChecker } from './subscription-check'
 import { displayVersion } from '../shared/update'
 import {
@@ -145,6 +146,7 @@ let localEngine!: LocalEngine
 let licenceClient!: LicenceClient
 let subscriptionChecker!: SubscriptionChecker
 let updateChecker!: UpdateChecker
+let appUpdater!: AppUpdater
 /** An activation or a release is on its way to Polar; a second click waits for it. */
 let licenceRequestInFlight = false
 
@@ -1116,9 +1118,30 @@ function shortcutHintLabel(): string {
 
 /** The tray's line for an update on offer; nothing otherwise. */
 function updateTrayItems(): MenuItemConstructorOptions[] {
+  const install = appUpdater?.getInstall()
+  if (install?.state === 'ready') {
+    return [
+      {
+        label: `Restart to update to ${displayVersion(install.version ?? '')}`,
+        click: () => void appUpdater.installNow()
+      }
+    ]
+  }
   const status = updateChecker?.getStatus()
   const page = updateChecker?.downloadPage()
   if (!status || status.state !== 'available' || !status.latest || !page) return []
+  if (install?.supported) {
+    return [
+      {
+        label:
+          install.state === 'downloading'
+            ? `Downloading ${displayVersion(status.latest)}…`
+            : `Update available: ${displayVersion(status.latest)} — download and install`,
+        enabled: install.state !== 'downloading',
+        click: () => void appUpdater.download()
+      }
+    ]
+  }
   return [
     {
       label: `Update available: ${displayVersion(status.latest)} — open download page`,
@@ -1584,6 +1607,19 @@ function registerIpc(): void {
     if (!fromMain(event)) throw new Error('Forbidden.')
     return updateChecker.checkNow()
   })
+  // Installing, only when asked: the download, then the restart into the installer.
+  ipcMain.handle('update:install-status', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return appUpdater.getInstall()
+  })
+  ipcMain.handle('update:download', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return appUpdater.download()
+  })
+  ipcMain.handle('update:install', (event) => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return appUpdater.installNow()
+  })
   ipcMain.handle('update:set-enabled', (event, enabled: unknown) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
     if (typeof enabled !== 'boolean') throw new Error('Invalid update setting.')
@@ -1721,6 +1757,28 @@ async function bootstrap(): Promise<void> {
     release: () => settingsStore.clearLicence(),
     busy: () => licenceRequestInFlight,
     onChange: () => broadcastLicenceStatus()
+  })
+  appUpdater = new AppUpdater({
+    // The Windows installer and a Linux AppImage replace themselves; a
+    // development run and the unsigned Mac build keep the download page.
+    supported:
+      (app.isPackaged || Boolean(process.env.MURMUR_UPDATE_FEED)) &&
+      (process.platform === 'win32' || (process.platform === 'linux' && Boolean(process.env.APPIMAGE))),
+    installOnQuit: !process.env.MURMUR_UPDATE_FEED,
+    load: async () => {
+      const { autoUpdater } = await import('electron-updater')
+      // Test runs only: a local feed in place of GitHub's releases.
+      const feed = process.env.MURMUR_UPDATE_FEED?.trim()
+      if (feed) {
+        autoUpdater.setFeedURL({ provider: 'generic', url: feed })
+        autoUpdater.forceDevUpdateConfig = !app.isPackaged
+      }
+      return autoUpdater
+    },
+    onChange: (install) => {
+      mainWindow?.webContents.send('update:install-status', install)
+      rebuildTrayMenu()
+    }
   })
   updateChecker = new UpdateChecker({
     fetch: (url, init) => net.fetch(url, init),

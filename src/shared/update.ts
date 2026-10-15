@@ -2,8 +2,10 @@ import { PRODUCT_NAME } from './product'
 
 /**
  * The update check, as the window sees it. Off unless the user switches it on;
- * "Check now" works either way. Nothing is ever downloaded or installed: an
- * update found is a line of text and a link to the release page.
+ * "Check now" works either way. The check downloads nothing: an update found
+ * is a line of text, and installing it is a separate step the user starts
+ * (`UpdateInstall` below), or a link to the release page where that is not
+ * possible.
  */
 export interface UpdateStatus {
   /** Whether the daily check is switched on. */
@@ -95,6 +97,38 @@ export function updateResultText(status: UpdateStatus): string {
       return `${PRODUCT_NAME} ${displayVersion(status.latest ?? '')} is available.`
     case 'error':
       return status.error ?? 'The check did not work. Try again later.'
+    default:
+      return ''
+  }
+}
+
+/**
+ * Installing an update from inside the app, after the check above has found
+ * one. Only when the user asks: "Download and install" fetches it, and
+ * "Restart to update" — or simply quitting — installs it. The Windows
+ * installer and a Linux AppImage can replace themselves; the Mac cannot
+ * until it is signed, so it keeps the download page.
+ */
+export interface UpdateInstall {
+  supported: boolean
+  state: 'idle' | 'downloading' | 'ready' | 'error'
+  /** 0–100 while downloading. */
+  percent: number
+  /** The version downloaded and waiting to be installed. */
+  version: string | null
+  /** Why the download failed, in words for the window. */
+  error: string | null
+}
+
+/** The line beside the install button. Empty when there is nothing to say. */
+export function installText(install: UpdateInstall): string {
+  switch (install.state) {
+    case 'downloading':
+      return `Downloading… ${Math.max(0, Math.min(100, Math.round(install.percent)))}%`
+    case 'ready':
+      return `${PRODUCT_NAME} ${displayVersion(install.version ?? '')} is ready. It installs when you restart or quit ${PRODUCT_NAME}.`
+    case 'error':
+      return install.error ?? 'The update could not be downloaded. Try again later.'
     default:
       return ''
   }

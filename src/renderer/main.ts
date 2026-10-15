@@ -349,6 +349,7 @@ async function mount(): Promise<void> {
     aboutView?.applyUpdate(status)
   }
   window.murmur.onUpdateStatus(applyUpdate)
+  window.murmur.onUpdateInstall((install) => aboutView?.applyInstall(install))
 
   // The trial ends on its own, perhaps while the window sits behind other
   // work, so coming back to it asks again. Nothing leaves this computer: the

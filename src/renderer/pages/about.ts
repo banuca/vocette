@@ -4,7 +4,12 @@ import type { AppContext } from '../app-context'
 import { escapeHtml } from '../dom'
 import { LOCAL_MODEL_INFO } from '../../shared/speech-model'
 import type { TranscriptionEngine } from '../../shared/types'
-import { updateResultText, type UpdateStatus } from '../../shared/update'
+import {
+  installText,
+  updateResultText,
+  type UpdateInstall,
+  type UpdateStatus
+} from '../../shared/update'
 
 /** Names the platform, and the display server where that changes what works. */
 function platformName(context: AppContext): string {
@@ -86,6 +91,7 @@ export function privacyNotice(engine: TranscriptionEngine, polish = false): stri
 /** The About page, kept up to date while it is open. */
 export interface AboutView {
   applyUpdate(status: UpdateStatus): void
+  applyInstall(install: UpdateInstall): void
 }
 
 export function renderAbout(context: AppContext): AboutView {
@@ -123,6 +129,10 @@ export function renderAbout(context: AppContext): AboutView {
         <p class="update-result" id="update-result" aria-live="polite"></p>
         <button class="link-button" id="open-release" type="button" hidden>Download</button>
       </div>
+      <div class="update-actions" id="install-actions" hidden>
+        <button class="primary-button" id="install-update" type="button">Download and install</button>
+        <p class="update-result" id="install-result" aria-live="polite"></p>
+      </div>
     </section>
     <section class="notice-card attributions-card">
       <h3>Attributions</h3>
@@ -157,15 +167,65 @@ export function renderAbout(context: AppContext): AboutView {
   const result = context.content.querySelector<HTMLElement>('#update-result')
   const download = context.content.querySelector<HTMLButtonElement>('#open-release')
 
+  const installActions = context.content.querySelector<HTMLElement>('#install-actions')
+  const installButton = context.content.querySelector<HTMLButtonElement>('#install-update')
+  const installResult = context.content.querySelector<HTMLElement>('#install-result')
+  let lastStatus: UpdateStatus | null = null
+  let lastInstall: UpdateInstall | null = null
+
+  /**
+   * Where the app can replace itself, an update on offer gets "Download and
+   * install", then "Restart to update"; elsewhere it keeps the link to the
+   * release page.
+   */
+  const paintInstall = (): void => {
+    const available = lastStatus?.state === 'available'
+    const install = lastInstall
+    const canInstall = install?.supported === true
+    if (download) download.hidden = !available || canInstall
+    const busy = install?.state === 'downloading' || install?.state === 'ready'
+    if (installActions) installActions.hidden = !canInstall || (!available && !busy)
+    if (installButton && install) {
+      installButton.textContent =
+        install.state === 'ready'
+          ? 'Restart to update'
+          : install.state === 'downloading'
+            ? 'Downloading…'
+            : 'Download and install'
+      installButton.disabled = install.state === 'downloading'
+    }
+    if (installResult && install) {
+      installResult.textContent = installText(install)
+      installResult.classList.toggle('is-error', install.state === 'error')
+    }
+  }
+
   const applyUpdate = (status: UpdateStatus): void => {
+    lastStatus = status
     if (toggle) toggle.checked = status.enabled
     if (checkNow) checkNow.disabled = status.state === 'checking'
     if (result) {
       result.textContent = updateResultText(status)
       result.classList.toggle('is-error', status.state === 'error')
     }
-    if (download) download.hidden = status.state !== 'available'
+    paintInstall()
   }
+
+  const applyInstall = (install: UpdateInstall): void => {
+    lastInstall = install
+    paintInstall()
+  }
+
+  installButton?.addEventListener('click', () => {
+    if (lastInstall?.state === 'ready') {
+      void window.murmur.installUpdate().catch(() => undefined)
+      return
+    }
+    void window.murmur
+      .downloadUpdate()
+      .then(applyInstall)
+      .catch(() => undefined)
+  })
 
   toggle?.addEventListener('change', () => {
     const enabled = toggle.checked
@@ -192,6 +252,10 @@ export function renderAbout(context: AppContext): AboutView {
     .getUpdateStatus()
     .then(applyUpdate)
     .catch(() => undefined)
+  void window.murmur
+    .getUpdateInstall()
+    .then(applyInstall)
+    .catch(() => undefined)
 
-  return { applyUpdate }
+  return { applyUpdate, applyInstall }
 }

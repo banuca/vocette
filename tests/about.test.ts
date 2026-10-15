@@ -11,7 +11,7 @@ import {
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import { MODEL_NOT_READY_REASON } from '../src/shared/engine'
 import type { PublicSettings, TranscriptionEngine } from '../src/shared/types'
-import type { UpdateStatus } from '../src/shared/update'
+import type { UpdateInstall, UpdateStatus } from '../src/shared/update'
 
 /**
  * The About page makes claims about where audio goes. They have to be true
@@ -85,7 +85,14 @@ async function flush(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve))
 }
 
-function render(engine: TranscriptionEngine, update: UpdateStatus = NOT_CHECKED) {
+/** A Mac or a development run: no installing from inside the app. */
+const CANNOT_INSTALL: UpdateInstall = { supported: false, state: 'idle', percent: 0, version: null, error: null }
+
+function render(
+  engine: TranscriptionEngine,
+  update: UpdateStatus = NOT_CHECKED,
+  install: UpdateInstall = CANNOT_INSTALL
+) {
   const content = new FakeElement(new Map())
   const context: AppContext = {
     content: content as unknown as HTMLElement,
@@ -120,11 +127,31 @@ function render(engine: TranscriptionEngine, update: UpdateStatus = NOT_CHECKED)
   const getUpdateStatus = vi.fn(async () => update)
   const checkForUpdates = vi.fn(async (): Promise<UpdateStatus> => ({ ...update, state: 'latest' }))
   const setUpdateCheck = vi.fn(async (enabled: boolean) => ({ ...update, enabled }))
+  const getUpdateInstall = vi.fn(async () => install)
+  const downloadUpdate = vi.fn(async (): Promise<UpdateInstall> => ({ ...install, state: 'downloading' }))
+  const installUpdate = vi.fn(async () => true)
   vi.stubGlobal('window', {
-    murmur: { openExternal, getUpdateStatus, checkForUpdates, setUpdateCheck }
+    murmur: {
+      openExternal,
+      getUpdateStatus,
+      checkForUpdates,
+      setUpdateCheck,
+      getUpdateInstall,
+      downloadUpdate,
+      installUpdate
+    }
   })
   vi.stubGlobal('document', { createElement: () => new FakeElement() })
-  return { content, context, openExternal, getUpdateStatus, checkForUpdates, setUpdateCheck }
+  return {
+    content,
+    context,
+    openExternal,
+    getUpdateStatus,
+    checkForUpdates,
+    setUpdateCheck,
+    downloadUpdate,
+    installUpdate
+  }
 }
 
 afterEach(() => {
@@ -270,6 +297,37 @@ describe('the Updates section', () => {
     expect(download?.hidden).toBe(false)
     download?.listeners.forEach((listener) => listener())
     expect(openExternal).toHaveBeenCalledWith('release')
+  })
+
+  it('installs from inside the app where it can: download, progress, then restart', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const available: UpdateStatus = { ...NOT_CHECKED, state: 'available', latest: 'v1.0.1' }
+    const idle: UpdateInstall = { ...CANNOT_INSTALL, supported: true }
+    const { content, context, downloadUpdate, installUpdate } = render('local', available, idle)
+    const view = renderAbout(context)
+    await flush()
+    // The button, not the link to the release page.
+    expect(content.querySelector('#open-release')?.hidden).toBe(true)
+    expect(content.querySelector('#install-actions')?.hidden).toBe(false)
+    const button = content.querySelector('#install-update')
+    expect(button?.textContent).toBe('Download and install')
+
+    button?.listeners.forEach((listener) => listener())
+    await flush()
+    expect(downloadUpdate).toHaveBeenCalledTimes(1)
+    expect(button?.disabled).toBe(true)
+
+    view.applyInstall({ ...idle, state: 'downloading', percent: 61 })
+    expect(content.querySelector('#install-result')?.textContent).toBe('Downloading… 61%')
+
+    view.applyInstall({ ...idle, state: 'ready', percent: 100, version: '1.0.1' })
+    expect(button?.textContent).toBe('Restart to update')
+    expect(button?.disabled).toBe(false)
+    expect(content.querySelector('#install-result')?.textContent).toBe(
+      'Vocette 1.0.1 is ready. It installs when you restart or quit Vocette.'
+    )
+    button?.listeners.forEach((listener) => listener())
+    expect(installUpdate).toHaveBeenCalledTimes(1)
   })
 
   it('shows why a check failed, and follows a status pushed while the page is open', async () => {

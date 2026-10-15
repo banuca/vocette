@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PlatformStatus, SettingsPane } from '../shared/capabilities'
 import type { EngineStatus } from '../shared/engine'
-import type { UpdateStatus } from '../shared/update'
+import type { UpdateInstall, UpdateStatus } from '../shared/update'
 import type { PolishTestResult } from '../shared/polish'
 import type {
   AppInfo,
@@ -89,6 +89,14 @@ const api = {
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check-now'),
   setUpdateCheck: (enabled: boolean): Promise<UpdateStatus> =>
     ipcRenderer.invoke('update:set-enabled', enabled),
+  getUpdateInstall: (): Promise<UpdateInstall> => ipcRenderer.invoke('update:install-status'),
+  downloadUpdate: (): Promise<UpdateInstall> => ipcRenderer.invoke('update:download'),
+  installUpdate: (): Promise<boolean> => ipcRenderer.invoke('update:install'),
+  onUpdateInstall: (callback: (install: UpdateInstall) => void): (() => void) => {
+    const listener = (_event: unknown, install: UpdateInstall): void => callback(install)
+    ipcRenderer.on('update:install-status', listener)
+    return () => ipcRenderer.removeListener('update:install-status', listener)
+  },
 
   onWorkflowStatus: (callback: (status: WorkflowStatus) => void): (() => void) => {
     const listener = (_event: unknown, status: WorkflowStatus): void => callback(status)
