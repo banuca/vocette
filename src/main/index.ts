@@ -1700,7 +1700,10 @@ async function bootstrap(): Promise<void> {
       ensureDirectory: (path) => mkdirSync(path, { recursive: true })
     }
   })
-  settingsStore = new SettingsStore(join(userData, 'settings.json'))
+  // A new profile starts in the system's language (see starting-language.ts).
+  settingsStore = new SettingsStore(join(userData, 'settings.json'), {}, undefined, {
+    systemLanguages: () => app.getPreferredSystemLanguages()
+  })
   historyStore = new HistoryStore(join(userData, 'history.json'))
   modelStore = new ModelStore({
     root: modelsRoot({ env: process.env, platform: process.platform, userData }),

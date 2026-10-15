@@ -30,6 +30,7 @@ import { RECORDING_MODES, type RecordingMode } from '../shared/capabilities'
 import { clampReplacements } from '../shared/replacements'
 import { clampVocabulary } from '../shared/vocabulary'
 import { addWords, normaliseWordUsage, type WordUsage } from '../shared/word-allowance'
+import { startingLanguage } from '../shared/starting-language'
 import { DEFAULT_ZOOM, isZoomStep } from './zoom'
 import {
   DEFAULT_POLISH,
@@ -230,6 +231,8 @@ export interface StoreEnvironment {
   now?: () => number
   /** Four upper-case hexadecimal characters; random unless a test supplies them. */
   newDeviceTag?: () => string
+  /** The system's preferred languages, most wanted first ("fr-CH"); read only for a new profile. */
+  systemLanguages?: () => readonly string[]
 }
 
 function randomDeviceTag(): string {
@@ -535,6 +538,14 @@ export class SettingsStore {
     const { value, problem } = readJsonWithBackup<unknown>(filePath)
     this.settings = normaliseSettings(value)
     this.warning = problem ?? null
+    // A profile with nothing on disk is new: it starts in the system's language.
+    if (value === null || value === undefined) {
+      try {
+        this.settings.language = startingLanguage(environment.systemLanguages?.() ?? [])
+      } catch {
+        // English, as the defaults have it.
+      }
+    }
     this.startTrialAndTagDevice(environment)
   }
 
