@@ -41,6 +41,7 @@ evening notes join list 1. The visual version for the owner is published as an a
   Mac can't until it's signed (Squirrel.Mac requires a signature), so the unsigned Mac beta
   keeps a download link. The update check stays opt-in, or follows whatever S3 decides. Needs
   its own visual plan. Owner note, 8 Oct.
+  - **Built 4e0e279, import fixed 1e5b554 (15 Oct).** In 0.6.7. Packaged download, progress and hash checked by `e2e/update-install-check.mjs`; installing and restarting are hand-test only.
 
 - K9. **Prettify the top dashboard** on History: the microphone hero and the stats row.
   Owner note, 8 Oct: "it looks beautiful… the top dashboard section can be prettified". Needs
@@ -122,6 +123,7 @@ evening notes join list 1. The visual version for the owner is published as an a
 - N1. **The free word limit (10,000 words a month) is not built.** The Free/Pro split depends on
   it. The Pro page's "What stays free, forever" list still says "any length, as often as you
   like" (`licence-text.ts` FREE_FOREVER). The product.ts header says the same.
+  - **Built a6b8f07–6aca94f (15 Oct)**, owner's 1B: the take that crosses finishes, then new takes wait for the 1st. In 0.6.7. `site/index.html` still says "Unlimited dictation" (N4).
 - N2. **Terms**: "up to three computers" (now 10 devices). There is no launch-offer small print
   and no word limit. The seller is never named ("we"). Contact is support@example.com.
   Governing law is assumed to be Switzerland. **Privacy and refund** pages: the support
@@ -148,14 +150,17 @@ evening notes join list 1. The visual version for the owner is published as an a
   Check Azure Trusted Signing eligibility from Switzerland, or an OV certificate.
 - S2. **Launch at login is off by default.** A dictation tool that isn't running is not used.
   Proposal: on by default, said on the first-run card.
+  - **Built 4ce79c6 (15 Oct)**, owner's 2A. The NSIS uninstall step is unproven.
 - S3. **The update check is off by default**, so users never hear of fixes or the Mac version.
   Proposal: ask once, on the first-run card. It is a privacy decision for the owner.
+  - **Built dc9e95d (15 Oct)**, owner's 3B, Yes ticked.
 - S4. Choosing "On this PC" and pressing Download does not switch the engine until Save
   settings. This is the 0.5.0 hand-test step 2 finding. It affects switchers from cloud.
 - S5. The tray shows "writing" while the microphone is starting; it should show listening.
   `setTrayState` maps `starting` to writing.
 - S6. The default language is English. For non-English users of the 25 languages, Automatic
   may suit better. Decide.
+  - **Built ec995f4 (15 Oct)**, owner's 5A: follows Windows when the on-device model hears it, else English. Unproven on a non-English Windows.
 
 ### Later
 
