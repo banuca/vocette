@@ -1766,7 +1766,10 @@ async function bootstrap(): Promise<void> {
       (process.platform === 'win32' || (process.platform === 'linux' && Boolean(process.env.APPIMAGE))),
     installOnQuit: !process.env.MURMUR_UPDATE_FEED,
     load: async () => {
-      const { autoUpdater } = await import('electron-updater')
+      const updaterModule = await import('electron-updater')
+      // A CommonJS package whose `autoUpdater` is a lazy getter: imported this
+      // way, Node finds it only on the default export (module.exports).
+      const { autoUpdater } = (updaterModule.default ?? updaterModule) as typeof updaterModule
       // Test runs only: a local feed in place of GitHub's releases.
       const feed = process.env.MURMUR_UPDATE_FEED?.trim()
       if (feed) {

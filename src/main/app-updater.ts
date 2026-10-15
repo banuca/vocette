@@ -59,7 +59,8 @@ export class AppUpdater {
     if (this.inFlight) return this.inFlight
     this.set({ state: 'downloading', percent: 0, error: null })
     this.inFlight = this.run()
-      .catch((): UpdateInstall => {
+      .catch((error: unknown): UpdateInstall => {
+        console.error('Vocette could not download the update:', error)
         this.set({ state: 'error', percent: 0, error: DOWNLOAD_FAILED })
         return this.getInstall()
       })

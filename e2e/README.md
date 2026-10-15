@@ -57,5 +57,6 @@ node e2e/quiet-check.mjs
 | `word-limit-check` | Free past its trial at 9,995 words: History line, the crossing take, the refused next take with its pause sign (N1) |
 | `welcome-check` | The first-run card: both ticked, Done saves, gone for good (S2, S3) |
 | `language-check` | Prints the system languages and the language a fresh profile starts in (S6) |
+| `update-install-check` | Packaged app only (`E2E_EXE`): Download and install from a local feed, with progress; the installer's hash checked, then deleted. Never installs (K8) |
 | `offer-check` | The Pro page during and after the launch offer (checkout never clicked) |
 | `subscription-check` | Activation and renewal against a stand-in Polar over HTTPS |
