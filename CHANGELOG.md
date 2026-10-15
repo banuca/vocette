@@ -5,6 +5,19 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.6.7] — unreleased
+
+- **Free is 10,000 words of dictation a month**, counted on this PC and starting again on the 1st.
+  The dictation that reaches the limit is delivered in full; the next one waits for the 1st, and
+  the pill says when. History shows the month so far from 8,000 words. The trial and Pro have no
+  limit.
+- A new install starts with Windows, and the first-run card says so. Uninstalling removes the
+  start-up entry.
+- The first-run card asks once whether to tell you about new versions.
+- A new install starts in your system's language when the on-device model hears it.
+- Updates install from inside the app: About → Download and install, then Restart to update.
+  Nothing is downloaded until you ask.
+
 ## [0.6.6] — unreleased
 
 - Point at the pill and it fades, so you can read what is behind it; it comes back when the
