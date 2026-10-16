@@ -31,6 +31,15 @@
     mqDark.addEventListener('change', labelTheme);
   }
 
+  /* Download buttons name the visitor's system; Windows when unsure ------- */
+
+  var ua = navigator.userAgent || '';
+  var plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+  var os = 'Windows';
+  if (/Mac/i.test(plat) && !/iPhone|iPad/i.test(ua)) os = 'macOS';
+  else if (/Linux/i.test(plat) && !/Android/i.test(ua)) os = 'Linux';
+  document.querySelectorAll('.dl-label').forEach(function (el) { el.textContent = 'Download for ' + os; });
+
   /* Headline words, for the load sequence -------------------------------- */
 
   var h1 = document.getElementById('hero-title');
@@ -60,8 +69,8 @@
     var tag = document.getElementById('pro-tag');
     var buy = document.getElementById('pro-buy');
     var PLANS = {
-      yearly: { amount: 'US$49', per: 'a year', note: 'Or US$4.99 a month. Up to 10 PCs, cancel any time.', tag: 'Two months free', buy: 'Subscribe yearly' },
-      monthly: { amount: 'US$4.99', per: 'a month', note: 'Or US$49 a year, two months free. Up to 10 PCs, cancel any time.', tag: '', buy: 'Subscribe monthly' }
+      yearly: { amount: 'US$49', per: 'a year', note: 'Or US$4.99 a month. Up to 10 computers, cancel any time.', tag: 'Two months free', buy: 'Subscribe yearly' },
+      monthly: { amount: 'US$4.99', per: 'a month', note: 'Or US$49 a year, two months free. Up to 10 computers, cancel any time.', tag: '', buy: 'Subscribe monthly' }
     };
     billing.classList.add('ready');
     billing.addEventListener('click', function (e) {

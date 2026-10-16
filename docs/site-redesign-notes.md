@@ -101,3 +101,22 @@ Decisions and gaps for the owner:
 - Links: download goes to github.com/banuca/vocette/releases/latest (no release yet);
   checkouts are product.ts's Polar links, untested from the site; contact is still
   support@example.com.
+
+## Step 1b: Windows, macOS and Linux (16 Oct)
+
+Owner, 16 Oct: all three ship together at launch (Mac tested by the owner's brother and a
+friend, Linux by the owner). This replaces the brief's "Windows only for now".
+- Copy says Windows, macOS and Linux (eyebrow, fine print, FAQ, closing, footer, meta);
+  "PC" became "computer" throughout.
+- Download buttons read "Download for macOS/Linux/Windows" from the visitor's platform
+  (`navigator.userAgentData.platform` or `navigator.platform`); Windows without JS or when
+  unsure, and on phones. All point at releases/latest. Checked on Windows only: macOS and
+  Linux labels unproven.
+- To confirm before launch: macOS/Linux requirements (placeholder line in the FAQ); whether
+  the default shortcut is Left Ctrl + Left Shift on a Mac (the demo and How it works say so);
+  a Gatekeeper/unsigned warning answer for macOS like the SmartScreen one; the demo window is
+  drawn Windows-style.
+- 360 px dark and 1280 px: no horizontal overflow.
+
+Mobbin: needs a paid plan (every search refused). Web inspiration research running instead:
+side-session notes folder, `site-inspiration.md`.
