@@ -331,6 +331,16 @@ async function start(request: RecorderStartRequest): Promise<void> {
   }
 }
 
+// The first microphone open after start-up waits for Chromium's audio service
+// to start and list the devices: about 2.3 s on Windows, against 0.05 s for
+// every later take (benchmark, 16 Oct 2026). Asking for the device list now
+// pays that cost before the first dictation, without opening the microphone.
+try {
+  void navigator.mediaDevices?.enumerateDevices?.().catch(() => undefined)
+} catch {
+  // A warm-up only; the first take opens the microphone either way.
+}
+
 window.recorder.onStart((request) => void start(request))
 
 window.recorder.onStop((request: RecorderStopRequest) => {
