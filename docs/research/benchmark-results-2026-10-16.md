@@ -62,6 +62,54 @@ Vocette 0.6.7 (installed), polish off, as the owner uses it. Wispr Flow free ins
 4. Proper nouns: add Polar (and the user's own terms) to the vocabulary prompt; K13 worked
    for Vocette.
 
+## 0.7.0 (same evening, development build then packaged)
+
+Fixes: raw capture (EC/NS/AGC off), warm-up of the audio service at load, 500 ms lead and
+300 ms tail kept by the silence trim, and the glued-price fix. Commits 566e9a6, 5e5bfaa,
+da18e0d, 53425c3.
+
+| Engine | WER all 20 | WER answered | Openings | Empty | Wait p50 |
+|---|---|---|---|---|---|
+| Wispr Flow (earlier run) | 7.7% | 5.2% | 17/20 | 1 | 0.77 s |
+| Vocette cloud 0.6.7 | 11.4% | 11.4% | 12/20 | 0 | 0.81 s |
+| **Vocette cloud 0.7.0** | 10.1% | **7.6%** | 13/20 | 1 (p01, paste) | 1.01 s |
+| Vocette on-device 0.6.7 | 31.2% | 22.4% | 7/20 | 3 | 0.69 s |
+| **Vocette on-device 0.7.0** | **22.2%** | 22.2% | 10/20 | **0** | 0.73 s |
+| On-device model, originals decoded directly | 21.2% | 14.1% | 12/20 | 2 | n/a |
+
+Evidence for each fix:
+- **Capture:** takes now match the source at 0.99 correlation (`fidelity.py`); with
+  processing on, takes hit 1.00 peak (clipping) and the first take lost 1.3 s.
+- **Mic open:** the first take after start-up took 2,348 ms to open, later ones about 50 ms.
+  After the warm-up the first open is 174 ms. Idle for 60 s, it stays at 127 ms. Longer idle
+  is not measured.
+- **Lead-in:** with 30 ms of lead the cloud model rewrote openings ("Calla, speak", "ITU
+  be"). With 500 ms: "Following up on our call…", "At ITU, we work on…".
+- **Model limits, not capture:** p13 "Remind me" stays "I need" on the cloud model with
+  faithful audio; gpt-4o-transcribe is worse (drops "Our subscriptions run through Polar."
+  entirely). The on-device model gives 21% on the clean originals: its ceiling.
+- **Vocabulary:** adding "Polar" to the word list fixes it on cloud ("…run through Polar.").
+  On-device can't: its miss ("Hold up.") is too far from the word to correct.
+- **Speed:** preparation in the app is 11–83 ms; the cloud request is ~0.8 s of the ~0.95 s.
+  In a back-to-back A/B on p11–p20, Wispr answered in 0.28–0.58 s (median 0.42 s), but only
+  5 of 10 takes produced text (its free plan?), and Vocette in 1.05 s median. Wispr very
+  likely streams while you speak. **Speed: fail** (not a tie).
+
+Against the 0.7.0 pass marks: openings 13/20 (target 17) **fail**; cloud WER 7.6% vs 5.2%
+(target within 1 point) **fail, gap halved**; on-device 22% (target ≤ 10%) **fail**, which
+needs a better model; empty takes 0 on-device **pass**; mic open lag **pass**.
+
+Open:
+- **First take after launch sometimes doesn't paste** (2 of ~6 restarts; transcribed fine,
+  text never reached the window). Not reproduced on demand. The runner now records
+  `focusTakenBy`. Diagnostics (0.8.0) should log the paste refusal reason.
+- **Streaming transcription** for speed: the only way to match Wispr's ~0.4 s.
+- **On-device model**: the full-precision Parakeet v3 (2.5 GB,
+  csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3) would show whether int8 quantisation
+  costs accuracy. Download needs the owner's OK.
+- Benchmark is one speaker (the owner). It shows real gains, but it isn't a population
+  measure.
+
 Notes: the benchmark added about 100 entries to the owner's History (texts match the
 passages). They're not removed: deleting needs the owner's OK. A backup of the settings from
 before the benchmark is at `%LOCALAPPDATA%\vocette-bench\settings-before-bench.json`, and it
