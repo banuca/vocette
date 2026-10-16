@@ -15,6 +15,9 @@
  */
 
 const TARGET_SAMPLE_RATE = 16000
+/** Air kept before the first word and after the last, in milliseconds. */
+const LEAD_MS = 500
+const TAIL_MS = 300
 
 export interface PreparedAudio {
   buffer: ArrayBuffer
@@ -76,10 +79,14 @@ export function findSpeechBounds(
   }
   if (first < 0) return null
 
-  // Keep one window of air before the first word and two after the last, so
-  // the transcription start is never clipped.
-  const start = Math.max(0, (first - 1) * windowSize)
-  const end = Math.min(samples.length, (last + 2) * windowSize)
+  // Keep half a second of air before the first word and a third of a second
+  // after the last. The cloud models drop or rewrite the opening words of
+  // audio that starts right on them, and a soft first word (an "h", an "f")
+  // sits below the threshold for its first few windows (benchmark, 16 Oct).
+  const lead = Math.ceil((sampleRate * LEAD_MS) / 1000 / windowSize)
+  const tail = Math.ceil((sampleRate * TAIL_MS) / 1000 / windowSize)
+  const start = Math.max(0, (first - lead) * windowSize)
+  const end = Math.min(samples.length, (last + 1 + tail) * windowSize)
   return start >= end ? null : [start, end]
 }
 

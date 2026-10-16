@@ -40,11 +40,11 @@ describe('findSpeechBounds', () => {
     const bounds = findSpeechBounds(samples, RATE)
     expect(bounds).not.toBeNull()
     const [start, end] = bounds as [number, number]
-    // One window of padding before the tone, two after.
-    expect(start).toBeLessThanOrEqual(silenceBefore)
-    expect(start).toBeGreaterThan(silenceBefore - RATE / 10)
-    expect(end).toBeGreaterThanOrEqual(silenceBefore + speechLength)
-    expect(end).toBeLessThanOrEqual(silenceBefore + speechLength + RATE / 5)
+    // About half a second of air before the tone and a third of a second after.
+    expect(start).toBeLessThanOrEqual(silenceBefore - RATE * 0.5)
+    expect(start).toBeGreaterThan(silenceBefore - RATE * 0.6)
+    expect(end).toBeGreaterThanOrEqual(silenceBefore + speechLength + RATE * 0.3)
+    expect(end).toBeLessThanOrEqual(silenceBefore + speechLength + RATE * 0.4)
   })
 
   it('keeps quiet speech when the absolute floor is hit', () => {
