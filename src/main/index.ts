@@ -1691,7 +1691,11 @@ function registerIpc(): void {
     const stem = join(debugAudioDir, String(Date.now()))
     mkdirSync(debugAudioDir, { recursive: true })
     void writeFile(`${stem}.${ext}`, payload.audio).catch(() => undefined)
-    const meta = { openMs: payload.openMs ?? null, durationMs: payload.durationMs }
+    const meta = {
+      openMs: payload.openMs ?? null,
+      prepMs: payload.prepMs ?? null,
+      durationMs: payload.durationMs
+    }
     void writeFile(`${stem}.json`, JSON.stringify(meta)).catch(() => undefined)
   }
 

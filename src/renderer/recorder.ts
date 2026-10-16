@@ -255,6 +255,7 @@ async function start(request: RecorderStartRequest): Promise<void> {
       () => {
         if (take.state !== 'recording' || activeTake !== take) return
         take.state = 'preparing'
+        const stoppedAt = performance.now()
         const durationMs = Math.max(0, Date.now() - take.startedAt)
         const blob = new Blob(take.chunks, {
           type: recorder.mimeType || mimeType || 'audio/webm'
@@ -290,7 +291,8 @@ async function start(request: RecorderStartRequest): Promise<void> {
                 // Main decides what a silent take means; the recorder only
                 // says what it measured.
                 speechDetected: prepared.speechDetected,
-                openMs
+                openMs,
+                prepMs: Math.round(performance.now() - stoppedAt)
               })
             } finally {
               audio.fill(0)

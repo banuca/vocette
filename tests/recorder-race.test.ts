@@ -424,7 +424,8 @@ describe('recorder take ownership', () => {
       mimeType: 'audio/wav',
       durationMs: 450,
       speechDetected: true,
-      openMs: expect.any(Number)
+      openMs: expect.any(Number),
+      prepMs: expect.any(Number)
     }])
     expect(first.track.stop).toHaveBeenCalledTimes(1)
     expect(harness.bridge.sendError).not.toHaveBeenCalled()

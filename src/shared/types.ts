@@ -434,6 +434,8 @@ export interface RecorderAudioPayload {
    * development builds; nothing else reads it.
    */
   openMs?: number
+  /** Milliseconds from the recorder stopping to this audio being ready. Benchmark only. */
+  prepMs?: number
 }
 
 export interface RecorderErrorPayload {
