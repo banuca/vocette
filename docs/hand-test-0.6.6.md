@@ -25,14 +25,18 @@ the on-device model is installed too.
   the replacements catch "Voset" either way.
 - S4 by hand: the model is installed on this PC, so Settings shows no Download button. e2e only.
 
+**15 Oct, test run:** installing the 0.6.7 release build instead
+(`%LOCALAPPDATA%\vocette-release\0.6.7\Vocette-0.6.7-win-x64.exe`, 111 MB, 02:39). It contains
+every 0.6.6 item; run these steps first, then add the 0.6.7 steps. Engine still cloud.
+
 ## Steps (one at a time, wait for each)
 
 | # | Step | Expected | Result |
 |---|---|---|---|
-| 1 | Install 0.6.6 over 0.6.4 | Installs; the resting pill is there | |
-| 2 | Dictate a sentence into any app | Lands; the open pill holds the green tick about 1.5 s, then folds | |
-| 3 | Dictate "I am writing this with Vocette" | Typed as "Vocette" | |
-| 4 | Rest the mouse pointer on the small pill | It fades almost away; moving off brings it back | |
+| 1 | Install 0.6.6 over 0.6.4 | Installs; the resting pill is there | Pass (16 Oct, 0.6.7 installed) |
+| 2 | Dictate a sentence into any app | Lands; the open pill holds the green tick about 1.5 s, then folds | Pass (16 Oct) |
+| 3 | Dictate "I am writing this with Vocette" | Typed as "Vocette" | Pass (16 Oct, cloud engine, dictated into Claude chat) |
+| 4 | Rest the mouse pointer on the small pill | It fades almost away; moving off brings it back | Pass (16 Oct). Paused here: owner moved to another task; steps 5–7 and the 0.6.7 steps still to run |
 | 5 | Start a dictation, and while talking move the pointer onto the open pill | It fades while the pointer is on it | |
 | 6 | Make Vocette's window as narrow as it goes | The five numbers on History stay in one row | |
 | 7 | Press Ctrl and + twice, then Ctrl and 0 | Zoomed: numbers in 3 + 2, "Export .txt" on one line; Ctrl 0 puts it back | |
