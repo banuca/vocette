@@ -162,10 +162,16 @@ function cancelTake(take: RecorderTake): void {
  * promise cannot itself be aborted, so a stream arriving late closes itself.
  */
 async function openMicrophone(take: RecorderTake, microphoneId: string): Promise<MediaStream> {
+  // The microphone as it is, with none of WebRTC's call processing. Echo
+  // cancelling has no far end to cancel in dictation, and automatic gain and
+  // noise suppression need a second or so to settle on a stream that is opened
+  // fresh for every take: the benchmark (e2e/bench) found them pushing the
+  // start of takes into clipping or down into the silence trim, so first words
+  // were lost or misheard. Speech models are trained on raw microphone audio.
   const audio: MediaTrackConstraints = {
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
     channelCount: 1
   }
   if (microphoneId) audio.deviceId = { exact: microphoneId }
