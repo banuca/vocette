@@ -52,7 +52,13 @@ Tags: **Q** product quality · **M** must before taking money · **S** conversio
    counter. Decide where, as part of planning.
 7. **M2 Copy (N2, N3, N5).** Terms with the seller's legal name, 10 devices, launch-offer small
    print and the word limit; installer EULA; privacy and refund pages; version 1.0.0 and the
-   changelog; the About page says Windows only until Mac ships. Needs O2.
+   changelog. Needs O2. **Correction (owner, 16 Oct): Windows, macOS and Linux all ship at
+   launch** (Mac tested by the owner's brother and a friend, Linux by the owner), so the About
+   page keeps "for Windows, macOS and Linux".
+7b. **P1 Mac and Linux release candidates.** The 0.7.0 recorder changes (raw capture,
+   warm-up, lead-in) are shared code but only benchmarked on Windows. Build the Mac DMG on
+   GitHub Actions and the Linux AppImage. Each platform's tester runs the 0.8.0 hand test.
+   Mac stays an unsigned beta until demand (decision of 8 Oct); Linux is marked beta.
 8. **S1 Diagnostics (L2, moved up).** "Copy diagnostics" and a small local error log. There
    are no logs today, and beta users can't report what they can't see. Without it, problems
    like Q2's empty takes are invisible.
