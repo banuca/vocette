@@ -60,8 +60,9 @@ sentence before it; filler and spoken-correction removal; the pill strings "Writ
 
 ## Things to carry into the build
 
-- This branch is 55 commits behind `go-live`. go-live's `site/index.html` differs by one line
-  (the GitHub link `banuca/vocette`). Rebuild from go-live's content or bring that line over.
+- Branch rebased onto `go-live` (0421e56) on 16 Oct; backup of the old base is branch
+  `backup/site-redesign-before-rebase`. marketing-plan.md and finish-list.md are uncommitted
+  on go-live: read them from the main checkout, don't edit there.
 - Old page facts that conflict with the 16 Oct pricing: "Unlimited dictation" free,
   US$5/US$50. Replace with 10,000 words a month free and US$4.99/US$49.
 - Links not live: download (GitHub release), Polar checkouts, support address.
