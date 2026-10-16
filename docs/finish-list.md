@@ -97,7 +97,7 @@ Tags: **Q** product quality · **M** must before taking money · **S** conversio
   get stuck.
 - I3 Icons instead of words on the pill.
 - K12 double-click to dictate (out for launch).
-- Mac (L1), friends link (L3), Linux, phones.
+- Friends link (L3), phones. (Mac and Linux moved to 0.8.0, P1.)
 - Remove the ~100 benchmark entries from the owner's History (needs the owner's OK).
 
 ## How we test now (brief step 5)
