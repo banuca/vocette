@@ -217,6 +217,8 @@ async function start(request: RecorderStartRequest): Promise<void> {
     cleaned: false
   }
   activeTake = take
+  const requestedAt = performance.now()
+  let openMs: number | undefined
 
   try {
     const stream = await openMicrophone(take, request.microphoneId)
@@ -281,7 +283,8 @@ async function start(request: RecorderStartRequest): Promise<void> {
                 durationMs,
                 // Main decides what a silent take means; the recorder only
                 // says what it measured.
-                speechDetected: prepared.speechDetected
+                speechDetected: prepared.speechDetected,
+                openMs
               })
             } finally {
               audio.fill(0)
@@ -302,6 +305,7 @@ async function start(request: RecorderStartRequest): Promise<void> {
     take.state = 'recording'
     recorder.start(150)
     take.startedAt = Date.now()
+    openMs = Math.round(performance.now() - requestedAt)
     window.recorder.sendStarted({ requestId: take.requestId })
     startLevelMeter(take, stream)
   } catch (error) {

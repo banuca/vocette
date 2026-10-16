@@ -428,6 +428,12 @@ export interface RecorderAudioPayload {
    * that: a take without the flag is transcribed as it always was.
    */
   speechDetected?: boolean
+  /**
+   * How long the microphone took to open for this take, in milliseconds,
+   * from the start request to recording. Measured for the benchmark's
+   * development builds; nothing else reads it.
+   */
+  openMs?: number
 }
 
 export interface RecorderErrorPayload {

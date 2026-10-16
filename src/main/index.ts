@@ -1680,6 +1680,21 @@ function registerIpc(): void {
 
   const fromRecorder = (event: IpcMainEvent): boolean => fromWindow(event, recorderWindow)
 
+  // For the dictation benchmark (e2e/bench): a development build started with
+  // MURMUR_DEBUG_AUDIO_DIR keeps a copy of each take's audio exactly as it goes
+  // to the engine, so a lost word can be traced to capture or to trimming.
+  // Never in a packaged app, whatever the environment says.
+  const debugAudioDir = !app.isPackaged ? process.env.MURMUR_DEBUG_AUDIO_DIR?.trim() : undefined
+  const dumpTakeForBenchmark = (payload: RecorderAudioPayload): void => {
+    if (!debugAudioDir || !(payload.audio instanceof Uint8Array)) return
+    const ext = payload.mimeType === 'audio/wav' ? 'wav' : 'webm'
+    const stem = join(debugAudioDir, String(Date.now()))
+    mkdirSync(debugAudioDir, { recursive: true })
+    void writeFile(`${stem}.${ext}`, payload.audio).catch(() => undefined)
+    const meta = { openMs: payload.openMs ?? null, durationMs: payload.durationMs }
+    void writeFile(`${stem}.json`, JSON.stringify(meta)).catch(() => undefined)
+  }
+
   ipcMain.on('recorder:started', (event, payload: RecorderStartedPayload) => {
     if (!fromRecorder(event)) return
     if (payload && typeof payload.requestId === 'string') dictation.onRecorderStarted(payload)
@@ -1692,6 +1707,7 @@ function registerIpc(): void {
     // for transcription as it was before the recorder could tell.
     const speechDetected =
       typeof payload.speechDetected === 'boolean' ? payload.speechDetected : undefined
+    dumpTakeForBenchmark(payload)
     void dictation.onRecorderAudio({ ...payload, speechDetected })
   })
   ipcMain.on('recorder:error', (event, payload: RecorderErrorPayload) => {
