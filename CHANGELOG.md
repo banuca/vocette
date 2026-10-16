@@ -5,6 +5,17 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.7.0] — unreleased
+
+- **The first words of a dictation come through.** Vocette now records the microphone as it
+  is, without the echo cancelling, noise suppression and automatic volume meant for calls,
+  which distorted the start of every take. Half a second before the first word is kept when
+  silence is trimmed, because the cloud models drop words from audio that starts right on
+  them.
+- The first dictation after Vocette starts no longer loses its opening: the microphone opens
+  in about a fifth of a second instead of more than two.
+- The on-device engine no longer glues a price to the word before it ("plan is$49").
+
 ## [0.6.7] — unreleased
 
 - **Free is 10,000 words of dictation a month**, counted on this PC and starting again on the 1st.
