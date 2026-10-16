@@ -399,6 +399,16 @@ describe('repairPunctuation', () => {
     )
   })
 
+  it('parts a price from the word it was glued to, but keeps a currency prefix', () => {
+    expect(repairPunctuation('The monthly plan is$4.99 and the yearly plan is$49.')).toBe(
+      'The monthly plan is $4.99 and the yearly plan is $49.'
+    )
+    expect(repairPunctuation('It comes to€250, or US$49 a year.')).toBe(
+      'It comes to €250, or US$49 a year.'
+    )
+    expect(repairPunctuation('Costs $5 and A$7.')).toBe('Costs $5 and A$7.')
+  })
+
   it('collapses doubled marks but keeps an ellipsis', () => {
     expect(repairPunctuation('what?? no!! ok,, fine')).toBe('What? No! Ok, fine')
     expect(repairPunctuation('Well...')).toBe('Well...')

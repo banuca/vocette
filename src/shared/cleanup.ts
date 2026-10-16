@@ -329,6 +329,9 @@ export function repairPunctuation(text: string): string {
     .replace(/[^\S\n]+/gu, ' ')
     .replace(/ ?\n ?/gu, '\n')
     .replace(/ ([,.;:!?])/gu, '$1')
+    // The on-device model can glue a price to the word before it: "plan
+    // is$49". A capital prefix is a currency's own name and stays: "US$49".
+    .replace(/(\p{Ll})([$€£¥])(?=\d)/gu, '$1 $2')
     .replace(/,{2,}/gu, ',')
     .replace(/!{2,}/gu, '!')
     .replace(/\?{2,}/gu, '?')
