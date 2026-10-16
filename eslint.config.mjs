@@ -3,7 +3,8 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['out/**', 'release/**', 'dist/**', 'node_modules/**', 'e2e/**'] },
+  // .claude/ holds other sessions' git worktrees: whole copies of the repo.
+  { ignores: ['out/**', 'release/**', 'dist/**', 'node_modules/**', 'e2e/**', '.claude/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
