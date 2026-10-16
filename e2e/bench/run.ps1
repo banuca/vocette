@@ -32,6 +32,9 @@ public static class Kb {
   [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
   public static void Down(byte vk, byte scan) { keybd_event(vk, scan, 0, UIntPtr.Zero); }
   public static void Up(byte vk, byte scan) { keybd_event(vk, scan, 2, UIntPtr.Zero); }
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  // The process that owns the foreground window (its name only, never the window title).
+  public static uint ForegroundPid() { uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid); return pid; }
   // Joins the foreground window's input queue for a moment so Windows lets us take focus.
   public static bool Front(IntPtr h) {
     uint fg = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero), me = GetCurrentThreadId();
@@ -125,9 +128,15 @@ foreach ($f in $files) {
   [array]::Reverse($Keys)
   $tRelease = $clock.ElapsedMilliseconds
 
-  # Wait for text, then for it to stop changing.
+  # Wait for text, then for it to stop changing. Note any other app that takes the focus.
+  $stolenBy = [System.Collections.Generic.List[string]]::new()
   while ($clock.ElapsedMilliseconds - $tRelease -lt $TimeoutMs) {
     Pump 50
+    if ([Kb]::GetForegroundWindow() -ne $form.Handle) {
+      $name = (Get-Process -Id ([Kb]::ForegroundPid()) -ErrorAction SilentlyContinue).ProcessName
+      $mark = "$name@$($clock.ElapsedMilliseconds - $tRelease)ms"
+      if (-not ($stolenBy | Where-Object { $_ -like "$name@*" })) { $stolenBy.Add($mark) }
+    }
     if ($null -ne $state.last -and $clock.ElapsedMilliseconds - $state.last -ge $SettleMs) { break }
   }
   $player.Dispose()
@@ -139,6 +148,7 @@ foreach ($f in $files) {
   $row = [ordered]@{
     pasted = $pasted
     clipboard = $clip
+    focusTakenBy = ($stolenBy -join ', ')
     id = $id; engine = $Engine; at = (Get-Date).ToString('o')
     speechEndSec = [math]::Round($speechEnd, 3)
     firstTextMs = if ($null -ne $state.first) { $state.first - $tRelease } else { $null }
