@@ -16,4 +16,4 @@ enabled = false
 [[d1_databases]]
 binding = "DB"
 database_name = "vocette-counts"
-database_id = "FILL-IN-AFTER-d1-create"
+database_id = "db4b761b-3670-4b51-b547-8a5161bc3775"
