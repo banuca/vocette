@@ -436,8 +436,12 @@ function workflowSettings(): WorkflowSettings {
   }
 }
 
-/** Counts a delivered take's words on Free, and tells the window the new total. */
+/**
+ * Counts a delivered take: a day's tally for opt-in counts (only while they
+ * are on), and its words on Free, telling the window the new total.
+ */
 function countWords(words: number): void {
+  settingsStore.recordUsageDay()
   if (entitlement().pro) return
   settingsStore.addWordUsage(words)
   broadcastLicenceStatus()

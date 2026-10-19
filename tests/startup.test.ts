@@ -403,6 +403,7 @@ async function startApp(options: {
       })
       clearApiKey = vi.fn()
       clearSessionApiKey = vi.fn()
+      recordUsageDay = vi.fn()
       takeWarning = () => null
       licenceRecord = () => licence
       getLicenceKey = (): string => {

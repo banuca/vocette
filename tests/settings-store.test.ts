@@ -419,6 +419,39 @@ describe("Free's monthly words", () => {
   })
 })
 
+describe('opt-in counts', () => {
+  it('start off, with nothing kept, and only a real true switches them on', () => {
+    expect(normaliseSettings({}).usageCounts).toBe(false)
+    expect(normaliseSettings({}).usageDays).toBeNull()
+    expect(normaliseSettings({ usageCounts: 'yes' }).usageCounts).toBe(false)
+    expect(normaliseSettings({ usageCounts: true }).usageCounts).toBe(true)
+  })
+
+  it('keep nothing while off', () => {
+    const store = new SettingsStore(file)
+    store.recordUsageDay(new Date(2026, 9, 19))
+    expect(new SettingsStore(file).getInternal().usageDays).toBeNull()
+  })
+
+  it('count days while on, survive a restart, and forget them when switched off', () => {
+    const store = new SettingsStore(file)
+    store.setUsageCounts(true)
+    store.recordUsageDay(new Date(2026, 9, 18, 9))
+    store.recordUsageDay(new Date(2026, 9, 19, 9))
+    store.recordUsageDay(new Date(2026, 9, 19, 17))
+    expect(new SettingsStore(file).getInternal().usageDays).toEqual({ '2026-10-18': 1, '2026-10-19': 2 })
+    store.setUsageCounts(false)
+    expect(new SettingsStore(file).getInternal()).toMatchObject({ usageCounts: false, usageDays: null })
+  })
+
+  it('are never something the window can set', () => {
+    const store = new SettingsStore(file)
+    store.update({ usageCounts: true, usageDays: { '2026-10-19': 5 } } as never)
+    expect(store.getInternal()).toMatchObject({ usageCounts: false, usageDays: null })
+    expect(store.getPublic()).not.toHaveProperty('usageDays')
+  })
+})
+
 describe('cleanup switches', () => {
   /** A v5 file written before the two switches existed. */
   const withoutSwitches = (): Record<string, unknown> => {
