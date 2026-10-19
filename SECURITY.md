@@ -125,7 +125,11 @@ This is the complete list. Each one happens only when stated.
    `MURMUR_COUNTS_URL`. Switching off deletes the local seven-day tally.
 
 Nothing else. No crash reporting, no automatic updates, and no analytics beyond the
-opt-in counts. With the on-device engine and none of the optional features switched
+opt-in counts. The diagnostics log (`diagnostics.json` in the profile folder,
+`src/main/diagnostics-log.ts`) is local only: typed events with fixed fields, the newest
+500, and no field that can hold dictated text, audio, window or app names, vocabulary,
+keys, endpoints or device labels. It leaves the PC only when the user presses
+**Copy diagnostics** and pastes the report somewhere themselves. With the on-device engine and none of the optional features switched
 on, audio and text never leave the computer.
 
 ## Where your data goes
