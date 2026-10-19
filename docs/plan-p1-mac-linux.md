@@ -158,3 +158,4 @@ exe, zip, dmg, mac zip, deb, AppImage, blockmaps, latest.yml / latest-linux.yml 
 (all name 0.8.0-beta.1 and the right files) and SHA256SUMS.txt; GitHub digests match the CI log.
 A beta app asks for beta.yml first and falls back to latest.yml. Unproven: the update path
 beta.1 → beta.2, and installing on real machines. Waiting for the owner OK to publish.
+Published 20 Oct (owner OK): public pre-release, anonymous download 200, /releases/latest still v0.4.0. Next: step 5, tester page.
