@@ -2070,6 +2070,27 @@ a:focus-visible {
   border-bottom: 0;
 }
 
+.counts-card {
+  margin-top: 14px;
+}
+
+.counts-card .toggle-row {
+  margin-top: 8px;
+  border-bottom: 0;
+}
+
+.counts-report {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 .update-actions {
   display: flex;
   flex-wrap: wrap;

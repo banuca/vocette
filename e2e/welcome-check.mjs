@@ -26,12 +26,15 @@ const expect = (label, actual, wanted) => {
       heading: document.querySelector('#welcome-heading')?.textContent,
       rows: [...document.querySelectorAll('.welcome-card .toggle-row strong')].map((e) => e.textContent),
       launch: document.querySelector('#welcome-launch')?.checked,
-      updates: document.querySelector('#welcome-updates')?.checked
+      updates: document.querySelector('#welcome-updates')?.checked,
+      counts: document.querySelector('#welcome-counts')?.checked
     }))
     expect('heading', card.heading, 'Before you start')
     expect('rows', card.rows, (r) => r[0] === 'Start Vocette with Windows' && r[1] === "Tell me when there's a new version")
     expect('start with Windows ticked', card.launch, true)
     expect('updates ticked', card.updates, true)
+    expect('counts row third', card.rows[2], 'Help improve Vocette')
+    expect('counts unticked', card.counts, false)
     await main.screenshot({ path: join(shots, 'welcome-card.png') })
 
     await main.evaluate(() => {
@@ -45,12 +48,14 @@ const expect = (label, actual, wanted) => {
     expect('start with Windows kept', settings.launchAtLogin, true)
     const update = await main.evaluate(() => window.murmur.getUpdateStatus())
     expect('update check off as chosen', update.enabled, false)
+    const counts = await main.evaluate(() => window.murmur.getCounts())
+    expect('counts off, left unticked', counts.enabled, false)
   } finally {
     await app.close()
   }
 }
 const stored = JSON.parse(readFileSync(join(profileDir, 'settings.json'), 'utf8'))
-expect('stored', { welcomeAnswered: stored.welcomeAnswered, updateCheck: stored.updateCheck }, (s) => s.welcomeAnswered === true && s.updateCheck === false)
+expect('stored', { welcomeAnswered: stored.welcomeAnswered, updateCheck: stored.updateCheck, usageCounts: stored.usageCounts }, (s) => s.welcomeAnswered === true && s.updateCheck === false && s.usageCounts === false)
 {
   const { app, main } = await launchApp({ profileDir })
   try {

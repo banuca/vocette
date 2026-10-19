@@ -79,7 +79,7 @@ import {
 import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
 import { withOwnName, withOwnNameRules } from '../shared/own-name'
 import { allowanceFor, allowanceUsedUp } from '../shared/word-allowance'
-import { buildReport, type CountsReport } from '../shared/usage-counts'
+import { buildReport, type CountsReport, type CountsStatus } from '../shared/usage-counts'
 import { createOverlayPeek, type OverlayPeek } from './overlay-peek'
 import { AppUpdater } from './app-updater'
 import { SubscriptionChecker } from './subscription-check'
@@ -1657,6 +1657,19 @@ function registerIpc(): void {
     return updateChecker.getStatus()
   })
 
+  // Opt-in counts: off unless switched on; the window can show the exact report.
+  ipcMain.handle('counts:status', (event): CountsStatus => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return { enabled: settingsStore.getInternal().usageCounts, report: countsReport() }
+  })
+  ipcMain.handle('counts:set-enabled', (event, enabled: unknown): CountsStatus => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    if (typeof enabled !== 'boolean') throw new Error('Invalid counts setting.')
+    settingsStore.setUsageCounts(enabled)
+    countsSender.enabledChanged()
+    return { enabled, report: countsReport() }
+  })
+
   // Pro. The window learns the plan and what it may offer; it never sees a
   // key once it has been sent, an activation id, or Polar's identifiers.
   ipcMain.handle('licence:status', (event): LicenceStatus => {
@@ -1798,7 +1811,9 @@ async function bootstrap(): Promise<void> {
   })
   // A model an earlier version downloaded can't be loaded by this one, so its
   // folder is only disk space. In the background: it never delays the launch.
-  void modelStore.removeRetired(RETIRED_MODEL_IDS)
+  // Only an installed app: a development build shares the folder with the
+  // installed (perhaps older) Vocette, whose model it must not take away.
+  if (app.isPackaged) void modelStore.removeRetired(RETIRED_MODEL_IDS)
   // The same network stack, for activation and the daily subscription check.
   licenceClient = new LicenceClient({ fetch: (url, init) => net.fetch(url, init) })
   subscriptionChecker = new SubscriptionChecker({

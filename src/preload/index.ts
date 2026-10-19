@@ -3,6 +3,7 @@ import type { PlatformStatus, SettingsPane } from '../shared/capabilities'
 import type { EngineStatus } from '../shared/engine'
 import type { UpdateInstall, UpdateStatus } from '../shared/update'
 import type { PolishTestResult } from '../shared/polish'
+import type { CountsStatus } from '../shared/usage-counts'
 import type {
   AppInfo,
   HistoryEntry,
@@ -89,6 +90,9 @@ const api = {
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check-now'),
   setUpdateCheck: (enabled: boolean): Promise<UpdateStatus> =>
     ipcRenderer.invoke('update:set-enabled', enabled),
+  getCounts: (): Promise<CountsStatus> => ipcRenderer.invoke('counts:status'),
+  setUsageCounts: (enabled: boolean): Promise<CountsStatus> =>
+    ipcRenderer.invoke('counts:set-enabled', enabled),
   getUpdateInstall: (): Promise<UpdateInstall> => ipcRenderer.invoke('update:install-status'),
   downloadUpdate: (): Promise<UpdateInstall> => ipcRenderer.invoke('update:download'),
   installUpdate: (): Promise<boolean> => ipcRenderer.invoke('update:install'),

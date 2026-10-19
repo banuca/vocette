@@ -1,7 +1,7 @@
 /**
- * The two questions put to everyone once, at the head of History: whether
- * Vocette starts with the computer, and whether it says when there is a new
- * version. Starting with the computer is already on for a new profile, so
+ * The questions put to everyone once, at the head of History: whether
+ * Vocette starts with the computer, whether it says when there is a new
+ * version, and whether it sends opt-in counts (unticked: decision M, 16 Oct). Starting with the computer is already on for a new profile, so
  * the card says so and offers the way out; the update check is asked, with
  * Yes ticked (owner, 15 Oct 2026). Done saves both and the card is gone for
  * good. Both stay in Settings and About afterwards.
@@ -10,6 +10,7 @@
 export interface WelcomeChoice {
   launchAtLogin: boolean
   updateCheck: boolean
+  usageCounts: boolean
 }
 
 export interface WelcomeCardOptions {
@@ -87,6 +88,16 @@ export function createWelcomeCard(host: HTMLElement, options: WelcomeCardOptions
       )
       const updates = updatesRow.querySelector('input')
       rows.append(updatesRow)
+      const countsRow = row(
+        'welcome-counts',
+        'Help improve Vocette',
+        'Once a day, send a few counts, such as how many days you dictated this week. Never ' +
+          'your words or audio, and nothing that identifies you. The About page shows exactly ' +
+          'what is sent.',
+        false
+      )
+      const counts = countsRow.querySelector('input')
+      rows.append(countsRow)
       const actions = document.createElement('div')
       actions.className = 'welcome-actions'
       const done = document.createElement('button')
@@ -102,7 +113,8 @@ export function createWelcomeCard(host: HTMLElement, options: WelcomeCardOptions
         options
           .done({
             launchAtLogin: launch ? launch.checked : options.launchAtLogin,
-            updateCheck: updates?.checked ?? true
+            updateCheck: updates?.checked ?? true,
+            usageCounts: counts?.checked ?? false
           })
           .catch(() => {
             done.disabled = false

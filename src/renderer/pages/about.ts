@@ -4,6 +4,7 @@ import type { AppContext } from '../app-context'
 import { escapeHtml } from '../dom'
 import { LOCAL_MODEL_INFO } from '../../shared/speech-model'
 import type { TranscriptionEngine } from '../../shared/types'
+import type { CountsStatus } from '../../shared/usage-counts'
 import {
   installText,
   updateResultText,
@@ -65,26 +66,38 @@ export const UPDATE_CHECK_EXPLANATION =
   'Nothing about you or your dictation is sent. Vocette never downloads or installs anything ' +
   'by itself.'
 
+/** Said with the rest whenever opt-in counts are on. */
+export const COUNTS_NOTICE =
+  'With counts on, once a day a short report of numbers (shown below) goes to counts.vocette.com.'
+
+/** Under the counts switch. */
+export const COUNTS_EXPLANATION =
+  'Once a day, sends the report below to counts.vocette.com: your version, system, engine and ' +
+  'plan, and how much you dictated in the last seven days. Never your words or audio, and no ' +
+  'ID, so no report can be linked to another. Off unless you switch it on.'
+
 /**
  * What leaves this computer, for the engine actually in use. Telling an
  * on-device user that their audio goes to "the provider you configure" would
  * be as wrong as telling a cloud user that it stays here.
  */
-export function privacyNotice(engine: TranscriptionEngine, polish = false): string {
+export function privacyNotice(engine: TranscriptionEngine, polish = false, counts = false): string {
   const polishing = polish ? ` ${POLISH_NOTICE}` : ''
+  const counting = counts ? ` ${COUNTS_NOTICE}` : ''
   if (engine === 'local') {
     return (
       `${INDEPENDENT} Your audio is transcribed on this PC and never leaves it, and ` +
       'neither does the vocabulary you set in Settings. The only thing Vocette downloads is ' +
-      `the speech model, once, from Hugging Face.${polishing} ${PRO_ACTIVATION_NOTICE} ` +
-      UPDATE_CHECK_NOTICE
+      `the speech model, once, from GitHub.${polishing} ${PRO_ACTIVATION_NOTICE} ` +
+      UPDATE_CHECK_NOTICE +
+      counting
     )
   }
   return (
     `${INDEPENDENT} It sends your audio — and the vocabulary you set in Settings, which is ` +
     'what makes those words come back spelled correctly — only to the transcription provider ' +
     `you configure, using your own API key.${polishing} ${PRO_ACTIVATION_NOTICE} ` +
-    `${UPDATE_CHECK_NOTICE} Nothing else leaves this computer.`
+    `${UPDATE_CHECK_NOTICE}${counting} Nothing else leaves this computer.`
   )
 }
 
@@ -133,6 +146,14 @@ export function renderAbout(context: AppContext): AboutView {
         <button class="primary-button" id="install-update" type="button">Download and install</button>
         <p class="update-result" id="install-result" aria-live="polite"></p>
       </div>
+    </section>
+    <section class="notice-card counts-card" aria-labelledby="counts-heading">
+      <h3 id="counts-heading">Help improve Vocette</h3>
+      <label class="toggle-row" id="row-usage-counts"><div><strong>Send a few counts once a day</strong><span id="usage-counts-explanation"></span></div><input id="usage-counts" type="checkbox" /><i></i></label>
+      <div class="update-actions">
+        <button class="secondary-button" id="show-counts" type="button" aria-expanded="false" aria-controls="counts-report">Show what is sent</button>
+      </div>
+      <pre class="counts-report" id="counts-report" hidden></pre>
     </section>
     <section class="notice-card attributions-card">
       <h3>Attributions</h3>
@@ -246,6 +267,38 @@ export function renderAbout(context: AppContext): AboutView {
   download?.addEventListener('click', () => {
     void window.murmur.openExternal('release')
   })
+
+  // Opt-in counts: the switch, and the exact report it would send now.
+  const countsExplanation = context.content.querySelector<HTMLElement>('#usage-counts-explanation')
+  if (countsExplanation) countsExplanation.textContent = COUNTS_EXPLANATION
+  const countsToggle = context.content.querySelector<HTMLInputElement>('#usage-counts')
+  const showCounts = context.content.querySelector<HTMLButtonElement>('#show-counts')
+  const countsReport = context.content.querySelector<HTMLElement>('#counts-report')
+  const applyCounts = (status: CountsStatus): void => {
+    if (countsToggle) countsToggle.checked = status.enabled
+    // textContent: the report is data, never markup.
+    if (countsReport) countsReport.textContent = JSON.stringify(status.report, null, 2)
+    if (notice) notice.textContent = privacyNotice(engine, polishing, status.enabled)
+  }
+  countsToggle?.addEventListener('change', () => {
+    const enabled = countsToggle.checked
+    void window.murmur
+      .setUsageCounts(enabled)
+      .then(applyCounts)
+      .catch(() => {
+        countsToggle.checked = !enabled
+      })
+  })
+  showCounts?.addEventListener('click', () => {
+    if (!countsReport) return
+    countsReport.hidden = !countsReport.hidden
+    showCounts.setAttribute('aria-expanded', String(!countsReport.hidden))
+    showCounts.textContent = countsReport.hidden ? 'Show what is sent' : 'Hide what is sent'
+  })
+  void window.murmur
+    .getCounts()
+    .then(applyCounts)
+    .catch(() => undefined)
 
   // Drawn as "not checked yet" until the main process answers.
   void window.murmur

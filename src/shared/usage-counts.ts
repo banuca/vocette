@@ -28,6 +28,12 @@ export interface CountsReport {
   limitHit: boolean
 }
 
+/** What the About page shows: the switch, and the report as it would be sent now. */
+export interface CountsStatus {
+  enabled: boolean
+  report: CountsReport
+}
+
 export const WINDOW_DAYS = 7
 export const MAX_WEEK = 12
 export const MAX_DICTATIONS = 999

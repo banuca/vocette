@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import {
+  COUNTS_EXPLANATION,
+  COUNTS_NOTICE,
   PRO_ACTIVATION_NOTICE,
   UPDATE_CHECK_EXPLANATION,
   UPDATE_CHECK_NOTICE,
@@ -12,6 +14,18 @@ import { available, type PlatformStatus } from '../src/shared/capabilities'
 import { MODEL_NOT_READY_REASON } from '../src/shared/engine'
 import type { PublicSettings, TranscriptionEngine } from '../src/shared/types'
 import type { UpdateInstall, UpdateStatus } from '../src/shared/update'
+import type { CountsReport, CountsStatus } from '../src/shared/usage-counts'
+
+const REPORT: CountsReport = {
+  v: '0.8.0',
+  os: 'windows',
+  engine: 'local',
+  plan: 'trial',
+  week: 1,
+  activeDays7: 5,
+  dictations7: 42,
+  limitHit: false
+}
 
 /**
  * The About page makes claims about where audio goes. They have to be true
@@ -65,6 +79,11 @@ class FakeElement {
 
   replaceChildren(...children: FakeElement[]): void {
     this.children = children
+  }
+
+  readonly attributes = new Map<string, string>()
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value)
   }
 
   addEventListener(_type: string, listener: () => void): void {
@@ -130,6 +149,8 @@ function render(
   const getUpdateInstall = vi.fn(async () => install)
   const downloadUpdate = vi.fn(async (): Promise<UpdateInstall> => ({ ...install, state: 'downloading' }))
   const installUpdate = vi.fn(async () => true)
+  const getCounts = vi.fn(async (): Promise<CountsStatus> => ({ enabled: false, report: REPORT }))
+  const setUsageCounts = vi.fn(async (enabled: boolean): Promise<CountsStatus> => ({ enabled, report: REPORT }))
   vi.stubGlobal('window', {
     murmur: {
       openExternal,
@@ -138,7 +159,9 @@ function render(
       setUpdateCheck,
       getUpdateInstall,
       downloadUpdate,
-      installUpdate
+      installUpdate,
+      getCounts,
+      setUsageCounts
     }
   })
   vi.stubGlobal('document', { createElement: () => new FakeElement() })
@@ -150,7 +173,9 @@ function render(
     checkForUpdates,
     setUpdateCheck,
     downloadUpdate,
-    installUpdate
+    installUpdate,
+    getCounts,
+    setUsageCounts
   }
 }
 
@@ -236,6 +261,49 @@ describe('renderAbout', () => {
     const docs = content.querySelector('#open-transcription-docs')
     docs?.listeners.forEach((listener) => listener())
     expect(openExternal).toHaveBeenCalledWith('transcription-docs')
+  })
+})
+
+describe('the counts section', () => {
+  it('is off until switched on, and says exactly what is sent', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context, getCounts } = render('local')
+    renderAbout(context)
+    await flush()
+    expect(getCounts).toHaveBeenCalledTimes(1)
+    expect(content.querySelector('#usage-counts')?.checked).toBe(false)
+    expect(content.querySelector('#usage-counts-explanation')?.textContent).toBe(COUNTS_EXPLANATION)
+    expect(content.querySelector('#privacy-notice')?.textContent).not.toContain(COUNTS_NOTICE)
+  })
+
+  it('shows the exact report, as text, when asked', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context } = render('local')
+    renderAbout(context)
+    await flush()
+    expect(content.innerHTML).toContain('<pre class="counts-report" id="counts-report" hidden></pre>')
+    const report = content.querySelector('#counts-report')
+    if (report) report.hidden = true // as the markup starts it
+    expect(JSON.parse(report?.textContent ?? '')).toEqual(REPORT)
+    const show = content.querySelector('#show-counts')
+    show?.listeners.forEach((listener) => listener())
+    expect(report?.hidden).toBe(false)
+    expect(show?.textContent).toBe('Hide what is sent')
+  })
+
+  it('saves the switch and then names counts among what leaves the PC', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context, setUsageCounts } = render('cloud')
+    renderAbout(context)
+    await flush()
+    const toggle = content.querySelector('#usage-counts')
+    if (toggle) toggle.checked = true
+    toggle?.listeners.forEach((listener) => listener())
+    await flush()
+    expect(setUsageCounts).toHaveBeenCalledWith(true)
+    expect(content.querySelector('#privacy-notice')?.textContent).toContain(
+      `${COUNTS_NOTICE} Nothing else leaves this computer.`
+    )
   })
 })
 

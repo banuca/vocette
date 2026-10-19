@@ -137,6 +137,7 @@ export function renderHistory(context: AppContext): HistoryView {
         launchAtLogin: context.settings.launchAtLogin,
         done: async (choice) => {
           await window.murmur.setUpdateCheck(choice.updateCheck)
+          if (choice.usageCounts) await window.murmur.setUsageCounts(true)
           const next = await window.murmur.saveSettings({
             launchAtLogin: choice.launchAtLogin,
             welcomeAnswered: true

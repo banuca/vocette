@@ -21,8 +21,7 @@ if ($Restore) {
 }
 
 $env:MURMUR_PROFILE_DIR = Join-Path $bench 'profile'
-# Its own models folder: the development build deletes models it doesn't know, which
-# would include the installed app's.
+# Its own models folder, so the bench never mixes its model with the installed app's.
 $env:MURMUR_MODELS_DIR = Join-Path $bench 'app-models'
 if ($DumpDir) { $env:MURMUR_DEBUG_AUDIO_DIR = $DumpDir } else { Remove-Item Env:MURMUR_DEBUG_AUDIO_DIR -ErrorAction SilentlyContinue }
 Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
