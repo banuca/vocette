@@ -5,6 +5,12 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+- **Help improve Vocette (opt-in, off by default).** The first-run card and About ask
+  whether to send a few counts once a day: version, system, engine, plan, weeks since
+  install, how many days and dictations in the last seven, and whether the free limit was
+  reached. Never words or audio, and no ID, so reports can't be linked. **About → Show what
+  is sent** shows the exact report. Switching it off deletes the local tally.
+
 - **On-device dictation makes about half as many mistakes**, and no longer returns nothing
   for a take it struggled with. Vocette builds its own int8 version of the Parakeet v3
   model from the full-precision original: on our 20-passage test it gets 11% of words wrong

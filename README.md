@@ -120,7 +120,7 @@ On Wayland the shortcut is registered with the desktop portal rather than observ
 | AI polish (Pro) | Off by default. A language model rewrites each dictation before it is pasted: **Clean**, **Professional**, **Casual** or **Notes**, plus optional instructions. Provider: OpenAI, Ollama or LM Studio on this PC, Groq, or any OpenAI-compatible server. **Wait at most** 2, 4 or 8 s — past that, or when the reply looks wrong, your text is pasted unpolished and the overlay says so. **Test** sends one short sentence to the saved provider. |
 | Theme | Modern Dark (default) or light, after Visual Studio Code's Light Modern. Switched from the foot of the sidebar, saved with everything else, and followed by the overlay. |
 
-**About** has the update check: **Check for updates once a day** (off unless you switch it on) and **Check now**. **Pro** shows your plan, the trial, **Buy Pro** and the licence key field.
+**About** has the update check: **Check for updates once a day** (off unless you switch it on) and **Check now**; and **Help improve Vocette** (off unless you switch it on), with **Show what is sent**. **Pro** shows your plan, the trial, **Buy Pro** and the licence key field.
 
 Auto-paste is honest about its limits. Injected keystrokes cannot reach an elevated Windows window or a macOS secure-input field, and transcription takes seconds during which you may switch apps. When either happens — or when the target simply cannot be identified — the app leaves the transcript on your clipboard and tells you to paste manually instead of claiming a paste that never landed. Focus is never forcibly taken back to make a paste succeed. When a paste does go through, the clipboard is only borrowed: what you had copied is put back moments later, so the overlay says **Pasted** rather than implying the transcript is still there. If it went to the wrong window, **Alt + Shift + V** pastes your last dictation again (Windows).
 
@@ -189,8 +189,9 @@ Every network request Vocette can make, and when:
 3. **AI polish**, only if you switched it on (Pro): the text of each dictation — never the audio — with your instructions and vocabulary, to the provider you chose.
 4. **Pro**, only with a licence key activated: your key and a device label to Polar when you press **Activate**, then a check of your subscription at most once a day.
 5. **The update check**, only if you switched it on or press **Check now**: one request to GitHub for the latest version number.
+6. **Counts**, only if you ticked **Help improve Vocette**: once a day, eight numbers and labels to `counts.vocette.com` (version, system, engine, plan, weeks since you installed, days and dictations in the last seven, and whether you reached the free limit). No words, no audio, no ID. **About → Show what is sent** displays the exact report.
 
-Nothing else: no telemetry, no analytics, no crash reporting. With the on-device engine and nothing else switched on, nothing you say ever leaves your computer.
+Nothing else: no analytics beyond those opt-in counts, no crash reporting. With the on-device engine and nothing else switched on, nothing you say ever leaves your computer.
 
 - With the on-device engine, audio is transcribed in a separate process on your PC and never sent anywhere. With a cloud provider, completed recordings go to `api.openai.com` using **your** key — or to the endpoint you configured — and nowhere else.
 - Audio never touches disk. It is zeroed in memory after the request (and after a retry is replaced, cancelled or dropped).
@@ -203,7 +204,8 @@ Nothing else: no telemetry, no analytics, no crash reporting. With the on-device
 - Activating Pro sends your licence key, a device label and the app version to Polar (US) when you press **Activate**. While a key is activated, Vocette asks Polar at most once a day whether its subscription is still active, sending the key and this PC's activation; **Check now** on the Pro page does the same at once, and **Release this PC** sends the key to free the slot. Nothing else about Pro is ever sent, and the buyer details Polar returns are discarded.
 - AI polish (Pro) is off until you switch it on in **Settings → AI polish**. Then the text of each dictation — never the audio — is sent to the provider you chose there, with your extra instructions and your vocabulary terms, and nothing else. Choose **Ollama on this PC** or **LM Studio on this PC** to keep it on your computer. Its key is encrypted like the transcription key; the OpenAI preset borrows your OpenAI transcription key only when transcription goes to OpenAI too.
 - Checking for updates is off until you switch it on in **About**. Then — and whenever you press **Check now** — Vocette sends one request to GitHub (`api.github.com`) for the latest version number, at most once a day on its own. Nothing about you or your dictation is sent, and nothing is ever downloaded or installed automatically.
-- No telemetry, no analytics, no automatic updates.
+- Counts are off until you tick **Help improve Vocette** on the first-run card or in **About**. While on, Vocette keeps a tally of dictations per day for the last seven days (only the numbers) and sends the report above once a day. The server stores it with the date and nothing else: not your IP address, not a time of day, and no identifier, so no two reports can be linked. Switching counts off stops the reports and deletes the tally.
+- No automatic updates.
 
 ## License
 

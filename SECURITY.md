@@ -115,9 +115,17 @@ This is the complete list. Each one happens only when stated.
 5. **AI polish** — only if switched on, and only with Pro: the cleaned text of
    each dictation (never audio), with the style, the user's extra instructions and
    up to 100 vocabulary terms, to the chat endpoint the user configured.
+6. **Opt-in counts** — only if the user ticked **Help improve Vocette** (first-run card
+   or About; off by default): at most one POST a day to
+   `https://counts.vocette.com/v1/report` with no cookies and the User-Agent `Vocette`,
+   carrying exactly `v`, `os`, `engine`, `plan`, `week`, `activeDays7`, `dictations7` and
+   `limitHit` (`src/shared/usage-counts.ts`). No identifier of any kind. The Worker
+   (`server/counts`) accepts only that shape and stores it with the UTC day; it stores no
+   IP or headers and has request logging off. Development builds send only to
+   `MURMUR_COUNTS_URL`. Switching off deletes the local seven-day tally.
 
-Nothing else. No telemetry, no analytics, no crash reporting, no automatic
-updates. With the on-device engine and none of the optional features switched
+Nothing else. No crash reporting, no automatic updates, and no analytics beyond the
+opt-in counts. With the on-device engine and none of the optional features switched
 on, audio and text never leave the computer.
 
 ## Where your data goes
@@ -179,7 +187,8 @@ on, audio and text never leave the computer.
   (no assistant preamble, no reply far longer or shorter than the input). The polish key is
   stored with `safeStorage` like the transcription key and never crosses into a renderer;
   the transcription key is borrowed only when both endpoints are OpenAI's.
-- There is no telemetry, no analytics, and no auto-update channel. The update check
+- There is no telemetry beyond the opt-in counts (off by default, no identifier; see
+  the list above), and no auto-update channel. The update check
   (off by default) sends one GET to `https://api.github.com/repos/<repository>/releases/latest`
   with no cookies or credentials, reads only the tag and the release link, and never
   downloads anything; the link it opens must be a release page of that repository.
