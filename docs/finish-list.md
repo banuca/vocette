@@ -59,7 +59,7 @@ Tags: **Q** product quality · **M** must before taking money · **S** conversio
    warm-up, lead-in) are shared code but only benchmarked on Windows. Build the Mac DMG on
    GitHub Actions and the Linux AppImage. Each platform's tester runs the 0.8.0 hand test.
    Mac stays an unsigned beta until demand (decision of 8 Oct); Linux is marked beta.
-8. **S1 Diagnostics (L2, moved up).** "Copy diagnostics" and a small local error log. There
+8. **S1 Diagnostics (L2, moved up). Done 19 Oct: local log + About Show/Copy diagnostics (docs/plan-s1-diagnostics.md); paste-refusal reasons now logged.** "Copy diagnostics" and a small local error log. There
    are no logs today, and beta users can't report what they can't see. Without it, problems
    like Q2's empty takes are invisible.
 9. **S2 Release-candidate hand test** (one session, guided one step at a time): every change
