@@ -126,11 +126,62 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: vocette-${{ matrix.artifact }}
+          # The *.yml and *.blockmap files are what the in-app updater reads; a
+          # release without them can never update anyone.
           path: |
             dist/*.exe
             dist/*.zip
             dist/*.dmg
             dist/*.AppImage
             dist/*.deb
+            dist/*.blockmap
+            dist/*.yml
+            !dist/builder-debug.yml
+            !dist/builder-effective-config.yaml
           if-no-files-found: error
           retention-days: 14
+
+  # A version tag (v0.8.0-beta.1) gathers the three platforms' files into a
+  # draft release. A draft is invisible to the public and to the updater; it
+  # is published by hand, after its files have been checked (docs/release.md).
+  release:
+    name: Draft release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+
+      - name: Checksums and release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          [ "$version" = "$(node -p "require('./package.json').version")" ] || { echo "Tag $GITHUB_REF_NAME does not match package.json"; exit 1; }
+          (cd files && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          {
+            echo "Test build. Check a download against SHA256SUMS.txt before installing."
+            echo
+            echo "- **Windows:** the .exe installer. Unsigned: SmartScreen warns until the app has a certificate."
+            echo "- **macOS (Apple silicon):** the .dmg. Not from an identified developer: open it once, then System Settings → Privacy & Security → Open Anyway."
+            echo "- **Linux (x64):** the .deb on Ubuntu and Debian. The AppImage needs libfuse2."
+            echo
+            awk -v v="$version" 'index($0, "## [" v "]") == 1 { on = 1; next } on && /^## \[/ { exit } on { print }' CHANGELOG.md
+          } > notes.md
+          cat notes.md
+
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          prerelease=$([[ "$GITHUB_REF_NAME" == *-* ]] && echo --prerelease || true)
+          gh release create "$GITHUB_REF_NAME" files/* --draft $prerelease --verify-tag --title "Vocette ${GITHUB_REF_NAME#v}" --notes-file notes.md

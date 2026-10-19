@@ -1,4 +1,4 @@
-# Releasing Vocette for Windows
+# Releasing Vocette
 
 One command builds the release and proves the native parts survived packaging:
 
@@ -46,16 +46,31 @@ reputation. Two ways to sign:
 The script prints whether the build it made is signed. Check afterwards with
 `Get-AuthenticodeSignature <file>` in PowerShell.
 
-## Publishing (manual; nothing here publishes)
+## Publishing (from a tag; a person publishes)
 
-1. Bump `version` in `package.json`, move the `Unreleased` changelog section under the new
-   version and date, commit, and tag it: `git tag v<version>`.
-2. `npm run release:win` on that commit.
-3. Run the smoke test below on the result.
-4. On GitHub, draft a release for the tag (`https://github.com/banuca/vocette/releases/new`),
-   attach the `.exe`, the `.zip` and `SHA256SUMS.txt`, paste the changelog section, and
-   publish. The update check in the app reads this repository's latest published release:
-   the tag must be the version (`v0.5.0`), and drafts and pre-releases are not offered.
+1. Bump `version` in `package.json` (`npm version <version> --no-git-tag-version`), move
+   the `Unreleased` changelog section under the new version and date, and commit.
+2. Tag that commit `v<version>` and push the tag. CI builds Windows, macOS (Apple silicon)
+   and Linux, runs the packaging, signature and engine checks, and the `release` job puts
+   every file plus `SHA256SUMS.txt` into a **draft** release, with the changelog section as
+   its notes. A draft is invisible to the public and to the updater.
+3. Check the draft: every platform's files are there, the `.yml` files name the right
+   version, and the hashes match the CI log. Run the smoke test below on the Windows build.
+4. Publish the draft. A version with a hyphen (`0.8.0-beta.1`) is published as a
+   pre-release.
+
+What the updater reads (electron-updater, GitHub provider):
+
+- The `.yml` files and `.blockmap`s in the release. Without them no installed copy can
+  update; v0.4.0 was published without them.
+- A stable version reads `/releases/latest`, which is never a pre-release or a draft.
+- A `-beta.N` version is offered the newest beta or stable release. Do not use `-rc.N`:
+  electron-updater treats `rc` as a custom channel and would never offer the stable release.
+- Tags that are not versions (`model-parakeet-v3-q8-2`) are ignored.
+- macOS: no self-update until the app has a Developer ID; testers download the new DMG.
+
+`npm run release:win` still builds a Windows release locally with the same gates, for
+checking a build before tagging.
 
 ## Smoke test after every build
 

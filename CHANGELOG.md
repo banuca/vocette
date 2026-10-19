@@ -5,6 +5,8 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.8.0-beta.1] — 2026-10-19 (test build for Mac, Linux and Windows testers)
+
 - **Diagnostics.** Vocette keeps a short log on this PC of what went wrong: a failed dictation,
   a paste it refused and why, a microphone error, the speech engine stopping, a crash. Never
   your words or audio. **About → Copy diagnostics** copies a report to paste into a message
