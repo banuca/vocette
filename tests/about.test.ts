@@ -3,6 +3,7 @@ import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import {
   COUNTS_EXPLANATION,
+  DIAGNOSTICS_EXPLANATION,
   COUNTS_NOTICE,
   PRO_ACTIVATION_NOTICE,
   UPDATE_CHECK_EXPLANATION,
@@ -149,6 +150,8 @@ function render(
   const getUpdateInstall = vi.fn(async () => install)
   const downloadUpdate = vi.fn(async (): Promise<UpdateInstall> => ({ ...install, state: 'downloading' }))
   const installUpdate = vi.fn(async () => true)
+  const getDiagnostics = vi.fn(async () => 'Vocette 0.8.0 · Windows 10.0.26100 · x64 · 16 GB')
+  const copyText = vi.fn(async () => undefined)
   const getCounts = vi.fn(async (): Promise<CountsStatus> => ({ enabled: false, report: REPORT }))
   const setUsageCounts = vi.fn(async (enabled: boolean): Promise<CountsStatus> => ({ enabled, report: REPORT }))
   vi.stubGlobal('window', {
@@ -161,7 +164,9 @@ function render(
       downloadUpdate,
       installUpdate,
       getCounts,
-      setUsageCounts
+      setUsageCounts,
+      getDiagnostics,
+      copyText
     }
   })
   vi.stubGlobal('document', { createElement: () => new FakeElement() })
@@ -175,7 +180,9 @@ function render(
     downloadUpdate,
     installUpdate,
     getCounts,
-    setUsageCounts
+    setUsageCounts,
+    getDiagnostics,
+    copyText
   }
 }
 
@@ -261,6 +268,29 @@ describe('renderAbout', () => {
     const docs = content.querySelector('#open-transcription-docs')
     docs?.listeners.forEach((listener) => listener())
     expect(openExternal).toHaveBeenCalledWith('transcription-docs')
+  })
+})
+
+describe('the diagnostics section', () => {
+  it('builds the report only when asked, and copies it', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context, getDiagnostics, copyText } = render('local')
+    renderAbout(context)
+    await flush()
+    expect(getDiagnostics).not.toHaveBeenCalled()
+    expect(content.querySelector('#diagnostics-explanation')?.textContent).toBe(DIAGNOSTICS_EXPLANATION)
+
+    content.querySelector('#copy-diagnostics')?.listeners.forEach((listener) => listener())
+    await flush()
+    expect(copyText).toHaveBeenCalledWith('Vocette 0.8.0 · Windows 10.0.26100 · x64 · 16 GB')
+    expect(content.querySelector('#diagnostics-result')?.textContent).toBe('Copied. Paste it into your message.')
+
+    const report = content.querySelector('#diagnostics-report')
+    if (report) report.hidden = true // as the markup starts it
+    content.querySelector('#show-diagnostics')?.listeners.forEach((listener) => listener())
+    await flush()
+    expect(report?.hidden).toBe(false)
+    expect(report?.textContent).toContain('Vocette 0.8.0')
   })
 })
 

@@ -49,6 +49,8 @@ import { listeningBars, trayFrame, writingAlphas, type TrayFrame, type TrayState
 import { UpdateChecker } from './update-check'
 import { CountsSender, countsUrl } from './counts-sender'
 import { DiagnosticsLog } from './diagnostics-log'
+import { formatDiagnostics } from './diagnostics-report'
+import { release, totalmem } from 'node:os'
 import { polishText, requestPolish } from './polish-service'
 import { OPENAI_POLISH_ENDPOINT, type PolishOutcome } from '../shared/polish'
 import {
@@ -87,6 +89,7 @@ import { SubscriptionChecker } from './subscription-check'
 import { displayVersion } from '../shared/update'
 import {
   autoPasteSupported,
+  CAPABILITY_IDS,
   effectiveRecordingMode,
   globalShortcutUsable,
   type CapabilityMap,
@@ -471,6 +474,33 @@ function countsReport(): CountsReport {
     days: settings.usageDays,
     limitHit: !plan.pro && allowanceUsedUp(allowanceFor(settings.wordUsage, now)),
     now
+  })
+}
+
+/** The text About's "Copy diagnostics" copies; see `diagnostics-report.ts`. */
+function diagnosticsReport(): string {
+  const settings = settingsStore.getInternal()
+  const osName = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
+  return formatDiagnostics({
+    version: app.getVersion(),
+    os: `${osName} ${release()}`,
+    arch: process.arch,
+    memoryGb: Math.round(totalmem() / 1024 ** 3),
+    engine: settings.engine === 'local' ? 'local' : 'cloud',
+    modelState: modelStatus().state,
+    shortcut: shortcutLabel(),
+    mode: effectiveRecordingMode(settings.recordingMode, capabilities),
+    autoPaste: settings.autoPaste,
+    instantCapture: settings.instantCapture,
+    restoreClipboard: settings.restoreClipboard,
+    language: settings.language,
+    plan: entitlement().plan,
+    limits: CAPABILITY_IDS.filter((id) => capabilities[id].state !== 'available').map((id) => ({
+      name: id,
+      state: capabilities[id].state,
+      reason: capabilities[id].reason
+    })),
+    events: diagnosticsLog?.recent() ?? []
   })
 }
 
@@ -1665,6 +1695,12 @@ function registerIpc(): void {
     settingsStore.setUpdateCheck(enabled)
     updateChecker.enabledChanged()
     return updateChecker.getStatus()
+  })
+
+  // Diagnostics: built on request, shown or copied by the user; never sent.
+  ipcMain.handle('diagnostics:report', (event): string => {
+    if (!fromMain(event)) throw new Error('Forbidden.')
+    return diagnosticsReport()
   })
 
   // Opt-in counts: off unless switched on; the window can show the exact report.

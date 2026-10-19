@@ -76,6 +76,12 @@ export const COUNTS_EXPLANATION =
   'plan, and how much you dictated in the last seven days. Never your words or audio, and no ' +
   'ID, so no report can be linked to another. Off unless you switch it on.'
 
+/** Above the diagnostics buttons. */
+export const DIAGNOSTICS_EXPLANATION =
+  'If something goes wrong, copy this report and paste it into your message to us. It lists ' +
+  'your version, system and settings, and the last 50 events, such as a dictation that failed ' +
+  'or a paste that was refused. Never your words or audio. It stays on this PC until you copy it.'
+
 /**
  * What leaves this computer, for the engine actually in use. Telling an
  * on-device user that their audio goes to "the provider you configure" would
@@ -154,6 +160,16 @@ export function renderAbout(context: AppContext): AboutView {
         <button class="secondary-button" id="show-counts" type="button" aria-expanded="false" aria-controls="counts-report">Show what is sent</button>
       </div>
       <pre class="counts-report" id="counts-report" hidden></pre>
+    </section>
+    <section class="notice-card counts-card" aria-labelledby="diagnostics-heading">
+      <h3 id="diagnostics-heading">Diagnostics</h3>
+      <p id="diagnostics-explanation"></p>
+      <div class="update-actions">
+        <button class="secondary-button" id="show-diagnostics" type="button" aria-expanded="false" aria-controls="diagnostics-report">Show diagnostics</button>
+        <button class="secondary-button" id="copy-diagnostics" type="button">Copy diagnostics</button>
+        <p class="update-result" id="diagnostics-result" aria-live="polite"></p>
+      </div>
+      <pre class="counts-report" id="diagnostics-report" hidden></pre>
     </section>
     <section class="notice-card attributions-card">
       <h3>Attributions</h3>
@@ -266,6 +282,43 @@ export function renderAbout(context: AppContext): AboutView {
   })
   download?.addEventListener('click', () => {
     void window.murmur.openExternal('release')
+  })
+
+  // Diagnostics: built when asked for, so it always shows the latest events.
+  const diagnosticsExplanation = context.content.querySelector<HTMLElement>('#diagnostics-explanation')
+  if (diagnosticsExplanation) diagnosticsExplanation.textContent = DIAGNOSTICS_EXPLANATION
+  const showDiagnostics = context.content.querySelector<HTMLButtonElement>('#show-diagnostics')
+  const copyDiagnostics = context.content.querySelector<HTMLButtonElement>('#copy-diagnostics')
+  const diagnosticsReport = context.content.querySelector<HTMLElement>('#diagnostics-report')
+  const diagnosticsResult = context.content.querySelector<HTMLElement>('#diagnostics-result')
+  showDiagnostics?.addEventListener('click', () => {
+    if (!diagnosticsReport) return
+    if (!diagnosticsReport.hidden) {
+      diagnosticsReport.hidden = true
+      showDiagnostics.textContent = 'Show diagnostics'
+      showDiagnostics.setAttribute('aria-expanded', 'false')
+      return
+    }
+    void window.murmur
+      .getDiagnostics()
+      .then((report) => {
+        diagnosticsReport.textContent = report
+        diagnosticsReport.hidden = false
+        showDiagnostics.textContent = 'Hide diagnostics'
+        showDiagnostics.setAttribute('aria-expanded', 'true')
+      })
+      .catch(() => undefined)
+  })
+  copyDiagnostics?.addEventListener('click', () => {
+    void window.murmur
+      .getDiagnostics()
+      .then((report) => window.murmur.copyText(report))
+      .then(() => {
+        if (diagnosticsResult) diagnosticsResult.textContent = 'Copied. Paste it into your message.'
+      })
+      .catch(() => {
+        if (diagnosticsResult) diagnosticsResult.textContent = 'That could not be copied. Try again.'
+      })
   })
 
   // Opt-in counts: the switch, and the exact report it would send now.

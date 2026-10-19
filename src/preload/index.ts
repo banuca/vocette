@@ -90,6 +90,7 @@ const api = {
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check-now'),
   setUpdateCheck: (enabled: boolean): Promise<UpdateStatus> =>
     ipcRenderer.invoke('update:set-enabled', enabled),
+  getDiagnostics: (): Promise<string> => ipcRenderer.invoke('diagnostics:report'),
   getCounts: (): Promise<CountsStatus> => ipcRenderer.invoke('counts:status'),
   setUsageCounts: (enabled: boolean): Promise<CountsStatus> =>
     ipcRenderer.invoke('counts:set-enabled', enabled),
