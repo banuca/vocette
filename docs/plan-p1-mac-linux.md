@@ -114,3 +114,10 @@ retired. CI run 39300274141 downloaded it from the release on all three and tran
 recordings: Windows on **EPYC 7763 (Zen 3, the CPU that garbled q8)**, Linux on EPYC 9V45,
 macOS on M1. Real-app dictation on the owner's PC (e2e/diagnostics-check.mjs) PASS.
 Step 2 done. Next: step 3, Mac builds that open (arm64 only).
+
+## Step 3 done (19 Oct)
+
+CI run 39329076117: arm64-only Mac build, ad-hoc signed with hardened runtime and the
+microphone entitlement; `codesign --verify --deep --strict` passes on the app and on the DMG copy;
+engine check passes. Unproven: opening a downloaded copy on a real Mac (Gatekeeper, Open Anyway).
+Next: step 4, the v0.8.0-rc.1 pre-release (needs a version bump; owner OK to publish).
