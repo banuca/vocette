@@ -143,3 +143,27 @@ Run with `e2e/bench/local-direct.ps1 -Model fp32`: model alone on the 16 kHz ori
   fp32 → fp16 conversion (onnxconverter-common) would likely halve memory and download; needs
   a pip install and the owner's OK. Not tried.
 - Not yet run through the app (instant capture, lead-in, cleanup); this is the model alone.
+
+### Half precision, converted locally (19 Oct)
+
+Owner approved installing onnx 1.23.2 + onnxconverter-common 1.16.0 into the bench venv.
+`e2e/bench/to-fp16.py` converts fp32 → fp16 (fp32 inputs/outputs). The first attempt failed
+to load: the encoder's length arithmetic casts the integer length to float32, and the converter
+halved the constant it adds. Fix: keep the 25 encoder + 2 decoder nodes on the integer-length
+path in fp32 (also avoids fp16 miscounting frames past 2048).
+
+| | int8 (shipping) | fp32 | fp16 |
+|---|---|---|---|
+| WER, all 20 | 21.2% | 9.8% | **9.8%** (identical text) |
+| Empty takes | 2 | 0 | 0 |
+| Decode p50 / p90 | 0.64 / 1.20 s | 1.27 / 2.46 s | 0.89 / 1.71 s |
+| Process memory | 0.84 GB | 2.57 GB | **2.55 GB** |
+| Files on disk / download | ~0.65 GB | 2.55 GB | 1.28 GB |
+
+- fp16 keeps fp32's accuracy, halves the download and is a bit faster, but **memory doesn't
+  drop**: onnxruntime's CPU provider has no fp16 kernels for most ops and expands the weights
+  back to fp32 at load.
+- Next candidate for memory: weight-only int8 on the MatMul/Gemm weights of the fp32 model,
+  leaving convolutions and the subsampling front end in fp32 (the shipped int8 export
+  quantises everything dynamically, which is the likely cause of its empties and errors).
+  Needs `onnxruntime` (for its quantisation tool) in the bench venv. Not tried.

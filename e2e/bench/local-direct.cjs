@@ -6,13 +6,14 @@ const { join } = require('node:path')
 const { readFileSync } = require('node:fs')
 const sherpa = require(join(__dirname, '..', '..', 'node_modules', 'sherpa-onnx-node'))
 
-// BENCH_MODEL=fp32 uses the full-precision export kept in the bench folder instead of the
-// app's int8 model.
-const fp32 = process.env.BENCH_MODEL === 'fp32'
-const modelDir = fp32
-  ? join(process.env.LOCALAPPDATA, 'vocette-bench', 'models', 'parakeet-tdt-0.6b-v3-fp32')
-  : join(process.env.LOCALAPPDATA, 'Murmur', 'models', 'parakeet-tdt-0.6b-v3-int8')
-const part = (name) => join(modelDir, fp32 ? `${name}.onnx` : `${name}.int8.onnx`)
+// BENCH_MODEL=fp32 or fp16 uses that export, kept in the bench folder, instead of the app's
+// int8 model.
+const variant = process.env.BENCH_MODEL
+const bundled = variant !== 'fp32' && variant !== 'fp16'
+const modelDir = bundled
+  ? join(process.env.LOCALAPPDATA, 'Murmur', 'models', 'parakeet-tdt-0.6b-v3-int8')
+  : join(process.env.LOCALAPPDATA, 'vocette-bench', 'models', `parakeet-tdt-0.6b-v3-${variant}`)
+const part = (name) => join(modelDir, bundled ? `${name}.int8.onnx` : `${name}.onnx`)
 const [method, ...files] = process.argv.slice(2)
 
 function readWav(path) {

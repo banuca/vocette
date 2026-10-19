@@ -1,7 +1,7 @@
 # Decodes all 20 original recordings with the on-device model, bypassing the app, and
-# writes them as a results file the scorer reads ("local-direct", or "local-direct-fp32").
-#   pwsh e2e/bench/local-direct.ps1 [-Method greedy_search] [-Model int8|fp32]
-param([string] $Method = 'greedy_search', [ValidateSet('int8', 'fp32')] [string] $Model = 'int8')
+# writes them as a results file the scorer reads ("local-direct", or "local-direct-fp32" or "-fp16").
+#   pwsh e2e/bench/local-direct.ps1 [-Method greedy_search] [-Model int8|fp32|fp16]
+param([string] $Method = 'greedy_search', [ValidateSet('int8', 'fp32', 'fp16')] [string] $Model = 'int8')
 $ErrorActionPreference = 'Stop'
 $bench = Join-Path $env:LOCALAPPDATA 'vocette-bench'
 $a16 = Join-Path $bench 'audio16'
@@ -14,7 +14,7 @@ $files = foreach ($i in 1..20) {
 }
 $env:BENCH_MODEL = $Model
 $lines = & node (Join-Path $PSScriptRoot 'local-direct.cjs') $Method @files
-$engine = if ($Model -eq 'fp32') { 'local-direct-fp32' } else { 'local-direct' }
+$engine = if ($Model -eq 'int8') { 'local-direct' } else { "local-direct-$Model" }
 $out = Join-Path $bench "results\$engine.jsonl"
 Set-Content -Path $out -Value $null
 foreach ($line in $lines) {
