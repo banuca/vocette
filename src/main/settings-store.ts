@@ -150,6 +150,8 @@ export interface StoredSettings {
   usageCounts: boolean
   /** Dictations per day for the last seven days, kept only while counts are on. */
   usageDays: UsageDays | null
+  /** When a counts report was last attempted, so a restart cannot make it daily-plus. */
+  lastCountsSentAt: string | null
   /** AI polish (Pro); see `src/shared/polish.ts`. */
   polishEnabled: boolean
   polishStyle: PolishStyle
@@ -205,6 +207,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   wordUsage: null,
   usageCounts: false,
   usageDays: null,
+  lastCountsSentAt: null,
   polishEnabled: DEFAULT_POLISH.enabled,
   polishStyle: DEFAULT_POLISH.style,
   polishInstructions: DEFAULT_POLISH.instructions,
@@ -459,7 +462,13 @@ export function normaliseSettings(value: unknown): StoredSettings {
     wordUsage: normaliseWordUsage(candidate.wordUsage),
     // Like the update check: only a real true sends anything.
     usageCounts: candidate.usageCounts === true,
-    usageDays: normaliseUsageDays(candidate.usageDays)
+    usageDays: normaliseUsageDays(candidate.usageDays),
+    lastCountsSentAt:
+      typeof candidate.lastCountsSentAt === 'string' &&
+      candidate.lastCountsSentAt.length <= 64 &&
+      !Number.isNaN(Date.parse(candidate.lastCountsSentAt))
+        ? candidate.lastCountsSentAt
+        : null
   }
 }
 
@@ -791,6 +800,13 @@ export class SettingsStore {
   recordUsageDay(now: Date = new Date()): void {
     if (!this.settings.usageCounts) return
     this.settings = { ...this.settings, usageDays: recordDictation(this.settings.usageDays, now) }
+    this.write()
+  }
+
+  /** Records when a counts report was attempted. */
+  setLastCountsSent(iso: string): void {
+    if (Number.isNaN(Date.parse(iso))) return
+    this.settings = { ...this.settings, lastCountsSentAt: iso }
     this.write()
   }
 

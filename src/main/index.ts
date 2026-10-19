@@ -47,6 +47,7 @@ import { rearmPlan } from './rearm-plan'
 import { DEFAULT_ZOOM, stepZoom, zoomKey } from './zoom'
 import { listeningBars, trayFrame, writingAlphas, type TrayFrame, type TrayState } from './tray-icon'
 import { UpdateChecker } from './update-check'
+import { CountsSender, countsUrl } from './counts-sender'
 import { polishText, requestPolish } from './polish-service'
 import { OPENAI_POLISH_ENDPOINT, type PolishOutcome } from '../shared/polish'
 import {
@@ -77,7 +78,8 @@ import {
 } from '../shared/entitlement'
 import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
 import { withOwnName, withOwnNameRules } from '../shared/own-name'
-import { allowanceFor } from '../shared/word-allowance'
+import { allowanceFor, allowanceUsedUp } from '../shared/word-allowance'
+import { buildReport, type CountsReport } from '../shared/usage-counts'
 import { createOverlayPeek, type OverlayPeek } from './overlay-peek'
 import { AppUpdater } from './app-updater'
 import { SubscriptionChecker } from './subscription-check'
@@ -146,6 +148,7 @@ let localEngine!: LocalEngine
 let licenceClient!: LicenceClient
 let subscriptionChecker!: SubscriptionChecker
 let updateChecker!: UpdateChecker
+let countsSender!: CountsSender
 let appUpdater!: AppUpdater
 /** An activation or a release is on its way to Polar; a second click waits for it. */
 let licenceRequestInFlight = false
@@ -445,6 +448,28 @@ function countWords(words: number): void {
   if (entitlement().pro) return
   settingsStore.addWordUsage(words)
   broadcastLicenceStatus()
+}
+
+/**
+ * Today's opt-in counts report, exactly as it would be sent: built from the
+ * kept days and facts the app already has. "Show what is sent" shows this.
+ */
+function countsReport(): CountsReport {
+  const settings = settingsStore.getInternal()
+  const now = new Date()
+  const plan = entitlement()
+  return buildReport({
+    version: app.getVersion(),
+    os: platform.id === 'unknown' ? 'other' : platform.id,
+    engine: settings.engine === 'local' ? 'local' : 'cloud',
+    plan: plan.plan,
+    // Set on the first launch of a version with the trial, which for a new
+    // install is its first run.
+    firstRunAt: settings.trialStartedAt,
+    days: settings.usageDays,
+    limitHit: !plan.pro && allowanceUsedUp(allowanceFor(settings.wordUsage, now)),
+    now
+  })
 }
 
 /** The plan in force right now: read fresh, because the trial ends on its own. */
@@ -1822,6 +1847,14 @@ async function bootstrap(): Promise<void> {
       rebuildTrayMenu()
     }
   })
+  countsSender = new CountsSender({
+    fetch: (url, init) => net.fetch(url, init),
+    url: countsUrl(process.env, app.isPackaged),
+    enabled: () => settingsStore.getInternal().usageCounts,
+    report: countsReport,
+    lastSentAt: () => settingsStore.getInternal().lastCountsSentAt,
+    saveLastSentAt: (iso) => settingsStore.setLastCountsSent(iso)
+  })
   // Nothing starts here: the worker is spawned by the first dictation that
   // needs it, and killed again once it has been idle for a while.
   localEngine = new LocalEngine({
@@ -1912,6 +1945,7 @@ async function bootstrap(): Promise<void> {
   powerMonitor.on('unlock-screen', syncRestingPill)
   // Sends nothing now: a minute from here, and only if switched on and due.
   updateChecker.start()
+  countsSender.start()
   // Likewise: a minute from here, and only with a key activated on this PC.
   subscriptionChecker.start()
   applyPasteLastShortcut(initial.pasteLastShortcut)
@@ -2003,6 +2037,7 @@ app.on('before-quit', (event) => {
   modelDownload?.controller.abort()
   localEngine?.dispose()
   updateChecker?.stop()
+  countsSender?.stop()
   subscriptionChecker?.stop()
   shortcutController?.stop()
   globalShortcut.unregisterAll()

@@ -15,7 +15,7 @@ export type UsageDays = Record<string, number>
 
 export interface CountsReport {
   v: string
-  os: 'windows' | 'macos' | 'linux'
+  os: 'windows' | 'macos' | 'linux' | 'other'
   engine: 'local' | 'cloud'
   plan: 'free' | 'trial' | 'pro'
   /** Whole weeks since this install's first run, 0 to 12; 12 means 12 or more. */
