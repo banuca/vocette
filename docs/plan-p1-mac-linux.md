@@ -159,3 +159,13 @@ exe, zip, dmg, mac zip, deb, AppImage, blockmaps, latest.yml / latest-linux.yml 
 A beta app asks for beta.yml first and falls back to latest.yml. Unproven: the update path
 beta.1 → beta.2, and installing on real machines. Waiting for the owner OK to publish.
 Published 20 Oct (owner OK): public pre-release, anonymous download 200, /releases/latest still v0.4.0. Next: step 5, tester page.
+
+## Step 5 built (20 Oct)
+
+Mac tester page: https://claude.ai/artifact/1422pBW83Uc4ECXYuEFwZi (12 steps: install, Open
+Anyway, setup, permissions, 5 dictation checks; ticks and notes kept in the tester's browser;
+"Copy my results" builds a text report incl. pasted diagnostics). No db: the testers are outside
+the org, so they could not write shared data. Checked in a local copy: ticks persist across reload,
+report text correct, no sideways scroll at 375 px. Owner must share the link (private by default).
+Copy finding for later: the setup guide says "on this PC" on a Mac.
+P1 left: owner's Linux test (guided), Mac testers' results.
