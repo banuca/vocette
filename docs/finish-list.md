@@ -46,7 +46,7 @@ Tags: **Q** product quality · **M** must before taking money · **S** conversio
 
 ### Release candidate 0.8.0: ready to take money
 
-6. **M1 Opt-in counts (decision M).** A first-run question, default off, with events only
+6. **M1 Opt-in counts (decision M). Done 19 Oct: app side + Worker live at counts.vocette.com (D1 vocette-counts); vocette.com DNS moved to Cloudflare.** A first-run question, default off, with events only
    (a take happened, the limit was reached, app version). Update README, SECURITY, About and
    the site to say exactly what is sent. Needs an endpoint: the cheapest is a tiny serverless
    counter. Decide where, as part of planning.
