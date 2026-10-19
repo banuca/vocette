@@ -4,7 +4,10 @@
 #   dyn   QDQ-free dynamic quantisation of MatMul/Gemm only, per channel (int8 activations
 #         computed at run time)
 #   nbits weight-only int8 (MatMulNBits, 8 bits, block 32): activations stay fp32
-#   python e2e/bench/to-int8.py <dyn|nbits> <fp32 dir> <out dir>
+#   python e2e/bench/to-int8.py <dyn|nbits> <fp32 dir> <out dir> [--app-names]
+# --app-names writes encoder.int8.onnx etc., the names the app's manifest uses. The model
+# Vocette ships is "dyn" from csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3 at commit
+# 1a468a35cbba69418f126de829e75261dea4a4e4 (docs/plan-model-q8.md).
 import shutil
 import sys
 from pathlib import Path
@@ -13,10 +16,11 @@ import onnx
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
 mode, src, dst = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
+app_names = "--app-names" in sys.argv[4:]
 dst.mkdir(parents=True, exist_ok=True)
 for name in ("encoder", "decoder", "joiner"):
     source = src / f"{name}.onnx"
-    out = dst / f"{name}.onnx"
+    out = dst / (f"{name}.int8.onnx" if app_names else f"{name}.onnx")
     if mode == "dyn":
         quantize_dynamic(
             str(source), str(out), op_types_to_quantize=["MatMul", "Gemm"],
