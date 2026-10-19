@@ -49,3 +49,27 @@ exist and are untested on hardware.
 - Real microphones, permissions prompts and paste on real Macs and Linux desktops: only the
   testers can prove that.
 - Mac auto-update: not possible while unsigned; Mac users get a download link.
+
+## Finding, step 2 (19 Oct): the q8 model garbles on CPUs without VNNI
+
+CI run 39293449127, same packaged build, same model files:
+
+| Runner CPU | Result |
+|---|---|
+| Owner's Intel Core Ultra 7 265U (AVX-VNNI) | correct |
+| Apple M1 (virtual), CI macOS | correct |
+| Linux runner, run 39292418991 (CPU not recorded, likely newer EPYC) | correct |
+| AMD EPYC 7763 (Zen 3, AVX2, no VNNI), CI Windows and Linux | garbled: "Ask not what you're comstrich and do for you…", "Alles hat and the west hat's my." |
+
+Cause (very likely): `to-int8.py dyn` uses U8S8 (uint8 activations, int8 weights) without
+`reduce_range`. On x86 AVX2/AVX-512 without VNNI, ONNX Runtime's U8S8 kernel uses VPMADDUBSW,
+which saturates; ORT's quantisation docs warn about exactly this and recommend reduce_range or
+U8U8. Affected users: Intel before 10th-gen Ice Lake / 12th-gen desktop, AMD Zen 3 and earlier
+— a large share of PCs. Not shipped yet: no released app uses the q8 model.
+
+Fix plan (owner to approve):
+1. Build two candidates: `reduce_range=True`, and U8U8 (`weight_type=QUInt8`).
+2. Model-only WER on the owner's PC (local-direct.ps1) for both.
+3. A manual CI workflow that builds the candidate from the pinned fp32 export and runs
+   engine-smoke on the EPYC runners — nothing published.
+4. Publish the winner as `model-parakeet-v3-q8-2` (owner OK), manifest id `-q8b`, retire `-q8`.
