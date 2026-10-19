@@ -21,8 +21,8 @@ All notable changes to this project are documented here. This project adheres to
   model from the full-precision original: on our 20-passage test it gets 10% of words wrong
   where the old model got 21%, and it is faster. The download is 935 MB instead of 670 MB and
   it uses about 0.2 GB more memory while dictating. If you already use the on-device engine,
-  Vocette asks you to download the new model once and deletes the old one. It is checked on
-  Intel, AMD and Apple processors before every release.
+  Vocette asks you to download the new model once and deletes the old one. Every build is checked
+  on AMD and Apple processors.
 
 ## [0.7.0] — unreleased
 
