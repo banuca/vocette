@@ -21,3 +21,6 @@ Thumbs.db
 
 # Output of the Playwright MCP tool when it is driven from this folder.
 .playwright-mcp/
+
+# Model and test recordings fetched by scripts/engine-smoke.mjs.
+.smoke/

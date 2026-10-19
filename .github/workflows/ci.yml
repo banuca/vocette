@@ -90,6 +90,17 @@ jobs:
         shell: bash
         run: node scripts/check-native-packaging.mjs
 
+      # The model (935 MB) and two public test recordings, kept between runs.
+      # The key changes whenever the app's model manifest does.
+      - uses: actions/cache@v4
+        with:
+          path: .smoke
+          key: engine-smoke-${{ hashFiles('src/main/engine/models.ts', 'scripts/engine-smoke.mjs') }}
+
+      - name: Check the on-device engine transcribes in the packaged app
+        shell: bash
+        run: node scripts/engine-smoke.mjs
+
       - uses: actions/upload-artifact@v4
         with:
           name: vocette-${{ matrix.artifact }}

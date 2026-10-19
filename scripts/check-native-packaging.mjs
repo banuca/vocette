@@ -22,6 +22,8 @@ const DIST = argv[2] ?? 'dist'
 
 /** koffi names its prebuild directories `<platform>_<arch>`. */
 const KOFFI_DIRECTORY = `${platform === 'win32' ? 'win32' : platform}_${arch}`
+/** sherpa-onnx names its Windows package `win`, not `win32`. */
+const SHERPA_PLATFORM = platform === 'win32' ? 'win' : platform
 /** uiohook-napi uses `<platform>-<arch>`. */
 const UIOHOOK_DIRECTORY = `${platform}-${arch}`
 
@@ -76,16 +78,20 @@ const REQUIRED = [
       'uiohook-napi.node'
     )
   },
-  // The speech engine: the addon and the ONNX Runtime it loads beside it.
-  // Windows x64 only for now — the only platform the engine has been run on.
-  // The macOS and Linux packages (sherpa-onnx-darwin-*, sherpa-onnx-linux-*)
-  // ship differently named libraries that have not been checked, so they are
-  // not guessed at here.
-  ...(platform === 'win32' && arch === 'x64'
-    ? ['sherpa-onnx.node', 'onnxruntime.dll'].map((file) => ({
-        label: `sherpa-onnx-win-x64 ${file}`,
-        relative: join('app.asar.unpacked', 'node_modules', 'sherpa-onnx-win-x64', file)
-      }))
+  // The speech engine's addon, on every platform; on Windows also the ONNX
+  // Runtime it loads beside it. Whether the macOS and Linux libraries load is
+  // proven by scripts/engine-smoke.mjs, which decodes speech with them.
+  {
+    label: `sherpa-onnx-${SHERPA_PLATFORM}-${arch} sherpa-onnx.node`,
+    relative: join('app.asar.unpacked', 'node_modules', `sherpa-onnx-${SHERPA_PLATFORM}-${arch}`, 'sherpa-onnx.node')
+  },
+  ...(platform === 'win32'
+    ? [
+        {
+          label: `sherpa-onnx-win-${arch} onnxruntime.dll`,
+          relative: join('app.asar.unpacked', 'node_modules', `sherpa-onnx-win-${arch}`, 'onnxruntime.dll')
+        }
+      ]
     : [])
 ]
 
