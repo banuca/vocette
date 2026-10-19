@@ -121,3 +121,32 @@ CI run 39329076117: arm64-only Mac build, ad-hoc signed with hardened runtime an
 microphone entitlement; `codesign --verify --deep --strict` passes on the app and on the DMG copy;
 engine check passes. Unproven: opening a downloaded copy on a real Mac (Gatekeeper, Open Anyway).
 Next: step 4, the v0.8.0-rc.1 pre-release (needs a version bump; owner OK to publish).
+
+## Step 4 plan: the tester build (19 Oct, not built)
+
+Facts checked:
+- electron-updater 6 (node_modules/electron-updater/out/providers/GitHubProvider.js): an app
+  whose version is a pre-release looks for newer releases on its own channel. Channel `rc` is
+  a custom channel: `0.8.0-rc.1` would get later rc builds but **never the stable 0.8.0**.
+  Channel `beta` takes the newest of beta and stable. Non-semver tags (model-*) are skipped.
+  Stable apps read /releases/latest, which pre-releases never become.
+  → Use **v0.8.0-beta.1**, not rc.1.
+- v0.4.0 on GitHub has exe, zip, SHA256SUMS but **no latest.yml or blockmap**: the Windows
+  updater cannot work from a release like that. The CI artifact upload also omits *.yml and
+  *.blockmap. Fix for this build and note in docs/release.md.
+- Ubuntu 24.04+: AppImages need libfuse2 (not installed by default), and AppArmor blocks
+  Electron's sandbox from an AppImage. The .deb installs normally. → The owner tests with
+  the .deb; the AppImage is offered but not the recommended file. Unproven until tried.
+- A GitHub pre-release on a public repo is visible to anyone who opens the releases page.
+
+Changes:
+1. `package.json` version 0.8.0-beta.1; CHANGELOG `Unreleased` → `0.8.0-beta.1`.
+2. CI: upload *.yml and *.blockmap with the installers; new `release` job on `v*` tags
+   that collects the three platforms' files plus SHA256SUMS.txt into a **draft** release
+   (GITHUB_TOKEN, `contents: write`). A draft is invisible to the public and to the updater.
+3. docs/release.md: the tag-driven flow, the yml files, the beta channel.
+4. Tag v0.8.0-beta.1 and push the tag (owner's OK = this plan).
+5. Check the draft's files and hashes; then **ask the owner** before turning it into a
+   published pre-release.
+
+Not in this build: M2 legal text (needs O2), search placeholder fix, payments live (O3).
