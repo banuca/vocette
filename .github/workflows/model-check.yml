@@ -3,8 +3,13 @@ name: Model check
 # Builds candidate on-device models from the pinned full-precision export and
 # checks each one transcribes in the packaged app, on GitHub's x64 runners
 # (AMD EPYC without VNNI, where the first q8 model garbles speech) and on
-# Apple silicon. Nothing is published. Run by hand from the Actions tab.
+# Apple silicon. Nothing is published. Runs when the model build or this
+# check changes, or by hand once the workflow is on main.
 on:
+  push:
+    paths:
+      - e2e/bench/to-int8.py
+      - .github/workflows/model-check.yml
   workflow_dispatch:
 
 jobs:
