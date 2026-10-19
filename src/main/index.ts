@@ -1868,7 +1868,11 @@ async function bootstrap(): Promise<void> {
     enabled: () => settingsStore.getInternal().usageCounts,
     report: countsReport,
     lastSentAt: () => settingsStore.getInternal().lastCountsSentAt,
-    saveLastSentAt: (iso) => settingsStore.setLastCountsSent(iso)
+    saveLastSentAt: (iso) => settingsStore.setLastCountsSent(iso),
+    // Development builds only, for the end-to-end check.
+    firstDelayMs: !app.isPackaged && process.env.MURMUR_COUNTS_DELAY_MS
+      ? Number(process.env.MURMUR_COUNTS_DELAY_MS)
+      : undefined
   })
   // Nothing starts here: the worker is spawned by the first dictation that
   // needs it, and killed again once it has been idle for a while.

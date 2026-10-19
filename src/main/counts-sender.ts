@@ -38,6 +38,8 @@ export interface CountsSenderOptions {
   /** When a report was last attempted, as stored; null if never. */
   lastSentAt(): string | null
   saveLastSentAt(iso: string): void
+  /** The minute's wait after startup or switching on; end-to-end checks shorten it. */
+  firstDelayMs?: number
   now?: () => number
 }
 
@@ -56,7 +58,7 @@ export class CountsSender {
       this.firstTimer = null
       void this.sendIfDue()
       this.tick = setInterval(() => void this.sendIfDue(), DUE_TICK_MS)
-    }, FIRST_SEND_DELAY_MS)
+    }, this.firstDelay())
   }
 
   stop(): void {
@@ -76,7 +78,7 @@ export class CountsSender {
     this.enableTimer = setTimeout(() => {
       this.enableTimer = null
       void this.sendIfDue()
-    }, FIRST_SEND_DELAY_MS)
+    }, this.firstDelay())
   }
 
   /** Sends only when switched on, with somewhere to send, and a day has passed. */
@@ -111,6 +113,10 @@ export class CountsSender {
     } finally {
       clearTimeout(timer)
     }
+  }
+
+  private firstDelay(): number {
+    return this.options.firstDelayMs ?? FIRST_SEND_DELAY_MS
   }
 
   private now(): number {
