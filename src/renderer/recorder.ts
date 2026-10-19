@@ -140,7 +140,7 @@ function cleanupTake(take: RecorderTake): void {
   if (activeTake === take) activeTake = null
 }
 
-function failTake(take: RecorderTake, message: string): void {
+function failTake(take: RecorderTake, message: string, errorName?: string): void {
   if (take.state === 'settled' || take.state === 'cancelled') return
   if (activeTake !== take) {
     cleanupTake(take)
@@ -148,7 +148,7 @@ function failTake(take: RecorderTake, message: string): void {
   }
   take.state = 'settled'
   cleanupTake(take)
-  window.recorder.sendError({ requestId: take.requestId, message })
+  window.recorder.sendError({ requestId: take.requestId, message, ...(errorName ? { errorName } : {}) })
 }
 
 function cancelTake(take: RecorderTake): void {
@@ -329,7 +329,8 @@ async function start(request: RecorderStartRequest): Promise<void> {
           : error instanceof DOMException && error.name === 'TimeoutError'
             ? 'The microphone did not respond. Check it is connected and try again.'
             : 'The microphone could not be started.'
-    failTake(take, message)
+    // The name, for diagnostics: it is the kind of failure, never the device.
+    failTake(take, message, error instanceof Error ? error.name : undefined)
   }
 }
 

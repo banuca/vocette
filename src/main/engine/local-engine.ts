@@ -44,6 +44,8 @@ export interface LocalEngineOptions {
   /** The folder holding the verified model files. */
   modelDir: string
   numThreads?: number
+  /** A worker that exited on its own, for the diagnostics log: its exit code, and whether a take was waiting. */
+  onUnexpectedExit?(code: number, busy: boolean): void
 }
 
 interface Job {
@@ -176,9 +178,11 @@ export class LocalEngine {
       const message = parseFromWorker(raw)
       if (message && this.session === session) this.onWorkerMessage(session, message)
     })
-    handle.onExit(() => {
+    handle.onExit((code) => {
       // Only a worker still in use is news; one this class ended is not.
-      if (this.session === session) this.endSession(session, new Error(ENGINE_STOPPED))
+      if (this.session !== session) return
+      this.options.onUnexpectedExit?.(code, session.jobs.size > 0 || this.activeCalls > 0)
+      this.endSession(session, new Error(ENGINE_STOPPED))
     })
 
     session.loadTimer = setTimeout(() => {

@@ -57,6 +57,9 @@ function makeHarness(
   const showMain = vi.fn<(page: Page) => void>()
   const recordHistory = vi.fn<DictationDeps['recordHistory']>()
   const countWords = vi.fn<(words: number) => void>()
+  const noteTake = vi.fn<NonNullable<DictationDeps['noteTake']>>()
+  const notePasteDeclined = vi.fn<NonNullable<DictationDeps['notePasteDeclined']>>()
+  const noteMicError = vi.fn<NonNullable<DictationDeps['noteMicError']>>()
   const captureForeground = vi.fn<() => void>()
   const clearForeground = vi.fn<() => void>()
   const getForegroundState = vi.fn<() => ForegroundState | null>(() => null)
@@ -77,6 +80,9 @@ function makeHarness(
     showMain,
     recordHistory,
     countWords,
+    noteTake,
+    notePasteDeclined,
+    noteMicError,
     captureForeground,
     clearForeground,
     getForegroundState,
@@ -3487,5 +3493,65 @@ describe('AI polish', () => {
     expect(lastSuccess(harness)?.message).toBe('Pasted')
     const statuses = harness.deps.broadcastStatus.mock.calls.map(([status]) => status.message)
     expect(statuses).not.toContain('Polishing…')
+  })
+})
+
+describe('the diagnostics log', () => {
+  const deliver = async (harness: ReturnType<typeof makeHarness>): Promise<void> => {
+    const requestId = harness.beginRecording()
+    harness.controller.onShortcutReleased()
+    const promise = harness.controller.onRecorderAudio({
+      requestId,
+      audio: new Uint8Array(8),
+      mimeType: 'audio/wav',
+      durationMs: 2100
+    })
+    await vi.advanceTimersByTimeAsync(80)
+    await promise
+  }
+
+  it('notes a pasted take with its timings and word count, never its text', async () => {
+    const harness = makeHarness()
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    await deliver(harness)
+    expect(harness.deps.noteTake).toHaveBeenCalledWith({
+      outcome: 'pasted',
+      recordMs: 2100,
+      transcribeMs: expect.any(Number),
+      words: 2
+    })
+    expect(JSON.stringify(harness.deps.noteTake.mock.calls)).not.toContain('Hello')
+    expect(harness.deps.notePasteDeclined).not.toHaveBeenCalled()
+  })
+
+  it('notes why a paste was refused', async () => {
+    for (const [foreground, reason] of [
+      [null, 'not-verified'],
+      [{ sameWindow: false, elevated: false }, 'focus-moved'],
+      [{ sameWindow: true, elevated: true }, 'elevated']
+    ] as const) {
+      const harness = makeHarness()
+      harness.deps.getForegroundState.mockReturnValue(foreground)
+      await deliver(harness)
+      expect(harness.deps.notePasteDeclined).toHaveBeenCalledWith(reason)
+      expect(harness.deps.noteTake).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'copied' }))
+    }
+  })
+
+  it("notes a failed take with Vocette's own sentence", async () => {
+    const harness = makeHarness()
+    harness.deps.transcribe.mockRejectedValue(new Error('The transcription service did not answer.'))
+    await deliver(harness)
+    expect(harness.deps.noteTake).toHaveBeenCalledWith({
+      outcome: 'failed',
+      message: 'The transcription service did not answer.'
+    })
+  })
+
+  it("notes a microphone failure's error name", () => {
+    const harness = makeHarness()
+    const requestId = harness.beginRecording()
+    harness.controller.onRecorderError({ requestId, message: 'The microphone could not be started.', errorName: 'NotReadableError' })
+    expect(harness.deps.noteMicError).toHaveBeenCalledWith('NotReadableError')
   })
 })

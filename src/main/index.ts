@@ -48,6 +48,7 @@ import { DEFAULT_ZOOM, stepZoom, zoomKey } from './zoom'
 import { listeningBars, trayFrame, writingAlphas, type TrayFrame, type TrayState } from './tray-icon'
 import { UpdateChecker } from './update-check'
 import { CountsSender, countsUrl } from './counts-sender'
+import { DiagnosticsLog } from './diagnostics-log'
 import { polishText, requestPolish } from './polish-service'
 import { OPENAI_POLISH_ENDPOINT, type PolishOutcome } from '../shared/polish'
 import {
@@ -137,6 +138,7 @@ let tray: Tray | null = null
 
 let settingsStore: SettingsStore
 let historyStore: HistoryStore
+let diagnosticsLog: DiagnosticsLog | undefined
 // Assigned during `bootstrap`, before any window or tray can reach them.
 let platform!: PlatformAdapter
 let shortcutController!: ShortcutBackend
@@ -849,6 +851,14 @@ function createDictationController(): DictationController {
     showMain,
     recordHistory,
     countWords,
+    noteTake: (take) =>
+      diagnosticsLog?.record({
+        kind: 'take',
+        engine: settingsStore.getInternal().engine === 'local' ? 'local' : 'cloud',
+        ...take
+      }),
+    notePasteDeclined: (reason) => diagnosticsLog?.record({ kind: 'paste-declined', reason }),
+    noteMicError: (name) => diagnosticsLog?.record({ kind: 'mic-error', name }),
     captureForeground: () => foreground.capture(),
     clearForeground: () => foreground.clear(),
     getForegroundState: () => foreground.check(),
@@ -1803,6 +1813,8 @@ async function bootstrap(): Promise<void> {
     systemLanguages: () => app.getPreferredSystemLanguages()
   })
   historyStore = new HistoryStore(join(userData, 'history.json'))
+  // On this PC only; About → Copy diagnostics is the one way it leaves.
+  diagnosticsLog = new DiagnosticsLog(join(userData, 'diagnostics.json'))
   modelStore = new ModelStore({
     root: modelsRoot({ env: process.env, platform: process.platform, userData }),
     // Chromium's network stack: the system proxy and certificate store, which
@@ -1878,7 +1890,8 @@ async function bootstrap(): Promise<void> {
   // needs it, and killed again once it has been idle for a while.
   localEngine = new LocalEngine({
     spawn: spawnEngineWorker,
-    modelDir: modelStore.path(LOCAL_MODEL.id)
+    modelDir: modelStore.path(LOCAL_MODEL.id),
+    onUnexpectedExit: (code, busy) => diagnosticsLog?.record({ kind: 'engine-exit', code, busy })
   })
   // Subscribed before the first write of the session, so a failure during the
   // startup retention pass is already reflected when the tray and window
@@ -1965,6 +1978,7 @@ async function bootstrap(): Promise<void> {
   // Sends nothing now: a minute from here, and only if switched on and due.
   updateChecker.start()
   countsSender.start()
+  diagnosticsLog?.record({ kind: 'startup', readyMs: Math.round(process.uptime() * 1000) })
   // Likewise: a minute from here, and only with a key activated on this PC.
   subscriptionChecker.start()
   applyPasteLastShortcut(initial.pasteLastShortcut)
@@ -2072,10 +2086,27 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   quitFlushed = true
   const forceQuit = setTimeout(() => app.exit(0), QUIT_FLUSH_TIMEOUT_MS)
-  void historyStore.flush().finally(() => {
+  void Promise.allSettled([historyStore.flush(), diagnosticsLog?.flush()]).finally(() => {
     clearTimeout(forceQuit)
     app.quit()
   })
+})
+
+// Crashes, for the diagnostics log. The monitor sees an uncaught exception (or a
+// rejection Node raises as one) without changing what happens next, and the
+// write is synchronous because there may be no later.
+process.on('uncaughtExceptionMonitor', (error, origin) => {
+  diagnosticsLog?.record({ kind: 'crash', where: 'main', reason: `${origin}: ${error?.name ?? 'Error'}: ${error?.message ?? ''}` })
+  diagnosticsLog?.flushSync()
+})
+app.on('render-process-gone', (_event, _contents, details) => {
+  if (details.reason === 'clean-exit') return
+  diagnosticsLog?.record({ kind: 'crash', where: 'window', reason: `${details.reason} (${details.exitCode})` })
+})
+app.on('child-process-gone', (_event, details) => {
+  if (details.reason === 'clean-exit') return
+  const where = details.type === 'GPU' ? 'gpu' : details.type === 'Utility' ? 'worker' : 'other'
+  diagnosticsLog?.record({ kind: 'crash', where, reason: `${details.type} ${details.reason} (${details.exitCode})` })
 })
 
 // Vocette lives in the tray; closing the window must not quit it.

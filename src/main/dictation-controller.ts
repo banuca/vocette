@@ -11,6 +11,7 @@ import {
   type WordAllowance
 } from '../shared/word-allowance'
 import type { RecordingMode } from '../shared/capabilities'
+import type { PasteDeclined, TakeNote } from './diagnostics-log'
 import type {
   HistoryEntry,
   Page,
@@ -219,6 +220,12 @@ export interface DictationDeps {
   recordHistory(text: string, durationMs: number, model: string, extras: HistoryExtras): void
   /** Counts a delivered take's words; the caller counts them only on Free. */
   countWords?(words: number): void
+  /** For the local diagnostics log: how a take ended, with no text. */
+  noteTake?(take: TakeNote): void
+  /** For the local diagnostics log: why a paste was not made. */
+  notePasteDeclined?(reason: PasteDeclined): void
+  /** For the local diagnostics log: a microphone failure's browser error name. */
+  noteMicError?(name: string): void
   /** Remembers which window has focus, for the paste-target check. */
   captureForeground(): void
   /** Forgets any captured target, so nothing can be pasted into it. */
@@ -801,6 +808,7 @@ export class DictationController {
     this.releaseRequested = false
     this.stopRequested = false
     this.clipboardOnly = false
+    this.deps.noteTake?.({ outcome: 'empty' })
     // Neutral, like a cancellation: nothing went wrong, so it is not an error.
     this.broadcast(
       { phase: 'cancelled', message: 'No speech heard — nothing was sent.' },
@@ -817,6 +825,7 @@ export class DictationController {
       this.abandonProvisional()
       return
     }
+    if (payload.errorName) this.deps.noteMicError?.(payload.errorName)
     this.fail(payload.message)
   }
 
@@ -952,6 +961,22 @@ export class DictationController {
     if (attempt.releaseAudioOnCancel) attempt.take.audio.fill(0)
   }
 
+  /** Why a paste was refused, in the diagnostics log's words. */
+  private declinedReason(foreground: ForegroundState | null): PasteDeclined | null {
+    if (!foreground) return 'not-verified'
+    if (foreground.elevated) return foreground.blockedReason ? 'blocked' : 'elevated'
+    if (!foreground.sameWindow) return 'focus-moved'
+    return null
+  }
+
+  /** Shows-and-logs: the refusal message for `foreground`, noting why when there is one. */
+  private refuse(foreground: ForegroundState | null): string | null {
+    const message = this.manualPasteMessage(foreground)
+    const reason = message ? this.declinedReason(foreground) : null
+    if (reason) this.deps.notePasteDeclined?.(reason)
+    return message
+  }
+
   private manualPasteMessage(foreground: ForegroundState | null): string | null {
     if (!foreground) return 'Copied — paste manually (focus could not be verified)'
     if (foreground.elevated) {
@@ -976,7 +1001,7 @@ export class DictationController {
     // Checked before anything is written: a paste refused from the outset
     // leaves the transcript on the clipboard for good, so the user's own
     // clipboard is never even read.
-    let refusal = this.manualPasteMessage(this.deps.getForegroundState())
+    let refusal = this.refuse(this.deps.getForegroundState())
     if (!owns()) return null
     if (refusal) {
       this.deps.writeClipboard(text)
@@ -998,11 +1023,12 @@ export class DictationController {
         // Still held after the wait: a paste now would land as some other
         // shortcut. The transcript stays for the user to paste themselves.
         this.leaveTranscript(loan)
+        this.deps.notePasteDeclined?.('keys-held')
         return 'Copied — paste manually (keys were still held down)'
       }
       if (!owns()) return this.abandonDelivery(loan)
 
-      refusal = this.manualPasteMessage(this.deps.getForegroundState())
+      refusal = this.refuse(this.deps.getForegroundState())
       if (!owns()) return this.abandonDelivery(loan)
       if (refusal) {
         // Refused at the last moment: now the transcript is what the user
@@ -1227,6 +1253,12 @@ export class DictationController {
         owns: () => this.ownsAttempt(attempt)
       })
       if (!message || !this.ownsAttempt(attempt)) return
+      this.deps.noteTake?.({
+        outcome: message === PASTED_MESSAGE ? 'pasted' : 'copied',
+        recordMs: attempt.take.durationMs,
+        transcribeMs: waitMs,
+        words
+      })
 
       // Delivered, so nothing is left to retry — and the success status has
       // to say so, or the window would go on offering Retry for a take that
@@ -1372,6 +1404,8 @@ export class DictationController {
       // Still show something: a silent phase change would strand the overlay.
       this.broadcast({ phase: 'idle', message: 'Ready' })
     } else {
+      // Vocette's own sentence, which says what failed, never what was said.
+      this.deps.noteTake?.({ outcome: 'failed', message })
       this.broadcast({ phase: 'error', message: 'Dictation failed', detail: message }, ERROR_RESET_MS)
     }
     if (openSettings) this.deps.showMain('settings')

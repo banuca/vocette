@@ -75,6 +75,7 @@ class FakeWorker implements WorkerHandle {
 
 function harness(options: { spawnFails?: boolean } = {}) {
   const workers: FakeWorker[] = []
+  const exits: Array<[number, boolean]> = []
   const engine = new LocalEngine({
     spawn: () => {
       if (options.spawnFails) throw new Error('spawn EACCES')
@@ -83,14 +84,15 @@ function harness(options: { spawnFails?: boolean } = {}) {
       return worker
     },
     modelDir: 'C:\\models\\parakeet-tdt-0.6b-v3-q8',
-    numThreads: 3
+    numThreads: 3,
+    onUnexpectedExit: (code, busy) => exits.push([code, busy])
   })
   const worker = (index = -1): FakeWorker => {
     const found = workers.at(index)
     if (!found) throw new Error('No worker was spawned.')
     return found
   }
-  return { engine, workers, worker }
+  return { engine, workers, worker, exits }
 }
 
 /** One second of 16 kHz audio per `seconds`, never silent, so zeroing shows. */
@@ -398,6 +400,18 @@ describe('when the worker dies', () => {
     await flush()
     worker().exit(1)
     expect((await rejection(result)).message).toBe(ENGINE_STOPPED)
+  })
+
+  it('reports an exit it did not ask for, with its code and whether a take was waiting', async () => {
+    const { engine, worker, exits } = harness()
+    const result = engine.transcribe(audio(1), 16000)
+    await flush()
+    worker().exit(3221225477)
+    await rejection(result)
+    expect(exits).toEqual([[3221225477, true]])
+    engine.prewarm()
+    engine.unload()
+    expect(exits).toHaveLength(1)
   })
 
   it('pays no attention to a worker it has already replaced', async () => {

@@ -441,6 +441,8 @@ export interface RecorderAudioPayload {
 export interface RecorderErrorPayload {
   requestId: string
   message: string
+  /** The browser's error name ("NotFoundError") for diagnostics; never a device label. */
+  errorName?: string
 }
 
 /**

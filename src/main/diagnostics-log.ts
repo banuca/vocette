@@ -33,6 +33,9 @@ export type DiagnosticEvent =
 
 export type LoggedEvent = DiagnosticEvent & { at: string }
 
+/** How a take ended, as the dictation controller reports it; the engine is added by the caller. */
+export type TakeNote = Omit<Extract<DiagnosticEvent, { kind: 'take' }>, 'kind' | 'engine'>
+
 export const MAX_EVENTS = 500
 export const MAX_MESSAGE_CHARS = 200
 const WRITE_DELAY_MS = 1000
