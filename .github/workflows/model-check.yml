@@ -1,0 +1,84 @@
+name: Model check
+
+# Builds candidate on-device models from the pinned full-precision export and
+# checks each one transcribes in the packaged app, on GitHub's x64 runners
+# (AMD EPYC without VNNI, where the first q8 model garbles speech) and on
+# Apple silicon. Nothing is published. Run by hand from the Actions tab.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Model check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: pack:win
+          - os: ubuntu-latest
+            script: pack:linux
+          - os: macos-latest
+            script: pack:mac
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package
+        run: |
+          npx electron-vite build
+          npm run ${{ matrix.script }} -- --publish never
+
+      - name: Install the quantiser
+        run: pip install onnx==1.23.2 onnxruntime==1.31.0 numpy
+
+      - uses: actions/cache@v4
+        with:
+          path: .smoke/fp32
+          key: parakeet-v3-fp32-1a468a35
+
+      - name: Fetch the full-precision export (pinned commit)
+        shell: bash
+        run: |
+          mkdir -p .smoke/fp32
+          base=https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3/resolve/1a468a35cbba69418f126de829e75261dea4a4e4
+          for f in encoder.onnx encoder.weights decoder.onnx joiner.onnx tokens.txt; do
+            [ -s .smoke/fp32/$f ] || curl -sSfL -o .smoke/fp32/$f $base/$f
+          done
+          ls -l .smoke/fp32
+
+      - name: Build the candidates
+        shell: bash
+        run: |
+          for mode in dyn dynrr dynu8; do
+            python -I e2e/bench/to-int8.py $mode .smoke/fp32 .smoke/$mode --app-names
+          done
+
+      - name: Check each candidate in the packaged app
+        shell: bash
+        run: |
+          status=0
+          for mode in dyn dynrr dynu8; do
+            echo "=== $mode"
+            if VOCETTE_SMOKE_MODEL_DIR=.smoke/$mode node scripts/engine-smoke.mjs; then
+              echo "RESULT $mode pass"
+            else
+              echo "RESULT $mode FAIL"
+              # dyn is the model that garbles; only the candidates decide the run.
+              [ $mode = dyn ] || status=1
+            fi
+          done
+          exit $status

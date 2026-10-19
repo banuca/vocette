@@ -1,7 +1,7 @@
 # Decodes all 20 original recordings with the on-device model, bypassing the app, and
 # writes them as a results file the scorer reads ("local-direct", or "local-direct-fp32" or "-fp16").
 #   pwsh e2e/bench/local-direct.ps1 [-Method greedy_search] [-Model int8|fp32|fp16]
-param([string] $Method = 'greedy_search', [ValidateSet('int8', 'fp32', 'fp16', 'q8dyn', 'q8nbits')] [string] $Model = 'int8')
+param([string] $Method = 'greedy_search', [ValidateSet('int8', 'fp32', 'fp16', 'q8dyn', 'q8nbits', 'q8rr', 'q8u8')] [string] $Model = 'int8')
 $ErrorActionPreference = 'Stop'
 $bench = Join-Path $env:LOCALAPPDATA 'vocette-bench'
 $a16 = Join-Path $bench 'audio16'

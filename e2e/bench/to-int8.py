@@ -3,8 +3,13 @@
 # (which quantises every op dynamically):
 #   dyn   QDQ-free dynamic quantisation of MatMul/Gemm only, per channel (int8 activations
 #         computed at run time)
+#   dynrr as dyn, with 7-bit weights (reduce_range), so ONNX Runtime's uint8 x int8 kernel
+#         cannot saturate on x86 CPUs without VNNI
+#   dynu8 as dyn, with uint8 weights (uint8 x uint8 kernel), the other cure for that
 #   nbits weight-only int8 (MatMulNBits, 8 bits, block 32): activations stay fp32
-#   python e2e/bench/to-int8.py <dyn|nbits> <fp32 dir> <out dir> [--app-names]
+#   python e2e/bench/to-int8.py <dyn|dynrr|dynu8|nbits> <fp32 dir> <out dir> [--app-names]
+# "dyn" garbles speech on CPUs without VNNI (AMD Zen 3, Intel before Ice Lake): see
+# docs/plan-p1-mac-linux.md.
 # --app-names writes encoder.int8.onnx etc., the names the app's manifest uses. The model
 # Vocette ships is "dyn" from csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3 at commit
 # 1a468a35cbba69418f126de829e75261dea4a4e4 (docs/plan-model-q8.md).
@@ -21,10 +26,11 @@ dst.mkdir(parents=True, exist_ok=True)
 for name in ("encoder", "decoder", "joiner"):
     source = src / f"{name}.onnx"
     out = dst / (f"{name}.int8.onnx" if app_names else f"{name}.onnx")
-    if mode == "dyn":
+    if mode in ("dyn", "dynrr", "dynu8"):
         quantize_dynamic(
             str(source), str(out), op_types_to_quantize=["MatMul", "Gemm"],
-            per_channel=True, weight_type=QuantType.QInt8,
+            per_channel=True, reduce_range=mode == "dynrr",
+            weight_type=QuantType.QUInt8 if mode == "dynu8" else QuantType.QInt8,
             extra_options={"MatMulConstBOnly": True})
     else:
         from onnxruntime.quantization.matmul_nbits_quantizer import (
