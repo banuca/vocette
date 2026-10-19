@@ -6,7 +6,13 @@ const { join } = require('node:path')
 const { readFileSync } = require('node:fs')
 const sherpa = require(join(__dirname, '..', '..', 'node_modules', 'sherpa-onnx-node'))
 
-const modelDir = join(process.env.LOCALAPPDATA, 'Murmur', 'models', 'parakeet-tdt-0.6b-v3-int8')
+// BENCH_MODEL=fp32 uses the full-precision export kept in the bench folder instead of the
+// app's int8 model.
+const fp32 = process.env.BENCH_MODEL === 'fp32'
+const modelDir = fp32
+  ? join(process.env.LOCALAPPDATA, 'vocette-bench', 'models', 'parakeet-tdt-0.6b-v3-fp32')
+  : join(process.env.LOCALAPPDATA, 'Murmur', 'models', 'parakeet-tdt-0.6b-v3-int8')
+const part = (name) => join(modelDir, fp32 ? `${name}.onnx` : `${name}.int8.onnx`)
 const [method, ...files] = process.argv.slice(2)
 
 function readWav(path) {
@@ -28,9 +34,9 @@ function readWav(path) {
     featConfig: { sampleRate: 16000, featureDim: 80 },
     modelConfig: {
       transducer: {
-        encoder: join(modelDir, 'encoder.int8.onnx'),
-        decoder: join(modelDir, 'decoder.int8.onnx'),
-        joiner: join(modelDir, 'joiner.int8.onnx')
+        encoder: part('encoder'),
+        decoder: part('decoder'),
+        joiner: part('joiner')
       },
       tokens: join(modelDir, 'tokens.txt'),
       numThreads: 4, provider: 'cpu', debug: 0, modelType: 'nemo_transducer'
@@ -40,9 +46,12 @@ function readWav(path) {
   })
   for (const f of files) {
     const { rate, s } = readWav(f)
+    const startedAt = performance.now()
     const stream = rec.createStream()
     stream.acceptWaveform({ sampleRate: rate, samples: s })
     await rec.decodeAsync(stream)
-    console.log(`${f.split(/[\\/]/).pop()}: ${rec.getResult(stream).text.trim()}`)
+    const ms = Math.round(performance.now() - startedAt)
+    console.log(`${f.split(/[\\/]/).pop()} ${ms}ms ${(s.length / rate).toFixed(1)}s: ${rec.getResult(stream).text.trim()}`)
   }
+  console.error(`memory: ${Math.round(process.memoryUsage().rss / 1048576)} MB`)
 })()

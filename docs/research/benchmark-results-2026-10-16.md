@@ -114,3 +114,32 @@ Notes: the benchmark added about 100 entries to the owner's History (texts match
 passages). They're not removed: deleting needs the owner's OK. A backup of the settings from
 before the benchmark is at `%LOCALAPPDATA%\vocette-bench\settings-before-bench.json`, and it
 has been restored.
+
+## Full-precision on-device model (19 Oct)
+
+Owner approved the 2.5 GB download. `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3` (fp32,
+encoder.weights 2.44 GB), kept in `%LOCALAPPDATA%\vocette-bench\models\parakeet-tdt-0.6b-v3-fp32`.
+Run with `e2e/bench/local-direct.ps1 -Model fp32`: model alone on the 16 kHz originals, greedy,
+4 threads, no app cleanup (so "is$49" glue is still in the raw text).
+
+| | int8 (shipping) | fp32 |
+|---|---|---|
+| WER, all 20 | 21.2% | **9.8%** |
+| WER, answered only | 14.1% | 9.8% |
+| Empty takes | 2 | 0 |
+| Openings | 12/20 | 14/20 |
+| Decode p50 / p90 | 0.64 / 1.20 s | 1.27 / 2.46 s |
+| Warm decode, 6.5 s clip | 0.5–0.8 s | 1.1–1.4 s |
+| Process memory | 0.84 GB | **2.57 GB** |
+| Download | ~0.65 GB | ~2.55 GB |
+
+- Meets the Q2 pass mark (≤ 10%, no empties) on the model alone.
+- Wins: p02, p03, p04 (empty → right), p14, p15. p12 now hears "subscriptions run through
+  Cola" (int8 lost the clause) and writes $4.99/$49.
+- Worse: p09 (the owner's spelled surname, both poor), p12/p13 small.
+- Cost: about 2× decode time and 3× memory. 2.6 GB resident is heavy for a background
+  dictation app and undercuts "lightweight".
+- No ready fp16 export: `csukuangfj/...-v3-fp16` is empty on Hugging Face (19 Oct). A local
+  fp32 → fp16 conversion (onnxconverter-common) would likely halve memory and download; needs
+  a pip install and the owner's OK. Not tried.
+- Not yet run through the app (instant capture, lead-in, cleanup); this is the model alone.
