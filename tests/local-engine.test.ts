@@ -82,7 +82,7 @@ function harness(options: { spawnFails?: boolean } = {}) {
       workers.push(worker)
       return worker
     },
-    modelDir: 'C:\\models\\parakeet-tdt-0.6b-v3-int8',
+    modelDir: 'C:\\models\\parakeet-tdt-0.6b-v3-q8',
     numThreads: 3
   })
   const worker = (index = -1): FakeWorker => {
@@ -133,7 +133,7 @@ describe('LocalEngine.transcribe', () => {
     expect(workers).toHaveLength(1)
     expect(worker().posted[0]).toEqual({
       type: 'load',
-      modelDir: 'C:\\models\\parakeet-tdt-0.6b-v3-int8',
+      modelDir: 'C:\\models\\parakeet-tdt-0.6b-v3-q8',
       numThreads: 3
     })
     // Nothing is sent to decode before the model is loaded.

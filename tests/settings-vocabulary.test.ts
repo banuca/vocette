@@ -22,7 +22,7 @@ import type { LicenceStatus, PublicSettings } from '../src/shared/types'
 const TEST_ENGINE: EngineStatus = {
   engine: 'cloud',
   model: {
-    id: 'parakeet-tdt-0.6b-v3-int8',
+    id: 'parakeet-tdt-0.6b-v3-q8',
     state: 'missing',
     receivedBytes: 0,
     totalBytes: 670_478_772,

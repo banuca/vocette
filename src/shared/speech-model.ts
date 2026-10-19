@@ -8,7 +8,7 @@
  * cannot drift apart.
  */
 export interface SpeechModelInfo {
-  id: 'parakeet-tdt-0.6b-v3-int8'
+  id: 'parakeet-tdt-0.6b-v3-q8'
   /** How the Settings row names it. */
   displayName: string
   /** The family name, for a sentence about what it can and cannot do. */
@@ -19,9 +19,12 @@ export interface SpeechModelInfo {
   attribution: string
 }
 
-/** NVIDIA Parakeet TDT 0.6B v3, int8, as exported to ONNX by sherpa-onnx. */
+/**
+ * NVIDIA Parakeet TDT 0.6B v3: sherpa-onnx's full-precision ONNX export, with
+ * its matrix weights made int8 by Vocette (CC-BY asks that changes be named).
+ */
 export const PARAKEET_V3_INFO: SpeechModelInfo = {
-  id: 'parakeet-tdt-0.6b-v3-int8',
+  id: 'parakeet-tdt-0.6b-v3-q8',
   displayName: 'Parakeet v3',
   shortName: 'Parakeet',
   languages: [
@@ -31,7 +34,7 @@ export const PARAKEET_V3_INFO: SpeechModelInfo = {
   licence: 'CC-BY-4.0',
   attribution:
     'Speech model: NVIDIA Parakeet TDT 0.6B v3, CC-BY-4.0; ONNX export by the ' +
-    'sherpa-onnx project (k2-fsa).'
+    'sherpa-onnx project (k2-fsa); weights quantised to int8 by Vocette.'
 }
 
 /** The model the on-device engine loads, as the window describes it. */

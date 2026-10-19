@@ -103,7 +103,7 @@ function render(
     engine: {
       engine,
       model: {
-        id: 'parakeet-tdt-0.6b-v3-int8',
+        id: 'parakeet-tdt-0.6b-v3-q8',
         state: 'missing',
         receivedBytes: 0,
         totalBytes: 670_478_772,
@@ -212,7 +212,7 @@ describe('renderAbout', () => {
     renderAbout(context)
     const list = content.querySelector('#attributions')
     expect(list?.children.map((item) => item.textContent)).toEqual([
-      'Speech model: NVIDIA Parakeet TDT 0.6B v3, CC-BY-4.0; ONNX export by the sherpa-onnx project (k2-fsa).',
+      'Speech model: NVIDIA Parakeet TDT 0.6B v3, CC-BY-4.0; ONNX export by the sherpa-onnx project (k2-fsa); weights quantised to int8 by Vocette.',
       'sherpa-onnx — Apache-2.0',
       'ONNX Runtime — MIT',
       'Word list: SCOWL, © Kevin Atkinson'

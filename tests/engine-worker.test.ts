@@ -108,7 +108,7 @@ function harness(options: { addon?: SpeechAddon; addonThrows?: boolean } = {}) {
   return { sent, deliver, settle, exit, collectGarbage }
 }
 
-const MODEL_DIR = 'C:\\models\\parakeet-tdt-0.6b-v3-int8'
+const MODEL_DIR = 'C:\\models\\parakeet-tdt-0.6b-v3-q8'
 
 describe('loading', () => {
   it('uses the one configuration the spike proved, and nothing more', async () => {

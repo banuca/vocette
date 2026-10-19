@@ -2,10 +2,10 @@
  * The on-device speech model Vocette can download.
  *
  * Every byte count and hash here was verified locally against the files the
- * URLs serve (docs/research/engine-spike.md). The URLs name a commit, never
- * `main`, so a later upload to the repository can neither change nor break
- * what an installed copy of Vocette fetches: a file that no longer matches its
- * hash is refused, not loaded.
+ * URLs serve (docs/plan-model-q8.md). The URLs name a release tag that is
+ * never reused, so a later upload can neither change nor break what an
+ * installed copy of Vocette fetches: a file that no longer matches its hash is
+ * refused, not loaded.
  */
 import { PARAKEET_V3_INFO } from '../../shared/speech-model'
 
@@ -17,7 +17,7 @@ export interface ModelFile {
 }
 
 export interface ModelManifest {
-  id: 'parakeet-tdt-0.6b-v3-int8'
+  id: 'parakeet-tdt-0.6b-v3-q8'
   displayName: string
   languages: readonly string[]
   licence: string
@@ -26,9 +26,19 @@ export interface ModelManifest {
   totalBytes: number
 }
 
+/**
+ * Vocette's own int8 build of the full-precision sherpa-onnx export
+ * (`e2e/bench/to-int8.py`), published as assets of a pre-release so the
+ * update check never mistakes it for a version of the app.
+ */
 const BASE_URL =
-  'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/' +
-  '2bda32ec70b097a55adaa07d9a7173915b43cc78/'
+  'https://github.com/banuca/vocette/releases/download/model-parakeet-v3-q8-1/'
+
+/**
+ * Models earlier versions downloaded. Their folders are deleted once the
+ * current model is installed, so an update doesn't leave 650 MB behind.
+ */
+export const RETIRED_MODEL_IDS: readonly string[] = ['parakeet-tdt-0.6b-v3-int8']
 
 /** The file roles the recogniser is configured with, by name. */
 export const PARAKEET_FILES = {
@@ -42,20 +52,20 @@ const files: readonly ModelFile[] = [
   {
     name: PARAKEET_FILES.encoder,
     url: `${BASE_URL}${PARAKEET_FILES.encoder}`,
-    bytes: 652_184_281,
-    sha256: 'acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247'
+    bytes: 881_498_555,
+    sha256: 'c5cdff28d4ac8690b3e3f7780ac5089586d87a2800cebf0ed5d5a128e94f2b86'
   },
   {
     name: PARAKEET_FILES.decoder,
     url: `${BASE_URL}${PARAKEET_FILES.decoder}`,
-    bytes: 11_845_275,
-    sha256: '179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e'
+    bytes: 47_235_689,
+    sha256: '167873a811f683e6ce94204887954297e77a2c6604a5121dcc234394a7fbfe3e'
   },
   {
     name: PARAKEET_FILES.joiner,
     url: `${BASE_URL}${PARAKEET_FILES.joiner}`,
-    bytes: 6_355_277,
-    sha256: '3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3'
+    bytes: 6_402_684,
+    sha256: '2de5c9796ae6d01e075161d6d25416fa9b19dcac130715401470545ddc51191b'
   },
   {
     name: PARAKEET_FILES.tokens,
@@ -66,9 +76,9 @@ const files: readonly ModelFile[] = [
 ]
 
 /**
- * NVIDIA Parakeet TDT 0.6B v3, int8, as exported to ONNX by sherpa-onnx. What
- * the window says about it — name, languages, licence, attribution — is
- * shared with the renderer, so it is written once, in `shared/speech-model`.
+ * NVIDIA Parakeet TDT 0.6B v3, int8. What the window says about it — name,
+ * languages, licence, attribution — is shared with the renderer, so it is
+ * written once, in `shared/speech-model`.
  */
 export const PARAKEET_V3: ModelManifest = {
   id: PARAKEET_V3_INFO.id,

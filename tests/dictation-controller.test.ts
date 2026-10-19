@@ -1662,7 +1662,7 @@ describe('errors and retry', () => {
 
   it('keeps a failed on-device take for Retry too', async () => {
     const harness = makeHarness({
-      settings: { engine: 'local', model: 'parakeet-tdt-0.6b-v3-int8' }
+      settings: { engine: 'local', model: 'parakeet-tdt-0.6b-v3-q8' }
     })
     await failOnce(harness)
     expect(harness.deps.broadcastStatus).toHaveBeenLastCalledWith(
@@ -2087,7 +2087,7 @@ describe('recording modes and window controls', () => {
 
   it('hands the engine the take was set up for to the transcriber', async () => {
     const { controller, deps, beginRecording } = makeHarness({
-      settings: { engine: 'local', model: 'parakeet-tdt-0.6b-v3-int8' }
+      settings: { engine: 'local', model: 'parakeet-tdt-0.6b-v3-q8' }
     })
     deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
     const requestId = beginRecording()
@@ -2109,7 +2109,7 @@ describe('recording modes and window controls', () => {
     expect(deps.recordHistory).toHaveBeenCalledWith(
       'Hello world.',
       1200,
-      'parakeet-tdt-0.6b-v3-int8',
+      'parakeet-tdt-0.6b-v3-q8',
       { waitMs: expect.any(Number) }
     )
   })

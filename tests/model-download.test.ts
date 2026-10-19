@@ -22,13 +22,13 @@ import { LANGUAGE_OPTIONS } from '../src/shared/types'
  * promises in each state the main process can report.
  */
 
-const TOTAL = 670_478_772
+const TOTAL = 935_230_867
 
 function status(state: ModelState, patch: Partial<ModelStatus> = {}): EngineStatus {
   return {
     engine: 'local',
     model: {
-      id: 'parakeet-tdt-0.6b-v3-int8',
+      id: 'parakeet-tdt-0.6b-v3-q8',
       state,
       receivedBytes: state === 'installed' ? TOTAL : 0,
       totalBytes: TOTAL,
@@ -44,7 +44,7 @@ describe('modelRowState', () => {
   it('names the model and its size from the manifest', () => {
     const row = modelRowState(status('missing'))
     expect(row.name).toBe('Parakeet v3 · 25 European languages')
-    expect(row.size).toBe('670 MB')
+    expect(row.size).toBe('935 MB')
   })
 
   it('offers the download when nothing is on disk', () => {
@@ -61,8 +61,8 @@ describe('modelRowState', () => {
 
   it('counts the download in megabytes, with a way to stop it', () => {
     const row = modelRowState(status('downloading', { receivedBytes: 412_000_000 }))
-    expect(row.detail).toBe('412 of 670 MB')
-    expect(row.badge).toBe('Downloading · 61%')
+    expect(row.detail).toBe('412 of 935 MB')
+    expect(row.badge).toBe('Downloading · 44%')
     expect(row.badgeTone).toBe('busy')
     expect(row.progress).toBeCloseTo(412_000_000 / TOTAL, 6)
     expect(row.cancelVisible).toBe(true)
@@ -265,7 +265,7 @@ describe('createModelRow in Settings', () => {
     const { host, view } = settingsRow()
     view.apply(status('missing'))
     expect(host.at('name').textContent).toBe('Parakeet v3 · 25 European languages')
-    expect(host.at('size').textContent).toBe('670 MB')
+    expect(host.at('size').textContent).toBe('935 MB')
     expect(host.at('badge').textContent).toBe('Not downloaded')
     expect(host.at('download').textContent).toBe('Download')
     expect(host.at('download').hidden).toBe(false)
@@ -312,10 +312,10 @@ describe('createModelRow in Settings', () => {
     const { host, view } = settingsRow()
     view.apply(status('downloading', { receivedBytes: 412_000_000 }))
     expect(host.at('progress').hidden).toBe(false)
-    expect(host.at('bar').style.width).toBe('61%')
-    expect(host.at('progress').attributes.get('aria-valuenow')).toBe('61')
-    expect(host.at('detail').textContent).toBe('412 of 670 MB')
-    expect(host.at('badge').textContent).toBe('Downloading · 61%')
+    expect(host.at('bar').style.width).toBe('44%')
+    expect(host.at('progress').attributes.get('aria-valuenow')).toBe('44')
+    expect(host.at('detail').textContent).toBe('412 of 935 MB')
+    expect(host.at('badge').textContent).toBe('Downloading · 44%')
     // Read out on every tick, the count would drown everything else.
     expect(host.at('detail').attributes.get('aria-live')).toBe('off')
     view.apply(status('failed', { error: 'The download was damaged. Try again.' }))
@@ -367,7 +367,7 @@ describe('createModelRow in Settings', () => {
     host.at('remove').click()
     await flush()
     expect(confirm).toHaveBeenCalledWith(
-      'Remove the speech model from this PC? Dictating on this PC will need it downloaded again (670 MB).'
+      'Remove the speech model from this PC? Dictating on this PC will need it downloaded again (935 MB).'
     )
     expect(bridge.removeModel).not.toHaveBeenCalled()
 
@@ -430,7 +430,7 @@ describe('createModelRow on the setup card', () => {
     const view = createModelRow(host as unknown as HTMLElement, {
       variant: 'setup',
       title: 'Download the speech model',
-      detail: 'The model is 670 MB and downloads once.',
+      detail: 'The model is 935 MB and downloads once.',
       bridge,
       onStatus: vi.fn(),
       onChooseCloud
@@ -442,7 +442,7 @@ describe('createModelRow on the setup card', () => {
     const { host, view, onChooseCloud } = setupRow()
     view.apply(status('missing'))
     expect(host.at('title').textContent).toBe('Download the speech model')
-    expect(host.at('explain').textContent).toBe('The model is 670 MB and downloads once.')
+    expect(host.at('explain').textContent).toBe('The model is 935 MB and downloads once.')
     expect(host.innerHTML).toContain('class="primary-button" data-model="download"')
     expect(host.at('download').textContent).toBe('Download')
     expect(host.innerHTML).toContain('Prefer a cloud provider?')
@@ -460,7 +460,7 @@ describe('createModelRow on the setup card', () => {
   it('shows the same progress, check and failure as Settings', () => {
     const { host, view } = setupRow()
     view.apply(status('downloading', { receivedBytes: 412_000_000 }))
-    expect(host.at('detail').textContent).toBe('412 of 670 MB')
+    expect(host.at('detail').textContent).toBe('412 of 935 MB')
     expect(host.at('cancel').hidden).toBe(false)
     expect(host.at('download').hidden).toBe(true)
 

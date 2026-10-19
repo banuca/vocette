@@ -8,12 +8,12 @@ import { PARAKEET_V3, type ModelFile, type ModelManifest } from './models'
 /**
  * Downloads, verifies and keeps the on-device speech model.
  *
- * The model is 640 MB, so three things matter more than usual. A download
+ * The model is about 935 MB, so three things matter more than usual. A download
  * that stops — a closed lid, a dropped connection, Cancel — resumes where it
  * stopped instead of starting again. Nothing is trusted until its SHA-256
  * matches the manifest, so a damaged or substituted file is never loaded. And
  * the full check happens once: a `verified.json` marker records it, so reading
- * the state at start-up costs a few file sizes, not hashing 640 MB.
+ * the state at start-up costs a few file sizes, not hashing 935 MB.
  *
  * `fetch` and the one file operation worth faking (appending to a part file)
  * are injected, so every path here runs in tests against a temporary folder.
@@ -33,14 +33,14 @@ const PART_SUFFIX = '.part'
 /** Progress is reported at most about five times a second. */
 const PROGRESS_INTERVAL_MS = 200
 const HASH_CHUNK_BYTES = 1024 * 1024
-/** A freshly written 640 MB file is often held briefly by an antivirus scan. */
+/** A freshly written large file is often held briefly by an antivirus scan. */
 const RENAME_ATTEMPTS = 8
 const RENAME_RETRY_DELAY_MS = 250
 
 export const DOWNLOAD_UNREACHABLE =
   'Could not reach the download server. Check your internet connection.'
 export const DOWNLOAD_DAMAGED = 'The download was damaged. Try again.'
-export const DISK_FULL = 'Not enough free disk space — about 700 MB is needed.'
+export const DISK_FULL = 'Not enough free disk space — about 1 GB is needed.'
 export const SAVE_FAILED =
   'The speech model could not be saved on this PC. Check the disk and try again.'
 export const REMOVE_FAILED =
@@ -91,7 +91,7 @@ interface VerifiedMarker {
  * Where models live. `MURMUR_MODELS_DIR` wins, so tests and side-by-side runs
  * never touch the real copy. On Windows it is the *local* application-data
  * folder: the roaming profile is copied to and from the server at every
- * sign-in on managed machines, and 640 MB of model has no business travelling
+ * sign-in on managed machines, and a model this size has no business travelling
  * with it.
  */
 export function modelsRoot(input: {
@@ -272,6 +272,22 @@ export class ModelStore {
       await rm(this.path(id), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
     } catch (error) {
       throw new ModelStoreError(REMOVE_FAILED, { cause: error })
+    }
+  }
+
+  /**
+   * Deletes the folders of models this version no longer knows. Never one it
+   * does know, and never fails: a folder that can't go now goes next start.
+   */
+  async removeRetired(ids: readonly string[]): Promise<void> {
+    for (const id of ids) {
+      if (this.manifests.some((manifest) => manifest.id === id)) continue
+      if (!/^[a-z0-9][a-z0-9.-]*$/.test(id)) continue
+      try {
+        await rm(join(this.options.root, id), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+      } catch {
+        // Held open by something else; next start tries again.
+      }
     }
   }
 

@@ -20,7 +20,7 @@ import {
 import { PARAKEET_V3, type ModelManifest } from '../src/main/engine/models'
 
 /**
- * The model is 640 MB, so the store is tested against a small stand-in
+ * The model is about 935 MB, so the store is tested against a small stand-in
  * manifest, a temporary folder and a fake server — every path the real
  * download can take, none of the waiting.
  */
@@ -304,7 +304,7 @@ describe('ModelStore.download', () => {
     })
     const error = await rejection(models.download(ID))
     expect(error).toBeInstanceOf(ModelStoreError)
-    expect(error.message).toBe('Not enough free disk space — about 700 MB is needed.')
+    expect(error.message).toBe('Not enough free disk space — about 1 GB is needed.')
     expect(error.message).toBe(DISK_FULL)
   })
 
@@ -447,7 +447,32 @@ describe('ModelStore.remove', () => {
   })
 
   it('gives the model folder to the engine', () => {
-    expect(store(fakeServer({}).fetch).path(ID)).toBe(join(root, 'parakeet-tdt-0.6b-v3-int8'))
+    expect(store(fakeServer({}).fetch).path(ID)).toBe(join(root, 'parakeet-tdt-0.6b-v3-q8'))
+  })
+})
+
+describe('ModelStore.removeRetired', () => {
+  it("deletes an earlier version's model folder and keeps the current one", async () => {
+    const models = store(fakeServer(bothFiles()).fetch)
+    await models.download(ID)
+    const retired = join(root, 'parakeet-tdt-0.6b-v3-int8')
+    mkdirSync(retired, { recursive: true })
+    writeFileSync(join(retired, 'encoder.int8.onnx'), 'old')
+    await models.removeRetired(['parakeet-tdt-0.6b-v3-int8', ID])
+    expect(existsSync(retired)).toBe(false)
+    expect(models.state(ID)).toBe('installed')
+  })
+
+  it('touches nothing outside the models folder', async () => {
+    const outside = join(root, '..', `outside-${Date.now()}`)
+    mkdirSync(outside, { recursive: true })
+    await store(fakeServer({}).fetch).removeRetired(['..', `../${outside.split(/[\\/]/).pop()}`])
+    expect(existsSync(outside)).toBe(true)
+    expect(existsSync(root)).toBe(true)
+  })
+
+  it('is content when there is nothing to remove', async () => {
+    await expect(store(fakeServer({}).fetch).removeRetired(['parakeet-tdt-0.6b-v3-int8'])).resolves.toBeUndefined()
   })
 })
 

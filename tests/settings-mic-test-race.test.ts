@@ -9,7 +9,7 @@ import type { EngineStatus } from '../src/shared/engine'
 const TEST_ENGINE: EngineStatus = {
   engine: 'cloud',
   model: {
-    id: 'parakeet-tdt-0.6b-v3-int8',
+    id: 'parakeet-tdt-0.6b-v3-q8',
     state: 'missing',
     receivedBytes: 0,
     totalBytes: 670_478_772,

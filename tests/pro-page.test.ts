@@ -133,7 +133,7 @@ async function makeHarness(status: LicenceStatus, answers: BridgeAnswers = {}) {
     engine: {
       engine: 'local',
       model: {
-        id: 'parakeet-tdt-0.6b-v3-int8',
+        id: 'parakeet-tdt-0.6b-v3-q8',
         state: 'installed',
         receivedBytes: 1,
         totalBytes: 1,

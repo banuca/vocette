@@ -473,6 +473,7 @@ async function startApp(options: {
       ModelStore: class {
         path = (id: string) => `C:/models/${id}`
         state = () => modelState
+        removeRetired = (): Promise<void> => Promise.resolve()
         download = (
           _id: string,
           onProgress: (progress: { phase: string; receivedBytes: number; totalBytes: number }) => void,
@@ -617,7 +618,7 @@ async function startApp(options: {
       downloads: () => downloads,
       downloadSignal: () => downloadSignal,
       progress: (receivedBytes) =>
-        downloadProgress?.({ phase: 'downloading', receivedBytes, totalBytes: 670_478_772 }),
+        downloadProgress?.({ phase: 'downloading', receivedBytes, totalBytes: 935_230_867 }),
       finishDownload: () => {
         modelState = 'installed'
         settleDownload?.resolve()
@@ -1079,7 +1080,7 @@ describe('the on-device engine', () => {
       {
         text: 'Hello from this PC.',
         durationMs: 100,
-        model: 'parakeet-tdt-0.6b-v3-int8',
+        model: 'parakeet-tdt-0.6b-v3-q8',
         waitMs: expect.any(Number)
       }
     ])
@@ -1133,10 +1134,10 @@ describe('the on-device engine', () => {
     expect(app.invoke('engine:get-status', true)).toEqual({
       engine: 'local',
       model: {
-        id: 'parakeet-tdt-0.6b-v3-int8',
+        id: 'parakeet-tdt-0.6b-v3-q8',
         state: 'missing',
         receivedBytes: 0,
-        totalBytes: 670_478_772,
+        totalBytes: 935_230_867,
         error: null
       },
       ready: false,
@@ -1182,7 +1183,7 @@ describe('the on-device engine', () => {
     app.engine.finishDownload()
     await app.settle()
     expect(lastEngineBroadcast(app)).toMatchObject({
-      model: { state: 'installed', receivedBytes: 670_478_772, error: null },
+      model: { state: 'installed', receivedBytes: 935_230_867, error: null },
       ready: true,
       notReadyReason: null
     })

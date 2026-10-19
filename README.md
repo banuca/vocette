@@ -2,7 +2,7 @@
 
 Dictation for Windows that runs on your PC. Hold a shortcut, speak, let go — your words are typed into the app you were in, tidied up, with your own names and terms spelled right.
 
-- **On this PC, by default.** Speech is transcribed on your computer by NVIDIA's Parakeet v3 model (25 European languages). No account and no API key: once the 670 MB model is downloaded, nothing you say leaves your computer, and dictation needs no internet connection. On the laptop it is developed on, the text is ready about half a second after you let go.
+- **On this PC, by default.** Speech is transcribed on your computer by NVIDIA's Parakeet v3 model (25 European languages). No account and no API key: once the 935 MB model is downloaded, nothing you say leaves your computer, and dictation needs no internet connection. On the laptop it is developed on, the text is ready about half a second after you let go.
 - **Or a cloud provider of your choice.** OpenAI, Groq, Azure or any OpenAI-compatible server, with your own key — or a server of your own that needs none.
 - **Free, and genuinely good.** Everyone gets Pro free for 30 days. After that, Free keeps everything dictation needs, for good. Pro — US$4.99 a month or US$49 a year — is for power users: long vocabulary and snippet lists, and AI polish.
 
@@ -51,7 +51,7 @@ Download the Windows installer (`.exe`) or the portable `.zip` from [Releases](.
 
 Builds are **not code-signed yet**, so Windows SmartScreen warns on first run — see [SECURITY.md](SECURITY.md). Install one only if you trust the source you got it from, or build it yourself from this repo. Uninstalling keeps your settings, history and the speech model; delete `%APPDATA%\Murmur` and `%LOCALAPPDATA%\Murmur` to remove them too.
 
-On first run, History opens on **Get started**: press **Download** to fetch the speech model (670 MB, once), and dictation then runs on your PC with nothing sent anywhere. The download shows its progress, can be cancelled and resumed, and is checked before first use. Prefer a cloud provider? Choose **Cloud, with your API key** under **Settings → Transcription** and add your key there — for OpenAI, create one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
+On first run, History opens on **Get started**: press **Download** to fetch the speech model (935 MB, once), and dictation then runs on your PC with nothing sent anywhere. The download shows its progress, can be cancelled and resumed, and is checked before first use. Prefer a cloud provider? Choose **Cloud, with your API key** under **Settings → Transcription** and add your key there — for OpenAI, create one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
 
 ## Free and Pro
 
@@ -96,7 +96,7 @@ On Wayland the shortcut is registered with the desktop portal rather than observ
 
 | Setting | Notes |
 | --- | --- |
-| Transcription | **On this PC** (default): the Parakeet v3 model, downloaded once (670 MB) into `%LOCALAPPDATA%\Murmur\models`, checked against pinned SHA-256 hashes before first use, and unloaded after 5 minutes of rest to give its memory back. **Cloud, with your API key**: the fields below. |
+| Transcription | **On this PC** (default): the Parakeet v3 model, downloaded once (935 MB) into `%LOCALAPPDATA%\Murmur\models`, checked against pinned SHA-256 hashes before first use, and unloaded after 5 minutes of rest to give its memory back. **Cloud, with your API key**: the fields below. |
 | Recording mode | Hold to talk, or press to start and stop. Stored as a preference even where the platform cannot honour it. |
 | Shortcut | Any 1–4 key chord. Quick picks for the common ones. |
 | Start after holding for | Instantly / 150 / 250 / 400 ms. Keep a delay for modifier-only chords. |
@@ -184,7 +184,7 @@ Every window runs with `contextIsolation: true`, `sandbox: true`, `nodeIntegrati
 
 Every network request Vocette can make, and when:
 
-1. **The speech model**, once, from `huggingface.co` (a pinned commit, SHA-256 checked), when you press **Download**.
+1. **The speech model**, once, from `github.com` (a fixed release, SHA-256 checked), when you press **Download**.
 2. **Cloud transcription**, only if you chose **Cloud**: each recording and your vocabulary go to the endpoint you configured, with your key.
 3. **AI polish**, only if you switched it on (Pro): the text of each dictation — never the audio — with your instructions and vocabulary, to the provider you chose.
 4. **Pro**, only with a licence key activated: your key and a device label to Polar when you press **Activate**, then a check of your subscription at most once a day.

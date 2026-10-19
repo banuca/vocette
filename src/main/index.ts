@@ -33,7 +33,7 @@ import {
 import { loadCommonWords } from './common-words'
 import { LocalEngine, type WorkerHandle } from './engine/local-engine'
 import { ModelStore, ModelStoreError, modelsRoot, type DownloadProgress } from './engine/model-store'
-import { LOCAL_MODEL } from './engine/models'
+import { LOCAL_MODEL, RETIRED_MODEL_IDS } from './engine/models'
 import { restoreSnapshot, takeSnapshot, type ClipboardSnapshot } from './clipboard-custody'
 import { recordHistoryWithRetention } from './history-retention'
 import { migrateLegacyProfile } from './legacy-profile'
@@ -1767,6 +1767,9 @@ async function bootstrap(): Promise<void> {
     // a managed network's proxy and TLS inspection both need.
     fetch: (url, init) => net.fetch(url, init)
   })
+  // A model an earlier version downloaded can't be loaded by this one, so its
+  // folder is only disk space. In the background: it never delays the launch.
+  void modelStore.removeRetired(RETIRED_MODEL_IDS)
   // The same network stack, for activation and the daily subscription check.
   licenceClient = new LicenceClient({ fetch: (url, init) => net.fetch(url, init) })
   subscriptionChecker = new SubscriptionChecker({
