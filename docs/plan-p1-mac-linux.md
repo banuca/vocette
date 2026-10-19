@@ -106,3 +106,11 @@ Pick: **dynrr**. Same size and speed, no worse accuracy. Files (bench names → 
 
 Next (after owner OK to publish): release `model-parakeet-v3-q8-2` with these four files;
 manifest id `parakeet-tdt-0.6b-v3-q8rr`, retire `-q8`; release notes; model check on main.
+
+## Switched (19 Oct)
+
+Published `model-parakeet-v3-q8-2` (owner OK); manifest id `parakeet-tdt-0.6b-v3-q8rr`, `-q8`
+retired. CI run 39300274141 downloaded it from the release on all three and transcribed both
+recordings: Windows on **EPYC 7763 (Zen 3, the CPU that garbled q8)**, Linux on EPYC 9V45,
+macOS on M1. Real-app dictation on the owner's PC (e2e/diagnostics-check.mjs) PASS.
+Step 2 done. Next: step 3, Mac builds that open (arm64 only).
