@@ -1,0 +1,19 @@
+# Vocette opt-in counts. Deploy: npx wrangler deploy (from this folder), after
+# `npx wrangler d1 create vocette-counts` has filled in database_id below and
+# `npx wrangler d1 execute vocette-counts --remote --file schema.sql` has made the table.
+name = "vocette-counts"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+
+# Needs vocette.com's DNS on Cloudflare.
+routes = [{ pattern = "counts.vocette.com", custom_domain = true }]
+
+# No request logs: they would hold IP addresses the table deliberately doesn't.
+[observability]
+enabled = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vocette-counts"
+database_id = "FILL-IN-AFTER-d1-create"
