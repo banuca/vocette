@@ -120,3 +120,17 @@ friend, Linux by the owner). This replaces the brief's "Windows only for now".
 
 Mobbin: needs a paid plan (every search refused). Web inspiration research running instead:
 side-session notes folder, `site-inspiration.md`.
+
+## Facts from go-live for the privacy page (from the project session, 19 Oct)
+
+1. The on-device model now downloads from GitHub (pre-release `model-parakeet-v3-q8-1` on
+   banuca/vocette), 935 MB (was 670 MB), SHA-256 checked; Vocette's own int8 build of NVIDIA
+   Parakeet TDT 0.6B v3 (CC-BY-4.0). privacy.html still says Hugging Face. The home FAQ says
+   "about 700 MB of disk space": fix to match.
+2. 0.8.0 opt-in counts, off by default ("Help improve Vocette", first-run card and About):
+   once a day, one POST to counts.vocette.com with version, system, engine, plan, weeks since
+   install, days dictated and dictations in the last 7 days, and whether the free limit was
+   reached. No words, audio or ID; server stores the UTC day, no IP. About → "Show what is
+   sent". Switching off deletes the local tally. Source: README "Privacy" items 1 and 6,
+   SECURITY.md item 6.
+These also feed the "What leaves your computer" table idea (site-inspiration.md idea 2).
