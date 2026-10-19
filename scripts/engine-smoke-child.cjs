@@ -66,7 +66,7 @@ function readWav(path) {
       text: recogniser.getResult(stream).text.trim(),
     });
   }
-  console.log(JSON.stringify({ loadMs, decoded }));
+  console.log(JSON.stringify({ loadMs, cpu: os.cpus()[0]?.model, threads: os.availableParallelism(), decoded }));
 })().catch((error) => {
   console.error(error?.stack ?? String(error));
   process.exit(1);

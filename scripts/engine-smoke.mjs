@@ -200,7 +200,7 @@ if (run.status !== 0) {
 const results = JSON.parse(run.stdout.trim().split("\n").at(-1));
 let failures = 0;
 console.log(
-  `ok    engine loaded in ${results.loadMs} ms (${platform}-${arch}, ${app.exe})`,
+  `ok    engine loaded in ${results.loadMs} ms (${platform}-${arch}, ${results.cpu}, ${results.threads} threads, ${app.exe})`,
 );
 for (const recording of recordings) {
   const result = results.decoded.find((d) => d.name === recording.name);
