@@ -9,7 +9,7 @@ const sherpa = require(join(__dirname, '..', '..', 'node_modules', 'sherpa-onnx-
 // BENCH_MODEL=fp32 or fp16 uses that export, kept in the bench folder, instead of the app's
 // int8 model.
 const variant = process.env.BENCH_MODEL
-const bundled = variant !== 'fp32' && variant !== 'fp16'
+const bundled = !['fp32', 'fp16', 'q8dyn', 'q8nbits'].includes(variant)
 const modelDir = bundled
   ? join(process.env.LOCALAPPDATA, 'Murmur', 'models', 'parakeet-tdt-0.6b-v3-int8')
   : join(process.env.LOCALAPPDATA, 'vocette-bench', 'models', `parakeet-tdt-0.6b-v3-${variant}`)

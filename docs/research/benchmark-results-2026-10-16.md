@@ -167,3 +167,31 @@ path in fp32 (also avoids fp16 miscounting frames past 2048).
   leaving convolutions and the subsampling front end in fp32 (the shipped int8 export
   quantises everything dynamically, which is the likely cause of its empties and errors).
   Needs `onnxruntime` (for its quantisation tool) in the bench venv. Not tried.
+
+### Int8 made from the fp32 model (19 Oct)
+
+Owner approved installing onnxruntime 1.31.0 (+ its onnx-ir dependency) in the bench venv.
+`e2e/bench/to-int8.py`. The app's runtime is onnxruntime 1.28.2 (bundled in
+sherpa-onnx-win-x64); both variants load in it.
+
+| | int8 (shipping) | fp16 | **q8dyn** | q8nbits |
+|---|---|---|---|---|
+| How | sherpa-onnx export, every op | fp32 weights halved | dynamic int8, MatMul/Gemm only, per channel | weight-only 8-bit MatMulNBits |
+| WER, all 20 | 21.2% | 9.8% | **11.1%** | 9.8% |
+| Empty takes | 2 | 0 | 0 | 0 |
+| Openings | 12/20 | 14/20 | 13/20 | 14/20 |
+| Decode p50 / p90 | 0.64 / 1.20 s | 0.89 / 1.71 s | **0.41 / 0.86 s** | 3.62 / 4.58 s |
+| Process memory | 0.84 GB | 2.55 GB | **1.04 GB** | 1.10 GB |
+| Files on disk | ~0.65 GB | 1.28 GB | 0.94 GB | 1.00 GB |
+
+- **q8dyn is the candidate:** half the shipping model's error rate, no empties, faster than
+  what ships, at +0.2 GB memory and +0.3 GB download. Differs from fp32 only on p05 and p14.
+  1.1 points above the Q2 pass mark (≤ 10%), on 20 clips.
+- q8nbits matches fp32 exactly but is ~4× slower: no fast 8-bit weight-only kernel on x64 CPU.
+- Why the shipped export is so much worse: most likely it quantises the convolution front end
+  too (our q8dyn leaves convs and subsampling in fp32). Not verified by inspection.
+- To ship q8dyn: host the converted files ourselves (the app downloads from
+  `huggingface.co/csukuangfj/...-int8` today; `src/main/engine/models.ts`), with sizes and
+  SHA-256 in the manifest, and the CC-BY-4.0 attribution kept. Model ID changes, so existing
+  installs download it once. Needs the owner's decision on where to host.
+- Not yet run through the app (instant capture, lead-in, cleanup), nor on Mac/Linux.
