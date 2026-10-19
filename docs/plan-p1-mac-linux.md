@@ -73,3 +73,36 @@ Fix plan (owner to approve):
 3. A manual CI workflow that builds the candidate from the pinned fp32 export and runs
    engine-smoke on the EPYC runners — nothing published.
 4. Publish the winner as `model-parakeet-v3-q8-2` (owner OK), manifest id `-q8b`, retire `-q8`.
+
+## Result of the fix test (19 Oct)
+
+Model-only, owner's PC (20 benchmark recordings, greedy):
+
+| Model | WER | Openings | Wait p50 |
+|---|---|---|---|
+| q8 dyn (published) | 11.1% | 13/20 | 277 ms |
+| **q8 dynrr (reduce_range)** | **10.1%** | **15/20** | **267 ms** |
+| q8 dynu8 (uint8 weights) | 11.1% | 13/20 | 468 ms |
+
+Model-check run 39296005272 (CI builds the models itself from the pinned fp32 export):
+
+| Runner CPU | dyn | dynrr | dynu8 |
+|---|---|---|---|
+| AMD EPYC 9V74 (Zen 4), Linux | **garbled** | ok | ok |
+| AMD EPYC 9V45 (Zen 5), Windows | ok | ok | ok |
+| Apple M1 (virtual), macOS | ok | ok | ok |
+
+Earlier run 39293449127: EPYC 7763 (Zen 3) garbled dyn on Windows and Linux.
+
+Correction: Zen 4 has AVX-512 VNNI and still garbles, so "CPUs without VNNI" is not the exact
+rule. What is proven: U8S8 without reduce_range garbles on some x86 CPUs (Zen 3, Zen 4 seen),
+and reduce_range fixes it on the same Zen 4 runner. dynrr not yet run on a Zen 3 runner.
+
+Pick: **dynrr**. Same size and speed, no worse accuracy. Files (bench names → app names):
+- encoder 881498555 f1103b2adcd067232a88d8f65d4918909be63c3fb84ebfe1bd0be6a42d14429b
+- decoder 47235689 167873a811f683e6ce94204887954297e77a2c6604a5121dcc234394a7fbfe3e (unchanged)
+- joiner 6402684 c1e0fea6822eae1c378810cf7d712907f352cf30e0dd4c9bcfea370d17d40151
+- tokens 93939 d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d (unchanged)
+
+Next (after owner OK to publish): release `model-parakeet-v3-q8-2` with these four files;
+manifest id `parakeet-tdt-0.6b-v3-q8rr`, retire `-q8`; release notes; model check on main.
