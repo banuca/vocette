@@ -25,7 +25,7 @@ import type { PublicSettings } from '../src/shared/types'
 const TEST_ENGINE: EngineStatus = {
   engine: 'cloud',
   model: {
-    id: 'parakeet-tdt-0.6b-v3-q8',
+    id: 'parakeet-tdt-0.6b-v3-q8rr',
     state: 'missing',
     receivedBytes: 0,
     totalBytes: 670_478_772,

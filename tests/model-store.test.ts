@@ -447,7 +447,7 @@ describe('ModelStore.remove', () => {
   })
 
   it('gives the model folder to the engine', () => {
-    expect(store(fakeServer({}).fetch).path(ID)).toBe(join(root, 'parakeet-tdt-0.6b-v3-q8'))
+    expect(store(fakeServer({}).fetch).path(ID)).toBe(join(root, 'parakeet-tdt-0.6b-v3-q8rr'))
   })
 })
 

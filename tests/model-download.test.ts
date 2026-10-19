@@ -28,7 +28,7 @@ function status(state: ModelState, patch: Partial<ModelStatus> = {}): EngineStat
   return {
     engine: 'local',
     model: {
-      id: 'parakeet-tdt-0.6b-v3-q8',
+      id: 'parakeet-tdt-0.6b-v3-q8rr',
       state,
       receivedBytes: state === 'installed' ? TOTAL : 0,
       totalBytes: TOTAL,

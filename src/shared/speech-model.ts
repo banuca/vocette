@@ -8,7 +8,7 @@
  * cannot drift apart.
  */
 export interface SpeechModelInfo {
-  id: 'parakeet-tdt-0.6b-v3-q8'
+  id: 'parakeet-tdt-0.6b-v3-q8rr'
   /** How the Settings row names it. */
   displayName: string
   /** The family name, for a sentence about what it can and cannot do. */
@@ -24,7 +24,7 @@ export interface SpeechModelInfo {
  * its matrix weights made int8 by Vocette (CC-BY asks that changes be named).
  */
 export const PARAKEET_V3_INFO: SpeechModelInfo = {
-  id: 'parakeet-tdt-0.6b-v3-q8',
+  id: 'parakeet-tdt-0.6b-v3-q8rr',
   displayName: 'Parakeet v3',
   shortName: 'Parakeet',
   languages: [

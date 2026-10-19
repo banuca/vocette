@@ -1081,7 +1081,7 @@ describe('the on-device engine', () => {
       {
         text: 'Hello from this PC.',
         durationMs: 100,
-        model: 'parakeet-tdt-0.6b-v3-q8',
+        model: 'parakeet-tdt-0.6b-v3-q8rr',
         waitMs: expect.any(Number)
       }
     ])
@@ -1135,7 +1135,7 @@ describe('the on-device engine', () => {
     expect(app.invoke('engine:get-status', true)).toEqual({
       engine: 'local',
       model: {
-        id: 'parakeet-tdt-0.6b-v3-q8',
+        id: 'parakeet-tdt-0.6b-v3-q8rr',
         state: 'missing',
         receivedBytes: 0,
         totalBytes: 935_230_867,

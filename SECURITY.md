@@ -85,7 +85,7 @@ window to make a paste succeed.
 This is the complete list. Each one happens only when stated.
 
 1. **Speech model download** — once, when the user presses **Download**: the
-   model files from `github.com` (assets of the `model-parakeet-v3-q8-1`
+   model files from `github.com` (assets of the `model-parakeet-v3-q8-2`
    pre-release of `banuca/vocette`, served from GitHub's download host),
    through Electron's network stack. They are Vocette's int8 build of
    `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3` (`e2e/bench/to-int8.py`). Every file is checked against a pinned SHA-256 before first

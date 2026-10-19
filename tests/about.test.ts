@@ -123,7 +123,7 @@ function render(
     engine: {
       engine,
       model: {
-        id: 'parakeet-tdt-0.6b-v3-q8',
+        id: 'parakeet-tdt-0.6b-v3-q8rr',
         state: 'missing',
         receivedBytes: 0,
         totalBytes: 670_478_772,

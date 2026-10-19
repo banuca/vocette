@@ -45,7 +45,7 @@ function onThisPc(state: ModelState = 'installed'): EngineStatus {
   return {
     engine: 'local',
     model: {
-      id: 'parakeet-tdt-0.6b-v3-q8',
+      id: 'parakeet-tdt-0.6b-v3-q8rr',
       state,
       receivedBytes: ready ? TOTAL : 0,
       totalBytes: TOTAL,

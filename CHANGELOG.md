@@ -18,10 +18,11 @@ All notable changes to this project are documented here. This project adheres to
 
 - **On-device dictation makes about half as many mistakes**, and no longer returns nothing
   for a take it struggled with. Vocette builds its own int8 version of the Parakeet v3
-  model from the full-precision original: on our 20-passage test it gets 11% of words wrong
+  model from the full-precision original: on our 20-passage test it gets 10% of words wrong
   where the old model got 21%, and it is faster. The download is 935 MB instead of 670 MB and
   it uses about 0.2 GB more memory while dictating. If you already use the on-device engine,
-  Vocette asks you to download the new model once and deletes the old one.
+  Vocette asks you to download the new model once and deletes the old one. It is checked on
+  Intel, AMD and Apple processors before every release.
 
 ## [0.7.0] — unreleased
 

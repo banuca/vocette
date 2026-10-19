@@ -17,7 +17,7 @@ export interface ModelFile {
 }
 
 export interface ModelManifest {
-  id: 'parakeet-tdt-0.6b-v3-q8'
+  id: 'parakeet-tdt-0.6b-v3-q8rr'
   displayName: string
   languages: readonly string[]
   licence: string
@@ -28,17 +28,21 @@ export interface ModelManifest {
 
 /**
  * Vocette's own int8 build of the full-precision sherpa-onnx export
- * (`e2e/bench/to-int8.py`), published as assets of a pre-release so the
+ * (`e2e/bench/to-int8.py dynrr`), published as assets of a pre-release so the
  * update check never mistakes it for a version of the app.
  */
 const BASE_URL =
-  'https://github.com/banuca/vocette/releases/download/model-parakeet-v3-q8-1/'
+  'https://github.com/banuca/vocette/releases/download/model-parakeet-v3-q8-2/'
 
 /**
  * Models earlier versions downloaded. Their folders are deleted once the
- * current model is installed, so an update doesn't leave 650 MB behind.
+ * current model is installed, so an update doesn't leave up to 935 MB behind.
+ * `-q8` garbled speech on some x86 processors (docs/plan-p1-mac-linux.md).
  */
-export const RETIRED_MODEL_IDS: readonly string[] = ['parakeet-tdt-0.6b-v3-int8']
+export const RETIRED_MODEL_IDS: readonly string[] = [
+  'parakeet-tdt-0.6b-v3-int8',
+  'parakeet-tdt-0.6b-v3-q8'
+]
 
 /** The file roles the recogniser is configured with, by name. */
 export const PARAKEET_FILES = {
@@ -53,7 +57,7 @@ const files: readonly ModelFile[] = [
     name: PARAKEET_FILES.encoder,
     url: `${BASE_URL}${PARAKEET_FILES.encoder}`,
     bytes: 881_498_555,
-    sha256: 'c5cdff28d4ac8690b3e3f7780ac5089586d87a2800cebf0ed5d5a128e94f2b86'
+    sha256: 'f1103b2adcd067232a88d8f65d4918909be63c3fb84ebfe1bd0be6a42d14429b'
   },
   {
     name: PARAKEET_FILES.decoder,
@@ -65,7 +69,7 @@ const files: readonly ModelFile[] = [
     name: PARAKEET_FILES.joiner,
     url: `${BASE_URL}${PARAKEET_FILES.joiner}`,
     bytes: 6_402_684,
-    sha256: '2de5c9796ae6d01e075161d6d25416fa9b19dcac130715401470545ddc51191b'
+    sha256: 'c1e0fea6822eae1c378810cf7d712907f352cf30e0dd4c9bcfea370d17d40151'
   },
   {
     name: PARAKEET_FILES.tokens,
