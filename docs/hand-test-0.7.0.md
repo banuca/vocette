@@ -10,13 +10,15 @@ the processing off (noise, quiet voice), the first dictation after a real start,
 
 | # | Step | Expected | Result |
 |---|---|---|---|
-| 1 | Quit Vocette from the tray; install 0.7.0 over 0.6.7 | Installs; resting pill appears | |
-| 2 | Straight away, dictate into Notepad: "Remind me to send the invoice on Friday." | Every word, including "Remind me", and it pastes | |
-| 3 | Dictate a longer sentence with some background noise (a video playing quietly) | Accurate; no worse than before | |
-| 4 | Dictate quietly, close to a whisper | Text arrives (no AGC now); note if words go missing | |
-| 5 | Start a dictation and, while talking, move the pointer onto the open pill (K11) | It fades while the pointer is on it | |
-| 6 | Make Vocette's window as narrow as it goes (K2) | Five History numbers stay in one row | |
-| 7 | Ctrl and + twice, then Ctrl and 0 | 3 + 2 numbers, "Export .txt" on one line; back to normal | |
+| 1 | Quit Vocette from the tray; install 0.7.0 over 0.6.7 | Installs; resting pill appears | Pass (19 Oct) |
+| 2 | Straight away, dictate into Notepad: "Remind me to send the invoice on Friday." | Every word, including "Remind me", and it pastes | Pass (19 Oct), exact text |
+| 3 | Dictate a longer sentence with some background noise (a video playing quietly) | Accurate; no worse than before | Pass (19 Oct): exact, including a longer take with music raised six levels while talking |
+| 4 | Dictate quietly, close to a whisper | Text arrives (no AGC now); note if words go missing | Pass (19 Oct): whispered, exact |
+| 5 | Start a dictation and, while talking, move the pointer onto the open pill (K11) | It fades while the pointer is on it | Pass (19 Oct): owner says it "disappears" while hovered and comes back on leaving; text pasted |
+| 6 | Make Vocette's window as narrow as it goes (K2) | Five History numbers stay in one row | Pass (19 Oct): screenshot at 842 px, five in one row |
+| 7 | Ctrl and + twice, then Ctrl and 0 | 3 + 2 numbers, "Export .txt" on one line; back to normal | Zoomed: pass (screenshot, 3 + 2, Export .txt one line). Minor: search placeholder clipped ("Search your dictation…"). Ctrl+0 back to normal: pass |
+
+**Result (19 Oct): 7/7 pass.** Follow-up for 0.8.0: the search placeholder clips at narrow width with zoom.
 
 Still unproven after this: K8 install-and-restart (needs a published release feed), the
 NSIS uninstall removing the Run entry, S6 on a non-English Windows, the first-run card on a
