@@ -7,6 +7,8 @@ name: Model check
 # check changes, or by hand once the workflow is on main.
 on:
   push:
+    # Branches only: a tag push ignores path filters and would rebuild every model.
+    branches: ['**']
     paths:
       - e2e/bench/to-int8.py
       - .github/workflows/model-check.yml

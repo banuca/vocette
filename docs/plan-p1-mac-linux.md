@@ -150,3 +150,11 @@ Changes:
    published pre-release.
 
 Not in this build: M2 legal text (needs O2), search placeholder fix, payments live (O3).
+
+## Step 4 built (20 Oct)
+
+Tag v0.8.0-beta.1, CI run 39331728565: all checks green; draft release (draft, pre-release) holds
+exe, zip, dmg, mac zip, deb, AppImage, blockmaps, latest.yml / latest-linux.yml / latest-mac.yml
+(all name 0.8.0-beta.1 and the right files) and SHA256SUMS.txt; GitHub digests match the CI log.
+A beta app asks for beta.yml first and falls back to latest.yml. Unproven: the update path
+beta.1 → beta.2, and installing on real machines. Waiting for the owner OK to publish.
