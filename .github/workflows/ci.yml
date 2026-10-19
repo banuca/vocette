@@ -90,6 +90,28 @@ jobs:
         shell: bash
         run: node scripts/check-native-packaging.mjs
 
+      # The Mac app has to carry a valid (ad-hoc) signature on every file, with
+      # the microphone entitlement, or Apple silicon will not open it. The DMG's
+      # copy is checked too: it is what testers install.
+      - name: Check the Mac app's signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=$(ls -d dist/mac-arm64/*.app)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          info=$(codesign -dv "$app" 2>&1)
+          grep 'Signature=adhoc' <<< "$info"
+          grep -E 'flags=.*runtime' <<< "$info"
+          entitlements=$(codesign -d --entitlements - --xml "$app" 2>/dev/null)
+          grep -q com.apple.security.device.audio-input <<< "$entitlements"
+          find "$app" \( -name '*.node' -o -name '*.dylib' \) -exec codesign --verify --strict {} +
+          mnt=$(mktemp -d)
+          hdiutil attach -nobrowse -readonly -mountpoint "$mnt" dist/*-mac-arm64.dmg > /dev/null
+          codesign --verify --deep --strict "$mnt"/*.app
+          hdiutil detach "$mnt" > /dev/null
+          echo "Mac app and DMG are signed (ad-hoc, hardened runtime, microphone entitlement)."
+
       # The model (935 MB) and two public test recordings, kept between runs.
       # The key changes whenever the app's model manifest does.
       - uses: actions/cache@v4

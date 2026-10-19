@@ -77,10 +77,12 @@ nsis:
 
 mac:
   target:
+    # Apple silicon only for now: the testers' Macs are all Apple silicon, and
+    # an x64 build cross-built on an arm64 runner would ship the arm64 engine.
     - target: dmg
-      arch: [arm64, x64]
+      arch: [arm64]
     - target: zip
-      arch: [arm64, x64]
+      arch: [arm64]
   icon: resources/icon.png
   category: public.app-category.productivity
   artifactName: ${productName}-${version}-mac-${arch}.${ext}
@@ -105,6 +107,12 @@ mac:
   # signed and notarised build. Left as it is, electron-builder produces an
   # unsigned app — see SECURITY.md.
   notarize: false
+  # Ad-hoc signature ("-"): no certificate, but Apple silicon refuses to run an
+  # app whose signature was broken by packaging, so every file is re-signed.
+  # Gatekeeper still treats it as from an unidentified developer ("Open
+  # Anyway" in Privacy & Security). Remove this line once a Developer ID
+  # certificate is configured.
+  identity: '-'
 
 dmg:
   artifactName: ${productName}-${version}-mac-${arch}.${ext}

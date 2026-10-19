@@ -30,7 +30,7 @@ Your choice of mode is stored as a preference. If you move to a session that can
 
 ## What works where
 
-**Windows is the platform Vocette is built and verified on.** The code also has macOS and Linux adapters, and the tables below say what each is designed to do, but those have never been run on real hardware, and no macOS or Linux build is published. The on-device engine has been run on Windows x64 only.
+**Windows is the platform Vocette is built and verified on.** The code also has macOS and Linux adapters, and the tables below say what each is designed to do, but those have never been run on real hardware, and no macOS or Linux build is published. Every build checks that the on-device engine transcribes in the packaged app on Windows x64, macOS (Apple silicon) and Linux x64; nothing else has been checked off Windows. The macOS build is for Apple silicon only and has an ad-hoc signature, not an Apple certificate.
 
 Designed behaviour, by platform — every one can open the app, record from the window, transcribe, copy and keep local history; a global shortcut and automatic paste are the parts that vary:
 

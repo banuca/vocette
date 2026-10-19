@@ -11,7 +11,11 @@ were running.
 Released Windows binaries are unsigned until a code-signing certificate is in
 place. On first run Windows SmartScreen will show *"Windows protected your PC"*;
 the warning is about the missing signature, not about anything the app does.
-No macOS or Linux build is published.
+No macOS or Linux build is published. The macOS build, for Apple silicon only,
+carries an ad-hoc signature: it proves the files have not changed since the
+build, but it is not tied to an Apple Developer ID and is not notarised, so
+macOS says it is from an unidentified developer until you choose **Open
+Anyway** in System Settings → Privacy & Security.
 
 The signing and notarisation configuration is present in
 `electron-builder.yml`, deliberately without credentials. Nothing in this
