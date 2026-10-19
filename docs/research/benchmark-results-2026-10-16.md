@@ -195,3 +195,22 @@ sherpa-onnx-win-x64); both variants load in it.
   SHA-256 in the manifest, and the CC-BY-4.0 attribution kept. Model ID changes, so existing
   installs download it once. Needs the owner's decision on where to host.
 - Not yet run through the app (instant capture, lead-in, cleanup), nor on Mac/Linux.
+
+### q8 model through the app (19 Oct)
+
+Published as pre-release `model-parakeet-v3-q8-1` (owner approved); all four assets re-downloaded
+and hash-matched; `/releases/latest` still v0.4.0. `e2e/bench/fresh-download.test.ts`: the app's
+ModelStore fetched it from GitHub, was stopped at 150 MB, resumed, verified. Then the dev build
+(commit 18109d4, its own models folder) on all 20 via VB-CABLE, `results/local-q8.jsonl`:
+
+| | 0.7.0 on-device | **q8 on-device** | 0.7.0 cloud | Wispr Flow |
+|---|---|---|---|---|
+| WER, all 20 | 22.2% | **9.3%** | 10.1% | 7.7% |
+| WER, answered only | 22.2% | 9.3% | 7.6% | 5.2% |
+| Openings | 10/20 | 15/20 | 13/20 | 17/20 |
+| Wait p50 / p90 | 0.73 / 1.37 s | **0.46 / 0.74 s** | 1.01 / 1.66 s | 0.77 / 1.03 s |
+| Empty / not pasted | 0 / 0 | 0 / 0 | 1 / 1 | 1 / 1 |
+
+- Passes Q2 (≤ 10%, no empties) and the plan's ≤ 12% through the app.
+- Fastest of the four, including Wispr's wait.
+- Worse than 0.7.0 on-device only on p02 and p07 (one word each).

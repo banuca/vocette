@@ -31,7 +31,7 @@ Tags: **Q** product quality · **M** must before taking money · **S** conversio
    short time after each take). Mind the existing instant-capture behaviour and the Windows mic
    indicator (owner-launch-checklist, open questions). **Pass:** openings ≥ 17/20, and cloud
    WER within 1 point of Wispr's on the benchmark.
-2. **Q2 On-device accuracy.** Re-run after Q1. Then look for dropouts while the model prewarms
+2. **Q2 On-device accuracy. Done 19 Oct: 9.3% through the app with Vocette's int8 build (docs/plan-model-q8.md).** Re-run after Q1. Then look for dropouts while the model prewarms
    (CPU contention during capture), and at the three takes that returned nothing. **Pass:**
    on-device WER ≤ 10% with no empty takes. If it can't get there, it's the owner's decision:
    new users start on cloud (needs a hosted key or proxy, which costs money per word), or on
