@@ -1,7 +1,8 @@
 /*
  * Vocette website: the theme switch, the dictation demo, the pricing switch,
  * the step marker in How it works, and the light on the bento tiles.
- * No requests, no storage beyond the visitor's theme choice.
+ * No requests and no cookies. The only thing stored is the visitor's theme,
+ * in their own browser, and only after they press the theme button.
  */
 (function () {
   'use strict';
@@ -31,15 +32,6 @@
     mqDark.addEventListener('change', labelTheme);
   }
 
-  /* Download buttons name the visitor's system; Windows when unsure ------- */
-
-  var ua = navigator.userAgent || '';
-  var plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
-  var os = 'Windows';
-  if (/Mac/i.test(plat) && !/iPhone|iPad/i.test(ua)) os = 'macOS';
-  else if (/Linux/i.test(plat) && !/Android/i.test(ua)) os = 'Linux';
-  document.querySelectorAll('.dl-label').forEach(function (el) { el.textContent = 'Download for ' + os; });
-
   /* Headline words, for the load sequence -------------------------------- */
 
   var h1 = document.getElementById('hero-title');
@@ -59,7 +51,7 @@
     });
   });
 
-  /* Pricing switch -------------------------------------------------------- */
+  /* Pricing switch: prices as in README.md and src/shared/product.ts ------ */
 
   var billing = document.getElementById('billing');
   if (billing) {
@@ -67,10 +59,9 @@
     var per = document.getElementById('pro-per');
     var note = document.getElementById('pro-note');
     var tag = document.getElementById('pro-tag');
-    var buy = document.getElementById('pro-buy');
     var PLANS = {
-      yearly: { amount: 'US$49', per: 'a year', note: 'Or US$4.99 a month. Up to 10 computers, cancel any time.', tag: 'Two months free', buy: 'Subscribe yearly' },
-      monthly: { amount: 'US$4.99', per: 'a month', note: 'Or US$49 a year, two months free. Up to 10 computers, cancel any time.', tag: '', buy: 'Subscribe monthly' }
+      yearly: { amount: 'US$99', per: 'a year', note: 'Or US$9.99 a month.', tag: 'Saves a little over two months' },
+      monthly: { amount: 'US$9.99', per: 'a month', note: 'Or US$99 a year, which saves a little over two months.', tag: '' }
     };
     billing.classList.add('ready');
     billing.addEventListener('click', function (e) {
@@ -84,8 +75,6 @@
       note.textContent = p.note;
       tag.textContent = p.tag;
       tag.hidden = !p.tag;
-      buy.textContent = p.buy;
-      buy.href = buy.dataset[b.dataset.plan];
       amount.classList.remove('swap'); void amount.offsetWidth; amount.classList.add('swap');
     });
   }
@@ -110,30 +99,34 @@
   if (!stage) return;
 
   var ICONS = {
+    doc: '<svg class="ico" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>',
     mail: '<svg class="ico" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
-    chat: '<svg class="ico" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
-    code: '<svg class="ico" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>'
+    chat: '<svg class="ico" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
   };
 
-  /* Words in [brackets] are what clean-up removes. */
+  /*
+   * Words in [brackets] are what clean-up removes. Only the English scene has
+   * any: removing fillers and following spoken corrections work in English
+   * only (README, Limits), so the German and French scenes are typed as said.
+   */
   var SCENES = [
     {
-      app: 'Mail', icon: 'mail', title: 'New message',
-      body: '<div class="field"><span>To</span><b>Priya Shah</b></div><div class="field"><span>Subject</span><b>Thursday’s review</b></div><div class="doc"><p>Hi Priya,</p><p><span class="typed"></span><span class="caret"></span></p></div>',
-      said: '[Um,] so I think we should, [uh,] move the meeting to [Tuesday,] [no] [sorry,] Wednesday.',
-      wrote: 'So I think we should move the meeting to Wednesday.'
+      app: 'the document', icon: 'doc', title: 'Supply agreement (DE) — Document', lang: 'de',
+      body: '<div class="doc bi"><p class="doc-h">Article 12</p><p class="src-p"><span class="lang">EN</span>This agreement enters into force on the date of signature.</p><p><span class="lang">DE</span><span class="typed" lang="de"></span><span class="caret"></span></p></div>',
+      said: 'Dieser Vertrag tritt am Tag der Unterzeichnung in Kraft.',
+      wrote: 'Dieser Vertrag tritt am Tag der Unterzeichnung in Kraft.'
     },
     {
-      app: 'Chat', icon: 'chat', title: 'Design team',
-      body: '<div class="chat"><div class="bubble"><span class="who">Sam</span>How did the client demo go?</div><div class="compose"><span class="typed"></span><span class="caret"></span><span class="ph">Message Design team</span></div></div>',
-      said: '[It] [was,] [like,] [really] [good.] [Scratch] [that.] It was great. They want the pilot to start in March.',
-      wrote: 'It was great. They want the pilot to start in March.'
+      app: 'Mail', icon: 'mail', title: 'New message', lang: 'en',
+      body: '<div class="field"><span>To</span><b>Claire Martin</b></div><div class="field"><span>Subject</span><b>Signing appointment</b></div><div class="doc"><p>Dear Ms Martin,</p><p><span class="typed" lang="en"></span><span class="caret"></span></p></div>',
+      said: '[Um,] could we move the signing to [Tuesday,] [no] [sorry,] Wednesday?',
+      wrote: 'Could we move the signing to Wednesday?'
     },
     {
-      app: 'your code editor', icon: 'code', title: 'parser.ts — Code editor',
-      body: '<div class="code"><pre class="src"><b>export function</b> parseConfig(path: string) {\n  <b>if</b> (!existsSync(path)) <b>return</b> null\n  <b>return</b> JSON.parse(readFileSync(path, \'utf8\'))\n}</pre><div><span class="assist-label">Ask the assistant</span><div class="compose"><span class="typed"></span><span class="caret"></span></div></div></div>',
-      said: '[Uh,] change the parser so it returns an empty list instead of null.',
-      wrote: 'Change the parser so it returns an empty list instead of null.'
+      app: 'Chat', icon: 'chat', title: 'Translation team', lang: 'fr',
+      body: '<div class="chat"><div class="bubble" lang="fr"><span class="who">Camille</span>Tu peux relire la traduction demain ?</div><div class="compose"><span class="typed" lang="fr"></span><span class="caret"></span><span class="ph">Message Translation team</span></div></div>',
+      said: 'Oui, je te la renvoie avant midi.',
+      wrote: 'Oui, je te la renvoie avant midi.'
     }
   ];
 
@@ -174,7 +167,7 @@
   function setState(s) {
     stage.dataset.state = s;
     if (s === 'rec') { msg.textContent = 'Listening…'; detail.textContent = 'Release Left Ctrl + Left Shift to finish'; }
-    if (s === 'proc') { msg.textContent = 'Writing…'; detail.textContent = 'Cleaning up what you said'; }
+    if (s === 'proc') { msg.textContent = 'Writing…'; detail.textContent = 'On this PC'; }
     if (s === 'ok') { msg.textContent = 'Pasted'; detail.textContent = 'Into ' + SCENES[idx].app; }
   }
   function settleBars() { waves.forEach(function (b) { b.style.transform = ''; }); }
@@ -228,7 +221,8 @@
     winTitle.textContent = sc.title;
     winBody.innerHTML = sc.body;
     winBody.classList.remove('swap'); void winBody.offsetWidth; winBody.classList.add('swap');
-    heard.innerHTML = '<span class="lbl">You say</span>';
+    heard.setAttribute('lang', sc.lang);
+    heard.innerHTML = '<span class="lbl" lang="en-GB">You say</span>';
     heard.classList.remove('cleaned');
     keys.classList.remove('down');
     settleBars();
