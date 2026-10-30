@@ -9,8 +9,8 @@ Started 16 Oct 2026. Branch `banuca/site-redesign-0ca039`. Site only (`site/`); 
 | 0 | Design direction artifact | Published, waiting for the owner: https://claude.ai/artifact/W2pPKzB1pGkDtuPaZ6PsvS |
 | 1 | Home page rebuilt, pricing switch included (direction approved 16 Oct) | Built, checked, waiting for the owner's preview |
 | 2 | (merged into step 1) | — |
-| 3 | Legal pages (privacy, terms, refund) in the new style | Not started |
-| 4 | Owner preview and approval | Not started |
+| 3 | Legal pages (privacy, terms, refund) in the new style | Built on branch `site-v2` (30 Oct), see the last section |
+| 4 | Owner preview and approval | Preview deployed 30 Oct (`site-v2`), waiting for the owner |
 
 ## The direction: "Graphite, lit by one red light"
 
@@ -151,3 +151,84 @@ These also feed the "What leaves your computer" table idea (site-inspiration.md 
 - Resolved (owner via CEO session, 30 Oct): "remove the 10K ceiling" meant the US$10k revenue goal. Free stays at 10,000 words a month; keep it in the copy.
 
 - Fact (CEO session, 30 Oct): model stays loaded 30 minutes after the last dictation (was 5); change "five minutes of rest" in the FAQ. New and fine to say: transcripts are kept out of Windows clipboard history and cloud sync.
+
+## 30 Oct: site-v2 build and Cloudflare Pages preview (web-engineer agent)
+
+Branch `site-v2`, cut from `banuca/site-redesign-0ca039` at ae87c30 (that worktree untouched).
+Brief: CEO session, owner-authorised 30 Oct ("proceed with the entire task, including the build
+of the website"). Not pushed, not merged.
+
+**Pages.** `/` (home, with the pricing section), `/translators`, `/privacy`, `/terms`, `/refund`,
+and `404.html` (without it Pages serves the home page for any unknown address). Links use clean
+URLs: Pages serves `x.html` at `/x`, and `/x.html` gets a 308 to `/x`.
+
+**Download URL: one place.** `site/_redirects`: `/download` → the v0.8.0-beta.1 win-x64 `.exe`
+(302), `/download/betas` → the v0.8.0-beta.1 release page. Every button links to those paths.
+A new release is a one-line change there. The SmartScreen note sits under every primary
+download button.
+
+**Preview.** Project `vocette-site`, production branch `main` (never deployed:
+`vocette-site.pages.dev` answers 404). Preview alias `https://preview.vocette-site.pages.dev`.
+Wrangler 4.156 now hands `pages project create` to "Pages in Workers", which fails in a folder
+with no Wrangler config; the project was created with `--force` (classic Pages), as Wrangler's
+own notice says. Later deploys need no flag:
+`npx wrangler pages deploy site --project-name vocette-site --branch preview`.
+
+**Placeholders (visible, monospace).** `[SELLER NAME]` and `[POSTAL ADDRESS]`: privacy.html
+("Who is responsible"), terms.html ("Who we are"), refund.html (box at the end).
+`[GOVERNING LAW]`: terms.html. Switzerland was removed because the owner now plans to register
+the business in Sri Lanka (ceo-decision.md, 30 Oct).
+
+**Sources for the copy.** README.md and SECURITY.md on go-live (9e40f1c): network list, Free/Pro
+table, requirements, limits, betas. src/shared/product.ts: US$9.99/US$99, 10 devices, 50/500
+words, 20/200 replacements, 30-day trial and grace. CHANGELOG [Unreleased]: 30 minutes,
+clipboard history. NVIDIA model card (fetched 30 Oct): the 25 FLEURS error rates, credited to
+NVIDIA, with its European Portuguese note.
+
+**Gaps and decisions for the CEO.**
+- The download is beta.1, which predates the site's facts: in-app Pro is US$4.99/US$49 with
+  the launch offer, memory is freed after 5 minutes, transcripts still reach clipboard history.
+  Point `/download` at beta.2 before go-live.
+- support@vocette.com is on every page, but Email Routing is not set up yet: mail to it fails
+  until it is. Go-live blocker.
+- No Polar checkout on the site: Polar is not repriced yet. Pro's button downloads (trial
+  first) and the text says to subscribe in the app. Add checkout links once Polar charges
+  US$9.99/US$99.
+- Teams: price and seats only, pilot by mailto. No feature claims (none are built).
+- The privacy page links the repository, not SECURITY.md: main still shows Murmur's
+  SECURITY.md. Link it once main is updated.
+- No og:image, og:url or canonical yet: add them with the final domain.
+- At go-live on vocette.com: turn off Scrape Shield "Email Address Obfuscation" for the zone,
+  or Cloudflare injects an email-decode script into every page (the site promises no
+  third-party scripts).
+- Removed: the Wispr price tile, the 10,000-word meter tile, the OS-detecting button label (the
+  button always says Windows; the Mac and Linux betas are small links in the footer and FAQ).
+- The demo's scenes: German translation and French chat typed as said (clean-up is English
+  only), English email with fillers and "no sorry" removed (backed by the 0.6.0 changelog).
+- FAQ "Who makes Vocette?" says one developer (CMO's honest-limits list). The owner may
+  prefer to drop it.
+- Not done, not in the brief: a real demo video, a comparison row, a Mac/Linux waitlist,
+  analytics.
+
+**Checked (30 Oct).**
+- `wrangler pages dev site`: pages 200, unknown address 404, `/download` 302 to the `.exe`,
+  `/download/betas` 302 to the release page, `/privacy.html` 308 to `/privacy`.
+- Headless Chrome through the DevTools protocol with device emulation (scratchpad
+  `snap.mjs`; plain headless Chrome on Windows will not go below ~500 px): full pages at
+  1280 px light and 375 px light and dark, for home, translators, privacy, terms, refund and
+  404. scrollWidth equals the width on all of them.
+- Pricing switch: monthly US$9.99 (tag hidden), yearly US$99 with "Saves a little over two
+  months".
+- grep of site/: no example.com, `href="#"`, unlimited, US$5/US$50/US$4.99/US$49, three
+  computers, 700/670 MB, ITU, Kirinde, half price, first 100, launch offer, "third of",
+  ordinary people, Wispr. No outside scripts, styles or fonts; no cookies.
+- Outside links answer 200: Polar portal, GitHub repository, release page, model card.
+- Live preview (deployment cbf4fc42, alias `preview`): five pages, CSS, JS and icons 200 with
+  `X-Robots-Tag: noindex` and no Set-Cookie; unknown address 404; `/download` and
+  `/download/betas` 302 to GitHub; `/privacy.html` 308 to `/privacy`; title and og: tags
+  served; `vocette-site.pages.dev` (production) 404. Full-page screenshots of the preview
+  home page at 1280 px light and 390 px dark: no overflow, nothing broken. The new
+  subdomain's certificate took about a minute after the first deploy.
+
+**Not checked.** Firefox, Safari, a real phone, Windows ClearType at display sizes, the
+installer itself, what the Polar portal shows, mail to support@vocette.com.
