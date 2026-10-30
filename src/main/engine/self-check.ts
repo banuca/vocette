@@ -8,19 +8,16 @@
  * transcribes a short known recording, and is trusted only if the words come
  * back.
  *
- * The recording, `resources/self-check.wav`, is the line "Ask not what your
- * country can do for you" from John F. Kennedy's inaugural address (1961), a
- * work of the US federal government and so in the public domain. It comes
- * from sherpa-onnx's test file for this model:
- *   https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3/resolve/1a468a35cbba69418f126de829e75261dea4a4e4/test_wavs/en.wav
- *   SHA-256 148b936b43ce7c546a866e64da059f0458aee2d65e617f16e9d94f06e8d99ed6 (24 kHz mono, 3.85 s)
- * which runs quicker than the 1961 delivery: that it is the original
- * recording is unconfirmed. Cut at the pause at 3.23 s, made 16 kHz mono PCM16:
- *   ffmpeg -i en.wav -af "atrim=end=3.23,afade=t=out:st=3.21:d=0.02,aresample=16000:resampler=soxr"
- *     -ac 1 -c:a pcm_s16le -map_metadata -1 -fflags +bitexact -flags:a +bitexact self-check.wav
- *   SHA-256 3b90f6d7920851cb8a1f01583a8ab526cf7a0f6c04b2f9a92ffb4444c18d4b50 (103,404 bytes)
- * The released model reads it as "Ask not what your country can do for you,
- * ask what you can do for your country." in about 0.3 s on a Core Ultra 7 265U.
+ * The recording, `resources/self-check.wav`, is "It is a truth universally
+ * acknowledged", the opening words of Jane Austen's Pride and Prejudice
+ * (1813), read by Karen Savage for LibriVox in 2007. LibriVox recordings are
+ * dedicated to the public domain, and the text is out of copyright
+ * everywhere. `resources/self-check.md`, beside it, records the source file,
+ * the licence and how it was cut: 2.17 s of 16 kHz mono PCM16,
+ *   SHA-256 71e41bf591c73affb142e0124e64a72724f8fec7231fd0bceda392298f5d507a (69,484 bytes).
+ * The released model reads it as "It is a truth universally acknowledged.",
+ * about as fast as the recording it replaced (cut from sherpa-onnx's test
+ * file, whose source and licence could not be confirmed).
  */
 
 /** The recording's name in the app's resources folder. */
@@ -28,18 +25,15 @@ export const SELF_CHECK_FILE = 'self-check.wav'
 
 /** What the recording says, as the words that must come back. */
 export const SELF_CHECK_WORDS: readonly string[] = [
-  'ask',
-  'not',
-  'what',
-  'your',
-  'country',
-  'can',
-  'do',
-  'for',
-  'you'
+  'it',
+  'is',
+  'a',
+  'truth',
+  'universally',
+  'acknowledged'
 ]
 
-/** Lower case, letters and digits only: "Ask not, what" becomes ["ask", "not", "what"]. */
+/** Lower case, letters and digits only: "It is, a TRUTH" becomes ["it", "is", "a", "truth"]. */
 export function wordsOf(text: string): string[] {
   return text
     .toLowerCase()

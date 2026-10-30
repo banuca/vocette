@@ -596,8 +596,8 @@ describe('unload and dispose', () => {
 describe('the self-check after every load', () => {
   /** A stand-in for the known recording: never silent, unlike nothing at all. */
   const CLIP: SelfCheckClip = { samples: new Float32Array(16000 * 3).fill(0.5), sampleRate: 16000 }
-  const RIGHT = 'Ask not what your country can do for you, ask what you can do for your country.'
-  const GARBLED = 'Ask not what you’re comstrich and do for you…'
+  const RIGHT = 'It is a truth universally acknowledged.'
+  const GARBLED = 'It is a tooth you never sleep knowledge.'
 
   /** Loads the newest worker and answers its check, returning the check's job. */
   async function loadAndCheck(worker: () => FakeWorker, text: string): Promise<void> {

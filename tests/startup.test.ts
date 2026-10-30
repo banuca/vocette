@@ -1299,7 +1299,7 @@ describe('the on-device engine', () => {
     const app = await startApp({ engine: 'local', modelState: 'installed' })
     const clip = app.engine.selfCheckClip()
     expect(clip?.sampleRate).toBe(16000)
-    expect(clip?.samples.length).toBe(51_680)
+    expect(clip?.samples.length).toBe(34_720)
     expect(app.engine.selfCheckClip()).toBe(clip)
   })
 
