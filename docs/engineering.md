@@ -94,7 +94,7 @@ On Wayland the shortcut is registered with the desktop portal rather than observ
 
 | Setting | Notes |
 | --- | --- |
-| Transcription | **On this PC** (default): the Parakeet v3 model, downloaded once (935 MB) into `%LOCALAPPDATA%\Murmur\models`, checked against pinned SHA-256 hashes before first use, and unloaded after 5 minutes of rest to give its memory back. **Cloud, with your API key**: the fields below. |
+| Transcription | **On this PC** (default): the Parakeet v3 model, downloaded once (935 MB) into `%LOCALAPPDATA%\Murmur\models`, checked against pinned SHA-256 hashes before first use, and unloaded after 30 minutes of rest to give its memory back. **Cloud, with your API key**: the fields below. |
 | Recording mode | Hold to talk, or press to start and stop. Stored as a preference even where the platform cannot honour it. |
 | Shortcut | Any 1–4 key chord. Quick picks for the common ones. |
 | Start after holding for | Instantly / 150 / 250 / 400 ms. Keep a delay for modifier-only chords. |

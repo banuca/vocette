@@ -8,6 +8,14 @@ All notable changes to this project are documented here. This project adheres to
 - **Pro is US$9.99 a month or US$99 a year.** The yearly plan still saves a little over two
   months.
 - The launch offer is withdrawn before release; the Pro page no longer shows it.
+- The on-device model now stays loaded for 30 minutes after you last dictate, so the first
+  dictation after a pause doesn't wait for it to reload.
+- After loading, the on-device engine checks itself on a short known recording. If it gets it
+  wrong, Vocette says so and offers Cloud instead of pasting wrong words.
+- Windows: transcripts no longer appear in clipboard history (Win + V) or sync to your other
+  devices.
+- Fixed: the app could crash when the on-device engine stopped unexpectedly.
+- A Microsoft Store package can now be built (`npm run pack:store`); not yet published.
 
 ## [0.8.0-beta.1] — 2026-10-19 (test build for Mac, Linux and Windows testers)
 

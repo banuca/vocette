@@ -50,7 +50,7 @@ For other languages, you can use a cloud provider with your own key.
 
 - **Windows 10 or 11, 64-bit.** Vocette is tested on Windows 11.
 - **A 935 MB download** for the speech model, once, and about 1 GB of free disk space for it.
-- **About 1 GB of memory** while you dictate. Vocette frees it after 5 minutes of rest. No graphics card is needed.
+- **About 1 GB of memory** while you dictate. Vocette frees it after 30 minutes of rest. No graphics card is needed.
 
 **Mac and Linux are betas.** There are builds for Macs with Apple silicon and for Linux (x64). Our automated checks build them and run the speech engine on both, but they have not yet been tested on a real Mac or Linux PC. [Platform support](docs/platform-support.md) says what works where.
 
