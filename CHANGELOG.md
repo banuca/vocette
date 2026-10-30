@@ -5,6 +5,8 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.8.0-beta.2] — 2026-10-30 (test build: new prices, engine fixes)
+
 - **Pro is US$9.99 a month or US$99 a year.** The yearly plan still saves a little over two
   months.
 - The launch offer is withdrawn before release; the Pro page no longer shows it.
