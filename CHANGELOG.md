@@ -5,6 +5,10 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+- **Pro is US$9.99 a month or US$99 a year.** The yearly plan still saves a little over two
+  months.
+- The launch offer is withdrawn before release; the Pro page no longer shows it.
+
 ## [0.8.0-beta.1] — 2026-10-19 (test build for Mac, Linux and Windows testers)
 
 - **Diagnostics.** Vocette keeps a short log on this PC of what went wrong: a failed dictation,
