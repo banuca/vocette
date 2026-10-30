@@ -1,0 +1,255 @@
+<!doctype html>
+<!--
+  Vocette for translators. Facts follow README.md (Languages, Limits) on go-live.
+  The error rates are NVIDIA's, copied from the parakeet-tdt-0.6b-v3 model card
+  (table "Multilingual ASR", FLEURS column, fetched 30 Oct 2026). They are credited
+  to NVIDIA on the page; Vocette has not measured its own accuracy outside English.
+-->
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Vocette for translators — dictate translations offline</title>
+    <meta name="description" content="Dictate your translations on your own PC, offline, in 25 European languages. Your clients' texts never leave it. Free for 10,000 words a month." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vocette" />
+    <meta property="og:title" content="Vocette for translators: dictate translations offline" />
+    <meta property="og:description" content="Dictate your translations on your own PC, offline, in 25 European languages. Your clients' texts never leave it." />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="assets/icon.png" sizes="512x512" type="image/png" />
+    <link rel="icon" href="assets/mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script>
+      (function () {
+        var root = document.documentElement;
+        try {
+          var t = localStorage.getItem('vocette-theme');
+          if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
+        } catch (e) {}
+        root.classList.add('intro');
+        setTimeout(function () { root.classList.remove('intro'); }, 2200);
+      })();
+    </script>
+    <script src="site.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Vocette home">
+          <svg viewBox="0 0 56 56" aria-hidden="true"><g fill="currentColor"><rect x="9" y="22" width="5" height="12" rx="2.5"/><rect x="18" y="15" width="5" height="26" rx="2.5"/><rect x="27" y="9" width="5" height="38" rx="2.5"/><rect x="36" y="17" width="5" height="22" rx="2.5"/><rect x="45" y="23" width="5" height="10" rx="2.5"/></g></svg>
+          Vocette
+        </a>
+        <nav class="nav-links" aria-label="Site">
+          <a href="/translators" aria-current="page">For translators</a>
+          <a href="/#how">How it works</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/privacy">Privacy</a>
+        </nav>
+        <div class="nav-end">
+          <button class="icon-btn" id="theme" type="button" aria-label="Switch to dark theme" hidden>
+            <svg class="ico moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            <svg class="ico sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          </button>
+          <a class="btn btn-primary btn-small" href="#download">Download</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero hero-page" aria-labelledby="hero-title">
+        <div class="wrap hero-copy">
+          <p class="eyebrow">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+            For translators
+          </p>
+          <h1 id="hero-title">Dictate translations, offline.</h1>
+          <p class="lede">Speak your translation and Vocette types it into the app you are working in. By default, speech is turned into text on your own PC, so your clients’ texts never leave it.</p>
+          <div class="actions" id="download">
+            <a class="btn btn-primary" href="/download">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+              Download for Windows
+            </a>
+            <a class="btn btn-quiet" href="#languages">See the 25 languages</a>
+          </div>
+          <p class="dl-note"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg><span>Until the installer is signed, Windows may say it protected your PC. Choose <b>More info</b>, then <b>Run anyway</b>.</span></p>
+          <p class="fine"><span>Free for 10,000 words a month</span><span>30 days of Pro first, no card</span><span>No account</span></p>
+        </div>
+      </section>
+
+      <section class="sec sec-tight" aria-labelledby="what-title">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="kicker">For translation work</p>
+              <h2 id="what-title">Confidential by design, in your languages.</h2>
+            </div>
+            <p>Hold a shortcut, speak your translation, let go. The text appears where your cursor is.</p>
+          </div>
+
+          <div class="cards cards-4">
+            <article class="card">
+              <span class="card-ico" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+              <h3>Your clients’ texts stay with you</h3>
+              <p>By default, speech is turned into text on your PC. Nothing you dictate is sent anywhere, and recordings are never written to disk.</p>
+            </article>
+            <article class="card">
+              <span class="card-ico" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg></span>
+              <h3>25 languages, no switching</h3>
+              <p>Vocette works out which language you are speaking. Dictate a German translation, then reply to the client in English, without changing a setting.</p>
+            </article>
+            <article class="card">
+              <span class="card-ico" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><path d="m2 2 20 20"/><path d="M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193"/><path d="M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"/></svg></span>
+              <h3>Offline, anywhere</h3>
+              <p>On a train, at a client’s office or behind a strict firewall: once the speech model is downloaded, dictation needs no internet.</p>
+            </article>
+            <article class="card">
+              <span class="card-ico" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg></span>
+              <h3>Your terminology</h3>
+              <p>Add names and terms to <b>Your words</b> and Vocette spells them your way: 50 on Free, 500 on Pro. Replacements and snippets fill in phrases you use often.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec" id="languages" aria-labelledby="langs-title">
+        <div class="wrap langs-wrap">
+          <div class="langs-head">
+            <p class="kicker">Languages</p>
+            <h2 id="langs-title">25 languages, with NVIDIA’s own figures.</h2>
+            <p>Vocette’s on-device engine uses NVIDIA’s Parakeet TDT 0.6B v3 speech model. The table shows the word error rates NVIDIA published for that model on the FLEURS test set: the share of words that came out wrong, missing or extra, not counting punctuation and capitals. Lower is better: 5% is about one word in twenty.</p>
+            <p><strong>These are NVIDIA’s figures, not ours.</strong> NVIDIA measured its original model. Vocette runs its own int8 version of that model, and we have measured Vocette’s accuracy only in English so far.</p>
+            <p>NVIDIA notes that its training data uses European Portuguese, while most test sets use Brazilian Portuguese.</p>
+            <p class="source">Source: NVIDIA, <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3">parakeet-tdt-0.6b-v3 model card</a> on Hugging Face, table “Multilingual ASR”, FLEURS column.</p>
+          </div>
+
+          <div class="langs-card">
+            <table class="langs">
+              <caption class="visually-hidden">Word error rate on the FLEURS test set, as published by NVIDIA for parakeet-tdt-0.6b-v3. Lower is better.</caption>
+              <thead>
+                <tr><th scope="col">Language</th><th scope="col" class="num">Error rate</th><th scope="col" class="bar-cell">0 to 25%</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Bulgarian</th><td class="num">12.64%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:12.64"></i></span></td></tr>
+                <tr><th scope="row">Croatian</th><td class="num">12.46%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:12.46"></i></span></td></tr>
+                <tr><th scope="row">Czech</th><td class="num">11.01%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:11.01"></i></span></td></tr>
+                <tr><th scope="row">Danish</th><td class="num">18.41%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:18.41"></i></span></td></tr>
+                <tr><th scope="row">Dutch</th><td class="num">7.48%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:7.48"></i></span></td></tr>
+                <tr><th scope="row">English</th><td class="num">4.85%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:4.85"></i></span></td></tr>
+                <tr><th scope="row">Estonian</th><td class="num">17.73%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:17.73"></i></span></td></tr>
+                <tr><th scope="row">Finnish</th><td class="num">13.21%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:13.21"></i></span></td></tr>
+                <tr><th scope="row">French</th><td class="num">5.15%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:5.15"></i></span></td></tr>
+                <tr><th scope="row">German</th><td class="num">5.04%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:5.04"></i></span></td></tr>
+                <tr><th scope="row">Greek</th><td class="num">20.70%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:20.70"></i></span></td></tr>
+                <tr><th scope="row">Hungarian</th><td class="num">15.72%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:15.72"></i></span></td></tr>
+                <tr><th scope="row">Italian</th><td class="num">3.00%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:3.00"></i></span></td></tr>
+                <tr><th scope="row">Latvian</th><td class="num">22.84%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:22.84"></i></span></td></tr>
+                <tr><th scope="row">Lithuanian</th><td class="num">20.35%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:20.35"></i></span></td></tr>
+                <tr><th scope="row">Maltese</th><td class="num">20.46%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:20.46"></i></span></td></tr>
+                <tr><th scope="row">Polish</th><td class="num">7.31%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:7.31"></i></span></td></tr>
+                <tr><th scope="row">Portuguese</th><td class="num">4.76%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:4.76"></i></span></td></tr>
+                <tr><th scope="row">Romanian</th><td class="num">12.44%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:12.44"></i></span></td></tr>
+                <tr><th scope="row">Russian</th><td class="num">5.51%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:5.51"></i></span></td></tr>
+                <tr><th scope="row">Slovak</th><td class="num">8.82%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:8.82"></i></span></td></tr>
+                <tr><th scope="row">Slovenian</th><td class="num">24.03%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:24.03"></i></span></td></tr>
+                <tr><th scope="row">Spanish</th><td class="num">3.45%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:3.45"></i></span></td></tr>
+                <tr><th scope="row">Swedish</th><td class="num">15.08%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:15.08"></i></span></td></tr>
+                <tr><th scope="row">Ukrainian</th><td class="num">6.79%</td><td class="bar-cell" aria-hidden="true"><span class="b"><i style="--w:6.79"></i></span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec" id="limits" aria-labelledby="limits-title">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="kicker">Before you start</p>
+              <h2 id="limits-title">What we can’t promise yet.</h2>
+            </div>
+            <p>Four things to know before you rely on Vocette for client work.</p>
+          </div>
+          <ul class="limits">
+            <li>
+              <h3>Accuracy outside English is not measured yet</h3>
+              <p>We have tested Vocette’s accuracy only in English. Try it on your own language pair, with your own kind of text, before you rely on it.</p>
+            </li>
+            <li>
+              <h3>Trados and memoQ are being tested</h3>
+              <p>Vocette pastes with Ctrl + V into the window you are working in. We are testing that in Trados and memoQ now. Until we have, we can’t promise it works there.</p>
+            </li>
+            <li>
+              <h3>Clean-up is English only</h3>
+              <p>Removing fillers and following “scratch that” or “new line” work in English. In other languages, Vocette removes only hesitation sounds such as “äh” and “euh”.</p>
+            </li>
+            <li>
+              <h3>Windows only, and not signed yet</h3>
+              <p>Vocette is for Windows 10 and 11; the Mac and Linux builds are betas. The installer is not signed yet, so Windows may warn you the first time you run it.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="sec" aria-labelledby="prices-title">
+        <div class="wrap">
+          <div class="sec-head">
+            <div>
+              <p class="kicker">Pricing</p>
+              <h2 id="prices-title">Start free. Go Pro when you dictate all day.</h2>
+            </div>
+            <p>Everyone starts with 30 days of Pro, with no card. Prices are in US dollars. <a class="inline" href="/#pricing">Compare Free and Pro</a>.</p>
+          </div>
+          <div class="summary">
+            <div>
+              <h3>Free</h3>
+              <p><span class="amt">US$0</span>10,000 words a month, with clean-up, spoken corrections and history.</p>
+            </div>
+            <div>
+              <h3>Pro</h3>
+              <p><span class="amt">US$99 a year</span>or US$9.99 a month. No word limit, 500 of your own words and AI polish, on up to 10 devices.</p>
+            </div>
+            <div>
+              <h3>Teams</h3>
+              <p><span class="amt">US$120 a seat</span>a year, from 3 seats, for translation teams and agencies. <a href="mailto:support@vocette.com?subject=Vocette%20Teams%20pilot">Ask us for a pilot</a>.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec" aria-labelledby="closing-title">
+        <div class="wrap">
+          <div class="closing">
+            <h2 id="closing-title">Try it on your next translation.</h2>
+            <p>Free for 10,000 words a month, with 30 days of Pro to start. For Windows 10 and 11.</p>
+            <a class="btn btn-primary" href="/download">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+              Download for Windows
+            </a>
+            <p class="dl-note"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg><span>Until the installer is signed, Windows may say it protected your PC. Choose <b>More info</b>, then <b>Run anyway</b>.</span></p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Vocette home">
+          <svg viewBox="0 0 56 56" aria-hidden="true"><g fill="currentColor"><rect x="9" y="22" width="5" height="12" rx="2.5"/><rect x="18" y="15" width="5" height="26" rx="2.5"/><rect x="27" y="9" width="5" height="38" rx="2.5"/><rect x="36" y="17" width="5" height="22" rx="2.5"/><rect x="45" y="23" width="5" height="10" rx="2.5"/></g></svg>
+          Vocette
+        </a>
+        <nav aria-label="Footer">
+          <a href="/translators">For translators</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/refund">Refunds</a>
+          <a href="https://github.com/banuca/vocette">Source code</a>
+          <a href="mailto:support@vocette.com">support@vocette.com</a>
+        </nav>
+        <p class="betas">Mac (Apple silicon) and Linux: <a href="/download/betas">beta builds</a>, not yet tested on a real Mac or Linux PC.</p>
+        <p>Vocette is an independent, open-source project. Speech model: NVIDIA Parakeet TDT 0.6B v3, used under CC BY 4.0.</p>
+      </div>
+    </footer>
+  </body>
+</html>
