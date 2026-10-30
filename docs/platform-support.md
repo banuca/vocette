@@ -1,6 +1,6 @@
 # Platform support and verification
 
-What Murmur can do on each desktop, and — separately — what has actually
+What Vocette can do on each desktop, and — separately — what has actually
 been run there. The two are not the same thing and are never merged in this
 document.
 
@@ -29,7 +29,7 @@ pass. Neither macOS nor Linux is called verified from a Windows machine.
 | Tray | Yes | Yes | Desktop-dependent | Desktop-dependent |
 | Launch at login | Yes | Yes | Yes (autostart entry; AppImage path handled) | Yes |
 | OS-backed key storage | DPAPI | Keychain | libsecret / KWallet, else session-only | libsecret / KWallet, else session-only |
-| On-device transcription (sherpa-onnx, Parakeet v3) | Yes, x64 | Prebuilt addon ships; never run | Prebuilt addon ships; never run | Prebuilt addon ships; never run |
+| On-device transcription (sherpa-onnx, Parakeet v3) | Yes, x64 | Yes, Apple silicon | Yes, x64 | Yes, x64 |
 
 Where a capability is missing the app says so in its own words, in Settings and
 in the first-run guidance, and keeps working with the Record button and the
@@ -38,13 +38,20 @@ clipboard. A missing capability never overwrites the user's stored preference.
 ### The Wayland position, stated plainly
 
 Wayland deliberately prevents an application from watching the keyboard,
-learning which surface has focus, or typing into another window. Murmur
+learning which surface has focus, or typing into another window. Vocette
 does not work around that. It registers a start/stop shortcut with the desktop
 portal, reports hold-to-talk as unavailable rather than faking a key release it
 never receives, and delivers every transcript to the clipboard. No privileged
 input daemon, no `sudo`, no `uinput` group.
 
 ## Verification status
+
+**19 October 2026, branch `go-live`.** CI's engine check ran the packaged app's speech engine
+on two public recordings and got the right text on Windows (AMD EPYC 7763), macOS (Apple M1,
+virtual) and Linux (AMD EPYC 9V45), in run 39300274141. The Mac build is now Apple silicon only,
+with an ad-hoc signature that CI verifies on the app and on the DMG (run 39329076117). Version
+0.8.0-beta.1 is published as a GitHub pre-release with the Windows, macOS (Apple silicon) and
+Linux (x64) files. Still not done: running any of it on a real Mac or Linux PC.
 
 **8 October 2026, branch `go-live`, GitHub Actions run 37781426122** (after the repository was
 renamed to `banuca/vocette`). Verify — typecheck, lint, 1,498 tests and the bundle — passed on
@@ -77,24 +84,27 @@ is in [launch-plan.md](launch-plan.md) §7.
 | Silent install and uninstall, user data kept | **Verified** | n/a | n/a | n/a |
 | Rendered dark interface, 100% and 150% | **Verified** (captured) | Not tested | Not tested | Not tested |
 
-Only Windows has been exercised. Everything in the macOS and Linux columns is
-implemented, type-checked and unit-tested against fakes, and has never been run
-on that operating system. See [verification/windows-smoke.md](verification/windows-smoke.md)
-for the Windows evidence.
+Only Windows has been exercised on real hardware. Everything in the macOS and
+Linux columns is implemented, type-checked and unit-tested against fakes. Since
+this table, CI has run the unit tests, the packaging and the packaged app's
+speech engine on macOS and Linux (the entries above); nothing else in those
+columns has been run on that operating system. See
+[verification/windows-smoke.md](verification/windows-smoke.md) for the Windows
+evidence.
 
 ## What remains, and how to run it
 
 Each of these needs a machine running that operating system. No credentials or
 paid services are involved.
 
-### macOS (Apple Silicon and Intel)
+### macOS (Apple silicon)
 
 ```bash
 npm ci
 npm run build          # typecheck, tests, bundle
-npm run pack:mac       # dmg + zip, unsigned
+npm run pack:mac       # dmg + zip, arm64, ad-hoc signature
 node scripts/check-native-packaging.mjs
-open "dist/mac-arm64/Murmur.app"
+open "dist/mac-arm64/Vocette.app"
 ```
 
 Then, in order:
@@ -112,7 +122,7 @@ Then, in order:
 ```bash
 npm ci && npm run build && npm run pack:linux
 node scripts/check-native-packaging.mjs
-./dist/murmur-*-linux-x64.AppImage
+./dist/Vocette-*-linux-x86_64.AppImage
 ```
 
 1. Confirm hold-to-talk starts and stops from the shortcut.
@@ -138,4 +148,5 @@ node scripts/check-native-packaging.mjs
 Configured, never credentialled. Set `CSC_LINK` and `CSC_KEY_PASSWORD` for
 Windows or macOS signing, and `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and
 `APPLE_TEAM_ID` plus `mac.notarize: true` for notarisation. Nothing in this
-repository invents or stores a credential, and CI never publishes.
+repository invents or stores a credential. CI does not publish: a version tag
+produces a draft release that a person checks and publishes ([release.md](release.md)).

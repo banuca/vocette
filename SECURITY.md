@@ -11,15 +11,17 @@ were running.
 Released Windows binaries are unsigned until a code-signing certificate is in
 place. On first run Windows SmartScreen will show *"Windows protected your PC"*;
 the warning is about the missing signature, not about anything the app does.
-No macOS or Linux build is published. The macOS build, for Apple silicon only,
-carries an ad-hoc signature: it proves the files have not changed since the
+macOS (Apple silicon) and Linux (x64) builds are published as betas. The macOS
+build carries an ad-hoc signature: it proves the files have not changed since the
 build, but it is not tied to an Apple Developer ID and is not notarised, so
 macOS says it is from an unidentified developer until you choose **Open
 Anyway** in System Settings → Privacy & Security.
 
 The signing and notarisation configuration is present in
 `electron-builder.yml`, deliberately without credentials. Nothing in this
-repository stores, invents or requires one, and CI never publishes.
+repository stores, invents or requires one. CI does not publish: from a version
+tag it puts the files into a draft release, which stays invisible until a person
+checks and publishes it ([docs/release.md](docs/release.md)).
 
 Install a release only if you trust where you got it from. The alternative is to
 build from source yourself:
@@ -110,10 +112,19 @@ This is the complete list. Each one happens only when stated.
    masked key and the date are kept. The key itself is stored with `safeStorage`
    where the OS allows, and otherwise in plain text: it is an entitlement token,
    not a credential to anything else.
-3. **Update check** — only if the user switched it on (then at most once a day)
-   or pressed **Check now**: one GET to
+3. **Updates** — the check only if the user turned it on (the first-run card
+   offers it ticked; About has the switch), then at most once a day, or pressed
+   **Check now**: one GET to
    `https://api.github.com/repos/<repository>/releases/latest` with no cookies or
-   credentials. Only the tag and the release link are read.
+   credentials. Only the tag and the release link are read. The update itself
+   only when the user presses **Download and install** (About or the tray), and
+   only for the Windows installer and the Linux AppImage: electron-updater
+   (`src/main/app-updater.ts`) reads the repository's release feed on
+   `github.com`, then the release's update file (`latest.yml`, or `beta.yml`
+   for a beta) and the installer it names with its blockmap, and checks the
+   installer's SHA-512 before running it. A downloaded update installs on
+   **Restart to update** or when Vocette next quits. On a Mac or with the
+   `.deb`, Vocette opens the release page instead.
 4. **Cloud transcription** — only with **Cloud** chosen: each recording, with the
    vocabulary, to the endpoint the user configured, with their key.
 5. **AI polish** — only if switched on, and only with Pro: the cleaned text of
@@ -196,10 +207,11 @@ on, audio and text never leave the computer.
   stored with `safeStorage` like the transcription key and never crosses into a renderer;
   the transcription key is borrowed only when both endpoints are OpenAI's.
 - There is no telemetry beyond the opt-in counts (off by default, no identifier; see
-  the list above), and no auto-update channel. The update check
-  (off by default) sends one GET to `https://api.github.com/repos/<repository>/releases/latest`
-  with no cookies or credentials, reads only the tag and the release link, and never
-  downloads anything; the link it opens must be a release page of that repository.
+  the list above). The update check (off until the user turns it on) sends one GET
+  to `https://api.github.com/repos/<repository>/releases/latest` with no cookies or
+  credentials, reads only the tag and the release link, and never downloads anything
+  itself; the link it opens must be a release page of that repository. An update is
+  downloaded only when the user presses **Download and install** (item 3 above).
 
 ## Hardening in place
 
