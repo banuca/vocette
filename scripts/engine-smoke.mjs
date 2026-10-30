@@ -14,6 +14,12 @@
  * .smoke) and checked against their SHA-256; files already there and correct
  * are reused, so CI can cache the folder. VOCETTE_SMOKE_MODEL_DIR points it at
  * another model folder instead, unchecked.
+ *
+ * The installed Microsoft Store package (scripts/store-smoke.ps1):
+ *   VOCETTE_SMOKE_EXE        run this instead: the package's `vocette` alias
+ *   VOCETTE_SMOKE_RESOURCES  the installed package's resources folder
+ *   VOCETTE_SMOKE_STAGE_TO   where the child copies the model and loads it
+ *   VOCETTE_SMOKE_PACKAGE    fail unless the engine ran as this package
  */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -133,7 +139,10 @@ function packagedApp() {
   return exe ? { exe: join(folder, exe), resources: join(folder, 'resources') } : null
 }
 
-const app = packagedApp()
+const app =
+  env.VOCETTE_SMOKE_EXE && env.VOCETTE_SMOKE_RESOURCES
+    ? { exe: env.VOCETTE_SMOKE_EXE, resources: env.VOCETTE_SMOKE_RESOURCES }
+    : packagedApp()
 if (!app) {
   console.error(
     `FAIL  no packaged app for ${platform}-${arch} under ${DIST}. Run electron-builder first.`
@@ -185,6 +194,18 @@ let failures = 0
 console.log(
   `ok    engine loaded in ${results.loadMs} ms (${platform}-${arch}, ${results.cpu}, ${results.threads} threads, ${app.exe})`
 )
+if (results.stagedMs !== null && results.stagedMs !== undefined) {
+  console.log(`ok    model copied to ${results.modelDir} in ${results.stagedMs} ms, and loaded from there`)
+}
+const expectedPackage = env.VOCETTE_SMOKE_PACKAGE
+if (expectedPackage) {
+  if (results.package?.startsWith(`${expectedPackage}_`)) {
+    console.log(`ok    ran as the package ${results.package}`)
+  } else {
+    failures += 1
+    console.error(`FAIL  expected to run as ${expectedPackage}, ran as ${results.package ?? 'no package'}`)
+  }
+}
 for (const recording of recordings) {
   const result = results.decoded.find((d) => d.name === recording.name)
   const text = result?.text ?? ''
