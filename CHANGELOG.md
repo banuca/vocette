@@ -15,6 +15,9 @@ All notable changes to this project are documented here. This project adheres to
 - Windows: transcripts no longer appear in clipboard history (Win + V) or sync to your other
   devices.
 - Fixed: the app could crash when the on-device engine stopped unexpectedly.
+- English dictation adds commas the on-device model often missed: "Dear team, a quick
+  update…", "Honestly, I…".
+- The on-device engine's self-check uses a public-domain LibriVox recording.
 - A Microsoft Store package can now be built (`npm run pack:store`); not yet published.
 
 ## [0.8.0-beta.1] — 2026-10-19 (test build for Mac, Linux and Windows testers)
