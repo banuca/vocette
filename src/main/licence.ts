@@ -3,18 +3,12 @@ import {
   CHECKOUT_URL_MONTHLY,
   CHECKOUT_URL_YEARLY,
   CUSTOMER_PORTAL_URL,
-  LAUNCH_MONTHLY_PRICE_LABEL,
-  LAUNCH_OFFER_ENDS_AT,
-  LAUNCH_OFFER_PLACES,
-  LAUNCH_YEARLY_PRICE_LABEL,
   POLAR_API_BASE,
   POLAR_ORGANIZATION_ID,
   POLAR_PRO_BENEFIT_IDS,
   PRODUCT_NAME,
   PRO_DEVICES,
-  PRO_MONTHLY_PRICE,
   PRO_MONTHLY_PRICE_LABEL,
-  PRO_YEARLY_PRICE,
   PRO_YEARLY_PRICE_LABEL,
   PRO_YEARLY_SAVING_LABEL
 } from '../shared/product'
@@ -416,20 +410,17 @@ export function licenceConfig(env: Record<string, string | undefined>): LicenceC
 export interface CheckoutConfig {
   monthly: string
   yearly: string
-  launchOfferEndsAt: string
 }
 
 /**
- * The two checkout links and the end of the launch offer. Like the Polar
- * settings, the environment can replace them for a test run: a checkout link
- * only as an https URL, the end date as written. None of it reaches the window,
- * which learns only whether each checkout is open.
+ * The two checkout links. Like the Polar settings, the environment can replace
+ * them for a test run, but only with an https URL. None of it reaches the
+ * window, which learns only whether each checkout is open.
  */
 export function checkoutConfig(env: Record<string, string | undefined>): CheckoutConfig {
   return {
     monthly: httpsUrl(env.MURMUR_CHECKOUT_URL_MONTHLY) ?? CHECKOUT_URL_MONTHLY,
-    yearly: httpsUrl(env.MURMUR_CHECKOUT_URL_YEARLY) ?? CHECKOUT_URL_YEARLY,
-    launchOfferEndsAt: env.MURMUR_LAUNCH_OFFER_ENDS_AT?.trim() || LAUNCH_OFFER_ENDS_AT
+    yearly: httpsUrl(env.MURMUR_CHECKOUT_URL_YEARLY) ?? CHECKOUT_URL_YEARLY
   }
 }
 
@@ -481,33 +472,8 @@ export interface LicenceStatusInput {
   monthlyCheckoutUrl?: string
   yearlyCheckoutUrl?: string
   portalUrl?: string
-  launchOfferEndsAt?: string
   /** Free's words this month; left out, or on the trial and Pro, there is none. */
   words?: WordAllowance | null
-}
-
-/**
- * The launch offer as the Pro page shows it, until the instant it closes;
- * null after that, or when no end date is set. The last day is named in UTC,
- * the zone the end instant is written in.
- */
-export function launchOfferFor(now: number, endsAt: string): LicenceStatus['launchOffer'] {
-  const end = Date.parse(endsAt)
-  if (!endsAt || !Number.isFinite(end) || now >= end) return null
-  const lastDay = new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC'
-  }).format(new Date(end - 1))
-  return {
-    monthlyPriceLabel: LAUNCH_MONTHLY_PRICE_LABEL,
-    yearlyPriceLabel: LAUNCH_YEARLY_PRICE_LABEL,
-    monthlyWas: PRO_MONTHLY_PRICE,
-    yearlyWas: PRO_YEARLY_PRICE,
-    endsLabel: lastDay,
-    places: LAUNCH_OFFER_PLACES
-  }
 }
 
 /** What the window is told. No key, no activation id, no Polar identifier. */
@@ -537,7 +503,6 @@ export function licenceStatusFor(input: LicenceStatusInput): LicenceStatus {
     monthlyPriceLabel: PRO_MONTHLY_PRICE_LABEL,
     yearlyPriceLabel: PRO_YEARLY_PRICE_LABEL,
     yearlySavingLabel: PRO_YEARLY_SAVING_LABEL,
-    launchOffer: launchOfferFor(input.now, input.launchOfferEndsAt ?? LAUNCH_OFFER_ENDS_AT),
     devices: PRO_DEVICES,
     // The trial having ended, for someone who never subscribed here — shown
     // until dismissed. A subscription that ended is the Pro page's to explain.

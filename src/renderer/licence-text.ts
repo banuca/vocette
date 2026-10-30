@@ -46,40 +46,16 @@ export function subscribeLabels(
     | 'monthlyPriceLabel'
     | 'yearlyPriceLabel'
     | 'yearlySavingLabel'
-    | 'launchOffer'
   >
-): { monthly: string; yearly: string; monthlyWas: string | null; yearlyWas: string | null } {
-  // During the launch offer each button carries its launch price, with the
-  // normal one struck through beside it.
-  const offer = status.launchOffer
+): { monthly: string; yearly: string } {
   return {
     monthly: status.monthlyCheckoutAvailable
-      ? `Monthly — ${offer ? offer.monthlyPriceLabel : status.monthlyPriceLabel}`
+      ? `Monthly — ${status.monthlyPriceLabel}`
       : 'Monthly — opens soon',
     yearly: status.yearlyCheckoutAvailable
-      ? offer
-        ? `Yearly — ${offer.yearlyPriceLabel}`
-        : `Yearly — ${status.yearlyPriceLabel} · ${status.yearlySavingLabel}`
-      : 'Yearly — opens soon',
-    monthlyWas: status.monthlyCheckoutAvailable && offer ? offer.monthlyWas : null,
-    yearlyWas: status.yearlyCheckoutAvailable && offer ? offer.yearlyWas : null
+      ? `Yearly — ${status.yearlyPriceLabel} · ${status.yearlySavingLabel}`
+      : 'Yearly — opens soon'
   }
-}
-
-/**
- * The launch offer, above the buttons, while it can be taken up and a checkout
- * is open; empty otherwise. It names the 100 places because the app cannot tell
- * when they are gone, and Polar's checkout shows the price that applies.
- */
-export function launchOfferLine(
-  status: Pick<LicenceStatus, 'launchOffer' | 'monthlyCheckoutAvailable' | 'yearlyCheckoutAvailable'>
-): string {
-  const offer = status.launchOffer
-  if (!offer || (!status.monthlyCheckoutAvailable && !status.yearlyCheckoutAvailable)) return ''
-  return (
-    `Launch offer for the first ${offer.places} subscribers, until ${offer.endsLabel}: the ` +
-    'yearly plan at half price forever, the monthly plan at 25% off forever.'
-  )
 }
 
 /** Said under the plans: what one subscription covers, and how to stop it. */

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import type { LicenceActivation, LicenceRelease, LicenceStatus } from '../src/shared/types'
-import { LAUNCH_OFFER, licenceStatus } from './fixtures/licence-status'
+import { licenceStatus } from './fixtures/licence-status'
 
 /**
  * The Pro page, driven through the same render function the app uses, with
@@ -71,10 +71,6 @@ class FakeElement {
     this.children = nodes
   }
 
-  append(...nodes: FakeElement[]): void {
-    this.children = [...this.children, ...nodes]
-  }
-
   addEventListener(type: string, listener: (event: unknown) => unknown): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
   }
@@ -92,7 +88,6 @@ const SELECTORS = [
   '#pro-buy',
   '#subscribe-monthly',
   '#subscribe-yearly',
-  '#launch-offer',
   '#plans-note',
   '#check-subscription',
   '#licence-summary',
@@ -226,7 +221,6 @@ describe('the Pro page', () => {
     expect(at('#subscribe-yearly').children).toHaveLength(0)
     expect(at('#subscribe-yearly').disabled).toBe(false)
     expect(at('#subscribe-monthly').disabled).toBe(false)
-    expect(at('#launch-offer').hidden).toBe(true)
     expect(at('#plans-note').textContent).toBe(
       'One subscription covers up to 10 devices. Cancel any time; Pro stays on until the end of ' +
         'the period you have paid for.'
@@ -234,21 +228,16 @@ describe('the Pro page', () => {
     expect(at('#pro-buy').hidden).toBe(false)
   })
 
-  it('shows the launch offer above the plans, with the normal prices struck through', async () => {
-    const { at } = await makeHarness(
-      licenceStatus({ plan: 'trial', trialDaysLeft: 29, launchOffer: LAUNCH_OFFER })
-    )
-    expect(at('#launch-offer').hidden).toBe(false)
-    expect(at('#launch-offer').textContent).toBe(
-      'Launch offer for the first 100 subscribers, until 31 December 2026: the yearly plan at ' +
-        'half price forever, the monthly plan at 25% off forever.'
-    )
-    expect(at('#subscribe-yearly').textContent).toBe('Yearly — US$24.50 a year')
-    expect(at('#subscribe-yearly').children.map((node) => [node.className, node.textContent])).toEqual([
-      ['was-price', 'US$49']
-    ])
-    expect(at('#subscribe-monthly').textContent).toBe('Monthly — US$3.74 a month')
-    expect(at('#subscribe-monthly').children.map((node) => node.textContent)).toEqual(['US$4.99'])
+  it('carries no offer: each plan at its own price, nothing struck through', async () => {
+    const { at, context } = await makeHarness(licenceStatus({ plan: 'trial', trialDaysLeft: 29 }))
+    const words = (element: FakeElement): string[] => [
+      element.textContent ?? '',
+      ...element.children.flatMap(words)
+    ]
+    const shown = [context.content.innerHTML, ...SELECTORS.flatMap((selector) => words(at(selector)))]
+    expect(shown.join('\n')).not.toMatch(/launch[ -]offer|first 100|half price|% off|was-price|<s[\s>]/iu)
+    expect(at('#subscribe-yearly').children).toHaveLength(0)
+    expect(at('#subscribe-monthly').children).toHaveLength(0)
   })
 
   it('names Free plainly', async () => {
