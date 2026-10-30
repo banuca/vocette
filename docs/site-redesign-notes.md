@@ -147,3 +147,5 @@ These also feed the "What leaves your computer" table idea (site-inspiration.md 
   monthly word limit. Drop every 10,000-word mention. What Pro adds instead: ask, don't invent.
 - Waiting on the owner here for: brief yes/no, public preview yes/no, step-by-step or one look,
   and what Pro offers now that Free is unlimited.
+
+- Resolved (owner via CEO session, 30 Oct): "remove the 10K ceiling" meant the US$10k revenue goal. Free stays at 10,000 words a month; keep it in the copy.
