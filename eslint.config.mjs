@@ -28,7 +28,7 @@ export default tseslint.config(
     }
   },
   {
-    files: ['src/renderer/**/*.ts', 'src/preload/**/*.ts'],
+    files: ['src/renderer/**/*.ts', 'src/preload/**/*.ts', 'site/**/*.js'],
     languageOptions: { globals: { ...globals.browser } }
   }
 )

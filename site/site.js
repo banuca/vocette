@@ -26,7 +26,7 @@
     themeBtn.addEventListener('click', function () {
       var next = currentTheme() === 'dark' ? 'light' : 'dark';
       root.setAttribute('data-theme', next);
-      try { localStorage.setItem('vocette-theme', next); } catch (e) {}
+      try { localStorage.setItem('vocette-theme', next); } catch { /* storage blocked: the choice lasts this visit */ }
       labelTheme();
     });
     mqDark.addEventListener('change', labelTheme);
