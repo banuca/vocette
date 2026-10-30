@@ -17,7 +17,10 @@ import {
   CHECKOUT_URL_YEARLY,
   POLAR_API_BASE,
   POLAR_ORGANIZATION_ID,
-  POLAR_PRO_BENEFIT_IDS
+  POLAR_PRO_BENEFIT_IDS,
+  PRO_MONTHLY_PRICE_LABEL,
+  PRO_YEARLY_PRICE_LABEL,
+  PRO_YEARLY_SAVING_LABEL
 } from '../src/shared/product'
 
 /**
@@ -470,6 +473,19 @@ describe('the device label', () => {
   })
 })
 
+describe('the prices', () => {
+  it('are US$9.99 a month or US$99 a year, and the year saves the two months it promises', () => {
+    const dollars = (label: string): number =>
+      Number(/^US\$(\d+(?:\.\d\d)?) a (?:month|year)$/u.exec(label)?.[1])
+    const monthly = dollars(PRO_MONTHLY_PRICE_LABEL)
+    const yearly = dollars(PRO_YEARLY_PRICE_LABEL)
+    expect([monthly, yearly]).toEqual([9.99, 99])
+    expect(PRO_YEARLY_SAVING_LABEL).toBe('two months free')
+    // Twelve months come to US$119.88, so the year saves US$20.88: a little over two months.
+    expect(12 * monthly - yearly).toBeGreaterThanOrEqual(2 * monthly)
+  })
+})
+
 describe('the checkout settings', () => {
   it('are the product constants unless a test run replaces them', () => {
     expect(checkoutConfig({})).toEqual({
@@ -543,8 +559,8 @@ describe('the status the window is told', () => {
       monthlyCheckoutAvailable: true,
       yearlyCheckoutAvailable: true,
       portalAvailable: true,
-      monthlyPriceLabel: 'US$4.99 a month',
-      yearlyPriceLabel: 'US$49 a year',
+      monthlyPriceLabel: 'US$9.99 a month',
+      yearlyPriceLabel: 'US$99 a year',
       yearlySavingLabel: 'two months free',
       devices: 10,
       trialEndNoticeDue: false,

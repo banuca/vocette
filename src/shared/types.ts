@@ -356,9 +356,9 @@ export interface LicenceStatus {
   monthlyCheckoutAvailable: boolean
   yearlyCheckoutAvailable: boolean
   portalAvailable: boolean
-  /** "US$4.99 a month". */
+  /** "US$9.99 a month". */
   monthlyPriceLabel: string
-  /** "US$49 a year". */
+  /** "US$99 a year". */
   yearlyPriceLabel: string
   /** "two months free". */
   yearlySavingLabel: string

@@ -40,8 +40,8 @@ try {
       null
   }))
   expect('plans shown', seen.buyShown, true)
-  expect('yearly plan', seen.yearly, 'Yearly — US$49 a year · two months free')
-  expect('monthly plan', seen.monthly, 'Monthly — US$4.99 a month')
+  expect('yearly plan', seen.yearly, 'Yearly — US$99 a year · two months free')
+  expect('monthly plan', seen.monthly, 'Monthly — US$9.99 a month')
   expect('both checkouts open', seen.enabled, true)
   expect('nothing struck through', seen.struck, 0)
   expect('no offer line', seen.offerLine, false)

@@ -66,8 +66,8 @@ describe('the sidebar suffix', () => {
 describe('the Subscribe buttons', () => {
   it('carry the prices, or say each opens soon while it has no checkout', () => {
     expect(subscribeLabels(licenceStatus())).toEqual({
-      monthly: 'Monthly — US$4.99 a month',
-      yearly: 'Yearly — US$49 a year · two months free'
+      monthly: 'Monthly — US$9.99 a month',
+      yearly: 'Yearly — US$99 a year · two months free'
     })
     expect(
       subscribeLabels(licenceStatus({ monthlyCheckoutAvailable: false, yearlyCheckoutAvailable: false }))
@@ -75,7 +75,7 @@ describe('the Subscribe buttons', () => {
     // Each plan on its own.
     expect(subscribeLabels(licenceStatus({ monthlyCheckoutAvailable: false }))).toEqual({
       monthly: 'Monthly — opens soon',
-      yearly: 'Yearly — US$49 a year · two months free'
+      yearly: 'Yearly — US$99 a year · two months free'
     })
   })
 

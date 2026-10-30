@@ -25,9 +25,9 @@ export const PRODUCT_NAME = 'Vocette'
  * no discount on the checkout links: the launch offer was withdrawn before
  * release (owner, 30 October 2026).
  */
-export const PRO_MONTHLY_PRICE_LABEL = 'US$4.99 a month'
-export const PRO_YEARLY_PRICE_LABEL = 'US$49 a year'
-/** Twelve monthly payments are US$59.88; the yearly plan saves a little over two months. */
+export const PRO_MONTHLY_PRICE_LABEL = 'US$9.99 a month'
+export const PRO_YEARLY_PRICE_LABEL = 'US$99 a year'
+/** Twelve monthly payments are US$119.88; the yearly plan saves US$20.88, a little over two months. */
 export const PRO_YEARLY_SAVING_LABEL = 'two months free'
 /** How many devices one subscription covers: the licence key's activation limit in Polar. */
 export const PRO_DEVICES = 10

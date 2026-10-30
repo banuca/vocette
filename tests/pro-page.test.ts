@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { licenceStatusFor } from '../src/main/licence'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
+import { entitlementFor } from '../src/shared/entitlement'
+import { POLAR_API_BASE } from '../src/shared/product'
 import type { LicenceActivation, LicenceRelease, LicenceStatus } from '../src/shared/types'
 import { licenceStatus } from './fixtures/licence-status'
 
@@ -216,8 +219,8 @@ describe('the Pro page', () => {
       'AI polish: your dictation rewritten in the style you choose, with your own provider or a model on this PC'
     ])
     expect(at('#free-forever').children).toHaveLength(4)
-    expect(at('#subscribe-yearly').textContent).toBe('Yearly — US$49 a year · two months free')
-    expect(at('#subscribe-monthly').textContent).toBe('Monthly — US$4.99 a month')
+    expect(at('#subscribe-yearly').textContent).toBe('Yearly — US$99 a year · two months free')
+    expect(at('#subscribe-monthly').textContent).toBe('Monthly — US$9.99 a month')
     expect(at('#subscribe-yearly').children).toHaveLength(0)
     expect(at('#subscribe-yearly').disabled).toBe(false)
     expect(at('#subscribe-monthly').disabled).toBe(false)
@@ -226,6 +229,28 @@ describe('the Pro page', () => {
         'the period you have paid for.'
     )
     expect(at('#pro-buy').hidden).toBe(false)
+  })
+
+  it('shows the prices the app is built with', async () => {
+    // The status exactly as the main process builds it from src/shared/product.ts.
+    const now = Date.parse('2026-10-30T12:00:00.000Z')
+    const { at } = await makeHarness(
+      licenceStatusFor({
+        entitlement: entitlementFor({ trialStartedAt: '2026-10-30T09:00:00.000Z', subscribed: false, now }),
+        licence: null,
+        config: { apiBase: POLAR_API_BASE, orgId: 'org', benefitIds: ['benefit'] },
+        trialEndNoticeDismissed: false,
+        deviceLabel: 'Vocette on Windows · 7F3A',
+        now,
+        // Open checkouts, whatever the shipped links are: this test is about the prices.
+        monthlyCheckoutUrl: 'https://example.invalid/checkout/monthly',
+        yearlyCheckoutUrl: 'https://example.invalid/checkout/yearly'
+      })
+    )
+    expect(at('#subscribe-yearly').textContent).toBe('Yearly — US$99 a year · two months free')
+    expect(at('#subscribe-monthly').textContent).toBe('Monthly — US$9.99 a month')
+    expect(at('#subscribe-yearly').disabled).toBe(false)
+    expect(at('#subscribe-monthly').disabled).toBe(false)
   })
 
   it('carries no offer: each plan at its own price, nothing struck through', async () => {
