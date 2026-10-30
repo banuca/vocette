@@ -39,7 +39,9 @@ import { recordHistoryWithRetention } from './history-retention'
 import { migrateLegacyProfile } from './legacy-profile'
 import { HistoryStore, isRestorableEntry } from './history-store'
 import { createPlatformAdapter } from './platform'
+import { createStartupTask, STARTUP_TASK_ID, StartupTaskSwitch } from './platform/startup-task'
 import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform/types'
+import { canInstallUpdates, isStoreInstall } from './distribution'
 import { createFullScreenProbe } from './platform/full-screen'
 import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
@@ -131,6 +133,11 @@ const RETENTION_RETRY_ADVICE =
   'setting again in Settings to retry the cleanup.'
 /** "Paste last dictation", in Electron's accelerator syntax. */
 const PASTE_LAST_ACCELERATOR = 'Alt+Shift+V'
+/**
+ * Running from the Microsoft Store (MSIX) package: the Store installs updates
+ * and the manifest's startup task replaces the Run key (distribution.ts).
+ */
+const STORE_INSTALL = isStoreInstall(process)
 /** What Test sends for polish: short, with a filler to remove. */
 const POLISH_TEST_TEXT = 'this is a test um of the polish'
 
@@ -1875,10 +1882,16 @@ async function bootstrap(): Promise<void> {
   })
   appUpdater = new AppUpdater({
     // The Windows installer and a Linux AppImage replace themselves; a
-    // development run and the unsigned Mac build keep the download page.
-    supported:
-      (app.isPackaged || Boolean(process.env.MURMUR_UPDATE_FEED)) &&
-      (process.platform === 'win32' || (process.platform === 'linux' && Boolean(process.env.APPIMAGE))),
+    // development run and the unsigned Mac build keep the download page, and
+    // the Store build is updated by the Store. Unsupported, electron-updater
+    // is never even loaded.
+    supported: canInstallUpdates({
+      platform: process.platform,
+      store: STORE_INSTALL,
+      packaged: app.isPackaged,
+      testFeed: process.env.MURMUR_UPDATE_FEED,
+      appImage: process.env.APPIMAGE
+    }),
     installOnQuit: !process.env.MURMUR_UPDATE_FEED,
     load: async () => {
       const updaterModule = await import('electron-updater')
@@ -1908,7 +1921,8 @@ async function bootstrap(): Promise<void> {
     onStatus: (status) => {
       mainWindow?.webContents.send('update:status', status)
       rebuildTrayMenu()
-    }
+    },
+    storeManaged: STORE_INSTALL
   })
   countsSender = new CountsSender({
     fetch: (url, init) => net.fetch(url, init),
@@ -1950,7 +1964,15 @@ async function bootstrap(): Promise<void> {
   platform = await createPlatformAdapter({
     setLoginItemSettings: (settings) => app.setLoginItemSettings(settings),
     openExternal: (url) => shell.openExternal(url),
-    globalShortcut
+    globalShortcut,
+    startupTask: STORE_INSTALL
+      ? new StartupTaskSwitch(createStartupTask(STARTUP_TASK_ID), {
+          // Answers arrive later; by then the capability map exists.
+          onChange: () => {
+            if (capabilities) refreshCapabilities()
+          }
+        })
+      : null
   })
   foreground = platform.createTargetTracker()
   shortcutController = platform.createShortcutBackend({

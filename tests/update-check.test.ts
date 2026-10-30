@@ -257,3 +257,55 @@ describe('UpdateChecker', () => {
     expect(checker.downloadPage()).toBeNull()
   })
 })
+
+describe('UpdateChecker in the Microsoft Store build', () => {
+  let fetch: ReturnType<typeof vi.fn<UpdateFetch>>
+  let statuses: ReturnType<UpdateChecker['getStatus']>[]
+
+  const make = (enabled: boolean): UpdateChecker =>
+    new UpdateChecker({
+      fetch,
+      repository: REPO,
+      currentVersion: '1.0.0',
+      enabled: () => enabled,
+      lastCheckedAt: () => null,
+      saveLastCheckedAt: () => {},
+      onStatus: (status) => statuses.push(status),
+      storeManaged: true
+    })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    statuses = []
+    fetch = vi.fn<UpdateFetch>(async () => release('v9.0.0'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('never asks GitHub, even switched on and asked by name', async () => {
+    const checker = make(true)
+    checker.start()
+    checker.enabledChanged()
+    const status = await checker.checkNow()
+    await checker.checkIfDue()
+    await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS + 3 * CHECK_INTERVAL_MS)
+    expect(fetch).not.toHaveBeenCalled()
+    expect(status).toMatchObject({ enabled: false, state: 'store', latest: null })
+    checker.stop()
+  })
+
+  it("offers no release page, whose installer would put a second copy beside the Store's", async () => {
+    const checker = make(true)
+    await checker.checkNow()
+    expect(checker.downloadPage()).toBeNull()
+  })
+
+  it('says where updates come from', () => {
+    const checker = make(false)
+    expect(updateResultText(checker.getStatus())).toBe('The Microsoft Store keeps Vocette up to date.')
+    checker.enabledChanged()
+    expect(statuses.at(-1)).toMatchObject({ enabled: false, state: 'store' })
+  })
+})

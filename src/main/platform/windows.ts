@@ -27,6 +27,9 @@ export function createWindowsAdapter(
   hook: HookModule | null,
   services: DesktopServices
 ): PlatformAdapter {
+  // Only the Microsoft Store build has one: a packaged app's Run key would be
+  // written to a private copy of the registry that sign-in never reads.
+  const startupTask = services.startupTask ?? null
   return {
     id: 'windows',
     session: null,
@@ -51,7 +54,10 @@ export function createWindowsAdapter(
     },
 
     setLaunchAtLogin(enabled) {
-      services.setLoginItemSettings({ openAtLogin: enabled, args: ['--background'] })
+      // The Store package's startup task passes --background itself (its
+      // manifest's uap10:Parameters).
+      if (startupTask) void startupTask.set(enabled)
+      else services.setLoginItemSettings({ openAtLogin: enabled, args: ['--background'] })
     },
 
     async openSettingsPane(pane) {
@@ -63,12 +69,16 @@ export function createWindowsAdapter(
       const hookProblem = hook ? context.shortcuts?.registrationError() ?? null : NO_HOOK
       const shortcuts = hookProblem ? unavailable(hookProblem) : available()
       const targetOk = context.target?.isAvailable() ?? false
+      // The user can change the startup task in Windows' Settings while
+      // Vocette runs. This map is rebuilt whenever the window regains focus,
+      // so Windows is asked again then (at most every few seconds).
+      startupTask?.refresh()
       return {
         globalHold: shortcuts,
         globalToggle: shortcuts,
         targetVerification: targetOk ? available() : unavailable(NO_TARGET_CHECK),
         autoPaste: hook ? available() : unavailable(NO_HOOK),
-        launchAtLogin: available(),
+        launchAtLogin: startupTask ? startupTask.capability() : available(),
         secureKeyStorage: context.secureStorage.usable
           ? available()
           : unavailable(context.secureStorage.reason)

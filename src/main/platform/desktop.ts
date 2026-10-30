@@ -1,4 +1,5 @@
 import type { AcceleratorApi } from './accelerator-backend'
+import type { StartupTaskSwitch } from './startup-task'
 
 /**
  * The Electron services the adapters need, behind an interface so every
@@ -12,4 +13,9 @@ export interface DesktopServices {
   }): void
   openExternal(url: string): Promise<void>
   globalShortcut: AcceleratorApi
+  /**
+   * The Microsoft Store build's startup task, which takes the place of the
+   * login item there (startup-task.ts). Absent everywhere else.
+   */
+  startupTask?: StartupTaskSwitch | null
 }

@@ -119,6 +119,12 @@ export interface UpdateCheckerOptions {
   saveLastCheckedAt(iso: string): void
   /** Every change of status, for the window and the tray. */
   onStatus(status: UpdateStatus): void
+  /**
+   * The Microsoft Store build. The Store installs its updates, so this never
+   * asks GitHub and never offers the release page, whose installer would put a
+   * second copy beside the Store's. The window says where updates come from.
+   */
+  storeManaged?: boolean
   now?: () => number
 }
 
@@ -132,8 +138,8 @@ export class UpdateChecker {
 
   constructor(private readonly options: UpdateCheckerOptions) {
     this.status = {
-      enabled: options.enabled(),
-      state: 'idle',
+      enabled: this.enabled(),
+      state: options.storeManaged ? 'store' : 'idle',
       current: options.currentVersion,
       latest: null,
       checkedAt: options.lastCheckedAt(),
@@ -142,7 +148,7 @@ export class UpdateChecker {
   }
 
   getStatus(): UpdateStatus {
-    return { ...this.status, enabled: this.options.enabled() }
+    return { ...this.status, enabled: this.enabled() }
   }
 
   /** The release page to open, while an update is on offer; otherwise null. */
@@ -156,6 +162,7 @@ export class UpdateChecker {
    */
   start(): void {
     this.stop()
+    if (this.options.storeManaged) return
     this.firstTimer = setTimeout(() => {
       this.firstTimer = null
       void this.checkIfDue()
@@ -176,7 +183,7 @@ export class UpdateChecker {
   enabledChanged(): void {
     if (this.enableTimer) clearTimeout(this.enableTimer)
     this.enableTimer = null
-    if (this.options.enabled()) {
+    if (this.enabled()) {
       this.enableTimer = setTimeout(() => {
         this.enableTimer = null
         void this.checkIfDue()
@@ -187,12 +194,13 @@ export class UpdateChecker {
 
   /** "Check now": asked for by name, so it runs whether or not the switch is on. */
   checkNow(): Promise<UpdateStatus> {
+    if (this.options.storeManaged) return Promise.resolve(this.getStatus())
     return this.check()
   }
 
   /** The daily check: only when switched on, and only once a day has passed. */
   async checkIfDue(): Promise<void> {
-    if (!this.options.enabled()) return
+    if (!this.enabled()) return
     const last = Date.parse(this.options.lastCheckedAt() ?? '')
     const since = this.now() - last
     // A clock set back makes `since` negative; that is not a recent check.
@@ -240,6 +248,11 @@ export class UpdateChecker {
 
   private publish(): void {
     this.options.onStatus(this.getStatus())
+  }
+
+  /** The switch as saved; always off in the Store build, where it has nothing to do. */
+  private enabled(): boolean {
+    return !this.options.storeManaged && this.options.enabled()
   }
 
   private now(): number {

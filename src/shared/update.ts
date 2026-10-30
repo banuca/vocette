@@ -10,7 +10,8 @@ import { PRODUCT_NAME } from './product'
 export interface UpdateStatus {
   /** Whether the daily check is switched on. */
   enabled: boolean
-  state: 'idle' | 'checking' | 'latest' | 'available' | 'error'
+  /** `store`: the Microsoft Store build, which the Store updates; no check is made. */
+  state: 'idle' | 'checking' | 'latest' | 'available' | 'error' | 'store'
   /** The version running now. */
   current: string
   /** The newest published version, once a check has found one. */
@@ -97,6 +98,8 @@ export function updateResultText(status: UpdateStatus): string {
       return `${PRODUCT_NAME} ${displayVersion(status.latest ?? '')} is available.`
     case 'error':
       return status.error ?? 'The check did not work. Try again later.'
+    case 'store':
+      return `The Microsoft Store keeps ${PRODUCT_NAME} up to date.`
     default:
       return ''
   }
