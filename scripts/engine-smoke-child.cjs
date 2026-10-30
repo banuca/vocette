@@ -3,13 +3,48 @@
 // WAV and prints one JSON line. The recogniser settings mirror
 // recognizerConfig() in src/main/engine/worker.ts.
 //   <exe> engine-smoke-child.cjs <resources> <model dir> <file.wav>...
+// VOCETTE_SMOKE_STAGE_TO: copy the model there first and load it from there.
+// Run inside the Store package, that is how the app's own download lands in
+// the package's private copy of AppData (scripts/store-smoke.ps1).
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS on purpose: it runs as plain Node inside the packaged binary. */
 const { join, basename } = require('node:path')
-const { readFileSync } = require('node:fs')
+const { copyFileSync, mkdirSync, readFileSync } = require('node:fs')
 const os = require('node:os')
 
-const [resources, modelDir, ...files] = process.argv.slice(2)
+const [resources, sourceModelDir, ...files] = process.argv.slice(2)
 const sherpa = require(join(resources, 'app.asar.unpacked', 'node_modules', 'sherpa-onnx-node'))
+const MODEL_FILES = ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']
+
+/** The model folder to load: the source, or a copy made where the app would keep it. */
+function modelFolder() {
+  const stage = process.env.VOCETTE_SMOKE_STAGE_TO
+  if (!stage) return { dir: sourceModelDir, stagedMs: null }
+  const startedAt = performance.now()
+  mkdirSync(stage, { recursive: true })
+  for (const name of MODEL_FILES) copyFileSync(join(sourceModelDir, name), join(stage, name))
+  return { dir: stage, stagedMs: Math.round(performance.now() - startedAt) }
+}
+
+/**
+ * The MSIX package this process runs as, or null: proof that a run through
+ * the Store package's alias really had the package's identity.
+ */
+function packageFullName() {
+  if (process.platform !== 'win32') return null
+  try {
+    const koffi = require(join(resources, 'app.asar.unpacked', 'node_modules', 'koffi'))
+    const GetCurrentPackageFullName = koffi
+      .load('kernel32.dll')
+      .func('int32 __stdcall GetCurrentPackageFullName(_Inout_ uint32 *length, void *name)')
+    const length = [256]
+    const name = Buffer.alloc(length[0] * 2)
+    // 0 is ERROR_SUCCESS; 15700, APPMODEL_ERROR_NO_PACKAGE, means unpackaged.
+    if (GetCurrentPackageFullName(length, name) !== 0) return null
+    return name.toString('utf16le', 0, Math.max(0, length[0] - 1) * 2)
+  } catch {
+    return null
+  }
+}
 
 function readWav(path) {
   const b = readFileSync(path)
@@ -32,6 +67,7 @@ function readWav(path) {
 }
 
 ;(async () => {
+  const { dir: modelDir, stagedMs } = modelFolder()
   const startedAt = performance.now()
   const recogniser = await sherpa.OfflineRecognizer.createAsync({
     featConfig: { sampleRate: 16000, featureDim: 80 },
@@ -68,6 +104,9 @@ function readWav(path) {
       loadMs,
       cpu: os.cpus()[0]?.model,
       threads: os.availableParallelism(),
+      package: packageFullName(),
+      modelDir,
+      stagedMs,
       decoded
     })
   )

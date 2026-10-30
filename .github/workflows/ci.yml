@@ -141,6 +141,48 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The Microsoft Store package (MSIX), proved on a real Windows install: built
+  # by `npm run pack:store`, signed with a throwaway certificate made on the
+  # runner, installed, started as the Start menu does, made to transcribe
+  # inside the package, then uninstalled (scripts/store-smoke.ps1). The Store
+  # signs the real package; nothing here is published or kept.
+  store:
+    name: Store package (windows-latest)
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer and main
+        run: npx electron-vite build
+
+      - name: Package for the Store
+        run: npm run pack:store -- --publish never
+
+      - name: Check the native modules survived packaging
+        shell: bash
+        run: node scripts/check-native-packaging.mjs
+
+      # The same model and recordings as the package job, from the same cache.
+      - uses: actions/cache@v4
+        with:
+          path: .smoke
+          key: engine-smoke-${{ hashFiles('src/main/engine/models.ts', 'scripts/engine-smoke.mjs') }}
+
+      - name: Sign, install, start, transcribe and uninstall
+        shell: powershell
+        run: ./scripts/store-smoke.ps1 -Package (Get-Item dist/*.appx).FullName
+
   # A version tag (v0.8.0-beta.1) gathers the three platforms' files into a
   # draft release. A draft is invisible to the public and to the updater; it
   # is published by hand, after its files have been checked (docs/release.md).
