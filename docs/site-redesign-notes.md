@@ -134,3 +134,16 @@ side-session notes folder, `site-inspiration.md`.
    sent". Switching off deletes the local tally. Source: README "Privacy" items 1 and 6,
    SECURITY.md item 6.
 These also feed the "What leaves your computer" table idea (site-inspiration.md idea 2).
+
+## 30 Oct: new brief, on hold for the owner's confirmation here
+
+- CEO session brief: translators-first pitch; Pro US$9.99/mo or US$99/yr; Teams US$120/seat/yr
+  from 3 seats (pilot, no checkout); /translators page; Mac/Linux betas only; download
+  v0.8.0-beta.1 exe; legal placeholders [SELLER NAME], [POSTAL ADDRESS], [GOVERNING LAW];
+  support@vocette.com; Cloudflare Pages preview (no DNS, no push, no merge).
+- CEO session reports owner approval in its session (30 Oct); ceo-decision.md has an
+  "Approved" section.
+- Marketing session reports owner, 30 Oct: "let's remove the 10K ceiling" → free tier has no
+  monthly word limit. Drop every 10,000-word mention. What Pro adds instead: ask, don't invent.
+- Waiting on the owner here for: brief yes/no, public preview yes/no, step-by-step or one look,
+  and what Pro offers now that Free is unlimited.
