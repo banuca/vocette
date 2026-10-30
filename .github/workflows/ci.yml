@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, go-live]
+    branches: [main, go-live, msix-spike]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
