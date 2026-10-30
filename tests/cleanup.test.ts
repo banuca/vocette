@@ -249,6 +249,101 @@ describe('the three switches', () => {
   })
 })
 
+describe('English commas', () => {
+  it('turns the full stop that closes a salutation into a comma', () => {
+    // p15 of the 20-passage benchmark, as the on-device model wrote it.
+    expect(clean('Dear team. A quick update on the launch. The Windows version is ready.')).toBe(
+      'Dear team, a quick update on the launch. The Windows version is ready.'
+    )
+    expect(clean('Dear Sarah. Following up on our call.')).toBe('Dear Sarah, following up on our call.')
+    expect(clean('Dear Sir or Madam. Please find the form attached.')).toBe(
+      'Dear Sir or Madam, please find the form attached.'
+    )
+    expect(clean('Dear Mr. Smith. Thank you for your letter.')).toBe(
+      'Dear Mr. Smith, thank you for your letter.'
+    )
+    expect(clean('Dear all.')).toBe('Dear all,')
+  })
+
+  it('keeps the capital of "I", a name or an acronym after the salutation', () => {
+    expect(clean('Dear team. I wanted to share the plan.')).toBe('Dear team, I wanted to share the plan.')
+    expect(clean("Dear team. Monday's meeting is moved.")).toBe("Dear team, Monday's meeting is moved.")
+    expect(clean('Dear team. IT will reset your passwords.')).toBe(
+      'Dear team, IT will reset your passwords.'
+    )
+  })
+
+  it('keeps a spoken line break after the salutation, with its capital', () => {
+    expect(clean('Dear team. New line. A quick update.')).toBe('Dear team,\nA quick update.')
+  })
+
+  it('leaves alone what is not a salutation closed with a full stop', () => {
+    for (const text of [
+      'Dear team, a quick update.',
+      'Dear Mr. Smith, thank you.',
+      'Dear J. Smith, thanks for the notes.',
+      'Dear me. What a day.',
+      'My dear friend. Thanks.',
+      'Thanks for the update. Dear readers will notice.'
+    ]) {
+      expect(clean(text), text).toBe(text)
+    }
+  })
+
+  it('puts a comma after an introductory word that opens a sentence', () => {
+    // p11 of the benchmark, as the on-device model wrote it.
+    expect(clean("Honestly I wasn't sure it would work.")).toBe("Honestly, I wasn't sure it would work.")
+    expect(clean('Well I think we should ship it.')).toBe('Well, I think we should ship it.')
+    expect(clean("Actually it's on Tuesday.")).toBe("Actually, it's on Tuesday.")
+    expect(clean("Okay I'll send it now.")).toBe("Okay, I'll send it now.")
+    expect(clean('No I meant the other one.')).toBe('No, I meant the other one.')
+    expect(clean('Yes we can.')).toBe('Yes, we can.')
+    expect(clean('Unfortunately the build failed.')).toBe('Unfortunately, the build failed.')
+    expect(clean('That was quick. Honestly I expected worse.')).toBe(
+      'That was quick. Honestly, I expected worse.'
+    )
+    expect(clean('Honestly I’m not sure.')).toBe('Honestly, I’m not sure.')
+  })
+
+  it('puts back the comma a removed filler took with it', () => {
+    expect(clean('Well, um, I think so.')).toBe('Well, I think so.')
+    expect(clean('Okay, like, I will do it.')).toBe('Okay, I will do it.')
+  })
+
+  it('leaves alone an introductory word that does not open a clause', () => {
+    for (const text of [
+      'Well done, everyone.',
+      'No one told me.',
+      'Honestly speaking, it was fine.',
+      'Well before the deadline, we shipped it.',
+      'Thanks a lot.',
+      'Okay.',
+      'Yes, I can.',
+      'It works well I think.',
+      // The full stop ends an abbreviation, so this is not a new sentence.
+      'We start at 9 a.m. Okay we can go.'
+    ]) {
+      expect(clean(text), text).toBe(text)
+    }
+  })
+
+  it('never puts a comma after "So"', () => {
+    expect(clean('So I think we should ship it.')).toBe('So I think we should ship it.')
+    expect(clean('So many people came.')).toBe('So many people came.')
+  })
+
+  it('runs only for a dictation known to be English, and only when cleanup is on', () => {
+    expect(clean('Dear team. A quick update.', { language: 'de' })).toBe('Dear team. A quick update.')
+    expect(clean('Honestly I agree.', { language: 'fr' })).toBe('Honestly I agree.')
+    // Automatic: with English evidence the commas go in; with none either way they do not.
+    expect(clean('Honestly I agree with the plan.', { language: 'auto' })).toBe(
+      'Honestly, I agree with the plan.'
+    )
+    expect(clean('Dear Marta. Grazie mille.', { language: 'auto' })).toBe('Dear Marta. Grazie mille.')
+    expect(cleanupTranscript('Dear team. A quick update.', ALL_OFF)).toBe('Dear team. A quick update.')
+  })
+})
+
 describe('normaliseWhitespace', () => {
   it('trims and collapses spaces and tabs, but keeps line breaks', () => {
     expect(normaliseWhitespace('  a \t b  \n  c ')).toBe('a b\nc')

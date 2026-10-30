@@ -172,6 +172,66 @@ const REPEATED_WORD = new RegExp(
 /** "e.g.", "i.e." and "a.m." end in a full stop without ending the sentence. */
 const DOTTED_ABBREVIATION = /(?:^|[^\p{L}\p{N}.])(?:\p{L}\.){2,}$/u
 
+/** Titles written with a full stop, which never ends a salutation: "Dear Dr. Ng". */
+const TITLE = 'mr|mrs|ms|mx|dr|prof|st'
+const SALUTATION_WORD = String.raw`(?:(?:${TITLE})\.|\p{L}[\p{L}\p{M}'’-]*)`
+
+/**
+ * A letter's salutation that the recogniser closed with a full stop: "Dear"
+ * and up to five words opening the dictation or a line, then the stop. The
+ * stop is never one after a title or an initial ("Dear Mr." of "Dear Mr.
+ * Smith"), and "Dear me." is an exclamation. What follows is captured so its
+ * capital can be checked.
+ */
+const SALUTATION = new RegExp(
+  String.raw`(?<lead>^|\n)(?<greeting>[ \t]*dear[ \t]+(?!(?:me|is|was|are|were)(?!${WORD_CHAR}))${SALUTATION_WORD}(?:[ \t]+${SALUTATION_WORD}){0,4})(?<!(?:^|[ \t])(?:${TITLE}|\p{L}))[ \t]*\.(?<after>(?=\n|$)|[ \t]+(?<next>\p{L}[\p{L}\p{M}'’]*)?)`,
+  'giu'
+)
+
+/**
+ * Words that go on in lower case after a salutation's comma, because none of
+ * them is ever a name: "Dear team, a quick update". Anything else — "I", a
+ * name, a day — keeps its capital.
+ */
+const LOWER_AFTER_SALUTATION = new Set([
+  'a', 'an', 'the', 'this', 'that', 'these', 'those', 'it', "it's", 'its', 'we', "we're",
+  "we've", "we'll", 'you', "you're", 'your', 'our', 'my', 'there', "there's", 'here', "here's",
+  'just', 'hope', 'please', 'thanks', 'thank', 'following', 'as', 'sorry'
+])
+
+/**
+ * Words that open a sentence with a comma after them: "Honestly, I…",
+ * "Well, I think…", "No, I meant…". The on-device recogniser often leaves
+ * it out. "So" is not here: its comma is optional, and "So many", "So far"
+ * and "So that" must never get one.
+ */
+const INTRODUCTORY_WORDS =
+  'honestly|actually|basically|frankly|obviously|unfortunately|fortunately|hopefully|personally|luckily|sadly|ideally|anyway|anyways|well|okay|ok|yes|yeah|no'
+
+/**
+ * What has to come next for the comma to be certain: a subject or a
+ * determiner opening the clause. "Well done", "No one", "Honestly speaking"
+ * and "Well before the deadline" are followed by none of these.
+ */
+const CLAUSE_OPENERS = [
+  'i', "i'm", "i've", "i'd", "i'll", 'we', "we're", "we've", "we'd", "we'll", 'you', "you're",
+  "you've", "you'd", "you'll", 'they', "they're", "they've", "they'd", "they'll", 'he', "he's",
+  'she', "she's", 'it', "it's", 'that', "that's", 'this', 'there', "there's", "let's", 'the',
+  'a', 'an', 'my', 'our', 'your', 'their', 'his', 'her', 'its'
+]
+  // Recognisers write either apostrophe.
+  .map((word) => word.replace(/'/gu, "['’]"))
+  .join('|')
+
+/** An introductory word at the start of a sentence, with no comma before its clause. */
+const INTRODUCTORY = new RegExp(
+  String.raw`(?<lead>^|[.!?][ \t]+|\n[ \t]*)(?<word>${INTRODUCTORY_WORDS})(?<gap>[ \t]+)(?=(?:${CLAUSE_OPENERS})(?!${WORD_CHAR}))`,
+  'giu'
+)
+
+type SalutationGroups = { lead: string; greeting: string; after: string; next?: string }
+type IntroductoryGroups = { lead: string; word: string; gap: string }
+
 /** The word inside a token's punctuation: `Tuesday,` → `Tuesday`. */
 function wordOf(token: string): string {
   return token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
@@ -313,6 +373,39 @@ function capitalise(text: string): string {
   )
 }
 
+/** "A" → "a" when the word goes on in lower case after a salutation; "IT", "I" and names stay. */
+function lowerAfterSalutation(word: string): string {
+  const lower = word.toLowerCase().replace(/’/gu, "'")
+  if (!LOWER_AFTER_SALUTATION.has(lower) || !/^\p{Lu}[\p{Ll}'’]*$/u.test(word)) return word
+  return `${word[0]?.toLowerCase() ?? ''}${word.slice(1)}`
+}
+
+/**
+ * English commas the on-device recogniser misses, put in only where the rule
+ * is certain, and only for a dictation known to be English:
+ *
+ * - a salutation closed with a full stop: "Dear team. A quick update" →
+ *   "Dear team, a quick update";
+ * - an introductory word with no comma before its clause: "Honestly I wasn't
+ *   sure" → "Honestly, I wasn't sure", "Well I think" → "Well, I think".
+ *
+ * Words are never changed: only a mark, and the capital after a salutation.
+ */
+export function repairEnglishPunctuation(text: string): string {
+  const greeted = text.replace(SALUTATION, (...args: unknown[]) => {
+    const { lead, greeting, after, next = '' } = args.at(-1) as SalutationGroups
+    const gap = after.slice(0, after.length - next.length)
+    return `${lead}${greeting},${gap}${lowerAfterSalutation(next)}`
+  })
+  return greeted.replace(INTRODUCTORY, (match: string, ...rest: unknown[]) => {
+    const { lead, word, gap } = rest.at(-1) as IntroductoryGroups
+    const offset = rest.at(-3) as number
+    // "a.m. Okay we…" — the full stop ends an abbreviation, not a sentence.
+    if (lead.startsWith('.') && DOTTED_ABBREVIATION.test(greeted.slice(0, offset + 1))) return match
+    return `${lead}${word},${gap}`
+  })
+}
+
 /**
  * Spacing, punctuation and capitals, in every language.
  *
@@ -354,7 +447,8 @@ export function repairPunctuation(text: string): string {
  * With every switch off the provider's text is returned as it came, apart
  * from outer whitespace. Otherwise the passes run in a fixed order, each
  * blind to the switches it does not own: spoken formatting, spoken
- * corrections, fillers, then the repairs that tidy up after all of them.
+ * corrections, fillers, then the repairs that tidy up after all of them —
+ * for a dictation known to be English, its missing commas first.
  */
 export function cleanupTranscript(input: string, options: CleanupOptions): string {
   const { removeFillers, spokenCorrections, spokenFormatting } = options
@@ -373,5 +467,8 @@ export function cleanupTranscript(input: string, options: CleanupOptions): strin
     text = applySpokenCorrections(text)
   }
   if (removeFillers) text = removeFillerWords(text, rules)
+  // Not under a tentative reading: with no evidence that the text is English,
+  // commas placed by English grammar have no business in it.
+  if (rules === 'full') text = repairEnglishPunctuation(text)
   return repairPunctuation(text)
 }
