@@ -1,46 +1,102 @@
 <!doctype html>
-<!-- This text is a template, not legal advice. Have it reviewed before selling. -->
-<html lang="en">
+<!--
+  This text is a template, not legal advice. Have it reviewed before selling.
+  Placeholders in [CAPITALS] are for the owner.
+-->
+<html lang="en-GB">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Refunds — Vocette</title>
     <meta name="description" content="Your first payment back within 30 days, for any reason." />
-    <link rel="icon" href="assets/icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vocette" />
+    <meta property="og:title" content="Vocette refunds" />
+    <meta property="og:description" content="Your first payment back within 30 days, for any reason." />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="assets/icon.png" sizes="512x512" type="image/png" />
+    <link rel="icon" href="assets/mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('vocette-theme');
+          if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+    <script src="site.js" defer></script>
   </head>
   <body>
-    <header class="wrap site-header">
-      <a class="wordmark" href="./"><img src="assets/icon.png" alt="" width="28" height="28" />Vocette</a>
-      <nav class="site-nav" aria-label="Site"><a href="./">Home</a></nav>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Vocette home">
+          <svg viewBox="0 0 56 56" aria-hidden="true"><g fill="currentColor"><rect x="9" y="22" width="5" height="12" rx="2.5"/><rect x="18" y="15" width="5" height="26" rx="2.5"/><rect x="27" y="9" width="5" height="38" rx="2.5"/><rect x="36" y="17" width="5" height="22" rx="2.5"/><rect x="45" y="23" width="5" height="10" rx="2.5"/></g></svg>
+          Vocette
+        </a>
+        <nav class="nav-links" aria-label="Site">
+          <a href="/translators">For translators</a>
+          <a href="/#how">How it works</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/privacy">Privacy</a>
+        </nav>
+        <div class="nav-end">
+          <button class="icon-btn" id="theme" type="button" aria-label="Switch to dark theme" hidden>
+            <svg class="ico moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            <svg class="ico sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          </button>
+          <a class="btn btn-primary btn-small" href="/#download">Download</a>
+        </div>
+      </div>
     </header>
-    <main class="wrap legal">
+
+    <main id="main" class="wrap legal">
       <h1>Refunds</h1>
-      <p class="updated">Last updated 5 October 2026</p>
-      <p>
-        If Vocette Pro is not right for you, ask for your first payment back within 30 days.
-        You do not need to give a reason. Later renewals are not refunded, but you can cancel
-        at any time in your Polar account: nothing more is charged, and Pro stays on until the
-        end of the period you paid for.
-      </p>
+      <p class="updated">Last updated 30 October 2026</p>
+      <p class="lead">If Vocette Pro is not right for you, ask for your first payment back within 30 days. You do not need to give a reason.</p>
+      <p>Later renewals are not refunded, but you can cancel at any time in your <a href="https://polar.sh/vocette/portal">Polar account</a>: nothing more is charged, and Pro stays on until the end of the period you paid for.</p>
+
       <h2>How to ask</h2>
       <ul>
-        <li>Email <a href="mailto:support@example.com">support@example.com</a> with the email address you bought with, or</li>
+        <li>Email <a href="mailto:support@vocette.com">support@vocette.com</a> from the address you bought with, or</li>
         <li>use the support link in your Polar order email.</li>
       </ul>
+
       <h2>What happens next</h2>
       <ul>
         <li>The full amount goes back to the card or account you paid with. Your bank may take a few days to show it.</li>
-        <li>Your subscription ends and its licence key is revoked; Vocette notices at its next daily check. The free version of Vocette keeps working as before.</li>
+        <li>Your subscription ends and its licence key is revoked; Vocette notices at its next daily check. The free version keeps working as before.</li>
       </ul>
-      <p>
-        This policy is more generous than the 14-day right of withdrawal that applies to
-        purchases in the European Union, and it applies wherever you live.
-      </p>
+
+      <h2>Teams</h2>
+      <p>Refunds for Teams follow the agreement we make with you.</p>
+
+      <h2>Where you live</h2>
+      <p>This policy is more generous than the 14-day right of withdrawal for purchases in the European Union, and it applies wherever you live.</p>
+
+      <div class="contact-box">
+        <p>Refunds are given by <span class="placeholder">[SELLER NAME]</span>, <span class="placeholder">[POSTAL ADDRESS]</span>. Payments are handled by Polar Software, Inc., our merchant of record.</p>
+      </div>
     </main>
-    <footer class="site-footer">
+
+    <footer class="foot">
       <div class="wrap">
-        <nav aria-label="Legal"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="refund.html">Refunds</a></nav>
+        <a class="brand" href="/" aria-label="Vocette home">
+          <svg viewBox="0 0 56 56" aria-hidden="true"><g fill="currentColor"><rect x="9" y="22" width="5" height="12" rx="2.5"/><rect x="18" y="15" width="5" height="26" rx="2.5"/><rect x="27" y="9" width="5" height="38" rx="2.5"/><rect x="36" y="17" width="5" height="22" rx="2.5"/><rect x="45" y="23" width="5" height="10" rx="2.5"/></g></svg>
+          Vocette
+        </a>
+        <nav aria-label="Footer">
+          <a href="/translators">For translators</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/refund">Refunds</a>
+          <a href="https://github.com/banuca/vocette">Source code</a>
+          <a href="mailto:support@vocette.com">support@vocette.com</a>
+        </nav>
+        <p class="betas">Mac (Apple silicon) and Linux: <a href="/download/betas">beta builds</a>, not yet tested on a real Mac or Linux PC.</p>
+        <p>Vocette is an independent, open-source project. Speech model: NVIDIA Parakeet TDT 0.6B v3, used under CC BY 4.0.</p>
       </div>
     </footer>
   </body>

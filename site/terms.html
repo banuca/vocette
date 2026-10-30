@@ -1,72 +1,122 @@
 <!doctype html>
-<!-- This text is a template, not legal advice. Have it reviewed before selling. -->
-<html lang="en">
+<!--
+  This text is a template, not legal advice. Have it reviewed before selling.
+  Prices, devices and limits follow README.md and src/shared/product.ts on go-live.
+  Placeholders in [CAPITALS] are for the owner.
+-->
+<html lang="en-GB">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Terms — Vocette</title>
-    <meta name="description" content="The terms for Vocette Pro, and how they sit alongside the open-source licence." />
-    <link rel="icon" href="assets/icon.png" />
+    <meta name="description" content="The terms for Vocette Pro and Teams, and how they sit alongside the open-source licence." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vocette" />
+    <meta property="og:title" content="Vocette terms" />
+    <meta property="og:description" content="The terms for Vocette Pro and Teams, and how they sit alongside the open-source licence." />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="assets/icon.png" sizes="512x512" type="image/png" />
+    <link rel="icon" href="assets/mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('vocette-theme');
+          if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+    <script src="site.js" defer></script>
   </head>
   <body>
-    <header class="wrap site-header">
-      <a class="wordmark" href="./"><img src="assets/icon.png" alt="" width="28" height="28" />Vocette</a>
-      <nav class="site-nav" aria-label="Site"><a href="./">Home</a></nav>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Vocette home">
+          <svg viewBox="0 0 56 56" aria-hidden="true"><g fill="currentColor"><rect x="9" y="22" width="5" height="12" rx="2.5"/><rect x="18" y="15" width="5" height="26" rx="2.5"/><rect x="27" y="9" width="5" height="38" rx="2.5"/><rect x="36" y="17" width="5" height="22" rx="2.5"/><rect x="45" y="23" width="5" height="10" rx="2.5"/></g></svg>
+          Vocette
+        </a>
+        <nav class="nav-links" aria-label="Site">
+          <a href="/translators">For translators</a>
+          <a href="/#how">How it works</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/privacy">Privacy</a>
+        </nav>
+        <div class="nav-end">
+          <button class="icon-btn" id="theme" type="button" aria-label="Switch to dark theme" hidden>
+            <svg class="ico moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            <svg class="ico sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          </button>
+          <a class="btn btn-primary btn-small" href="/#download">Download</a>
+        </div>
+      </div>
     </header>
-    <main class="wrap legal">
+
+    <main id="main" class="wrap legal">
       <h1>Terms</h1>
-      <p class="updated">Last updated 5 October 2026</p>
+      <p class="updated">Last updated 30 October 2026</p>
+      <p class="lead">These terms cover Vocette Pro and Teams, and the ready-made builds we distribute. The source code has its own licence, which these terms do not limit.</p>
+
+      <h2>Who we are</h2>
+      <p>Vocette is made and sold by <span class="placeholder">[SELLER NAME]</span>, <span class="placeholder">[POSTAL ADDRESS]</span> (“we”). Contact: <a href="mailto:support@vocette.com">support@vocette.com</a>.</p>
 
       <h2>The software</h2>
-      <p>
-        Vocette's source code is published under the MIT licence. Nothing on this page limits
-        what that licence allows you to do with the source code. These terms cover the Pro
-        licence you can buy, and the ready-made builds we distribute.
-      </p>
+      <p>Vocette’s source code is published under the MIT licence. Nothing on this page limits what that licence allows you to do with the source code. The free version stays available to everyone, whether or not they subscribe.</p>
 
-      <h2>What you buy</h2>
+      <h2>The trial and Free</h2>
       <ul>
-        <li>A Pro subscription, monthly or yearly. It renews automatically at the end of each period until you cancel.</li>
-        <li>You can cancel at any time in your Polar account. Pro stays on until the end of the period you have paid for, and is not renewed after it.</li>
-        <li>You may activate your licence key on up to three computers that you own or control, for personal or work use. You can move it by releasing it on one computer and activating it on another.</li>
-        <li>While the subscription lasts, Vocette checks once a day that it is still active. Offline, Pro keeps working for 30 days after the last check.</li>
-        <li>It unlocks the Pro features of Vocette and its updates while the subscription lasts. When it ends, Vocette carries on as the free version; nothing you have written is deleted.</li>
-        <li>The free version remains available to everyone whether or not they subscribe.</li>
+        <li>Everyone starts with 30 days of Pro, with no card and no account. When the trial ends, Vocette carries on as Free unless you subscribe.</li>
+        <li>Free includes 10,000 words of dictation a month, counted on your PC and starting again on the 1st. The dictation that reaches the limit is delivered in full; the next one waits for the 1st.</li>
       </ul>
 
-      <h2>Who sells it</h2>
-      <p>
-        Pro is sold through Polar Software, Inc., which acts as merchant of record and
-        authorised reseller. Polar's buyer terms apply to the payment itself. Prices include or
-        add sales tax and VAT as shown at checkout.
-      </p>
+      <h2>Pro</h2>
+      <ul>
+        <li>Pro is a subscription: US$9.99 a month or US$99 a year. It renews automatically at the end of each period until you cancel.</li>
+        <li>You can cancel at any time in your <a href="https://polar.sh/vocette/portal">Polar account</a>. Pro stays on until the end of the period you have paid for, and is not renewed after it.</li>
+        <li>You may activate your licence key on up to 10 devices that you own or control, for personal or work use. To move it, release it on one device and activate it on another.</li>
+        <li>While the subscription lasts, Vocette checks at most once a day that it is still active. Offline, Pro keeps working for 30 days after the last check.</li>
+        <li>When your subscription ends, Vocette carries on as Free. Nothing you have written is deleted.</li>
+      </ul>
+
+      <h2>Teams</h2>
+      <p>Teams costs US$120 per seat a year, from 3 seats. There is no checkout: we agree the seats, the payment and any pilot with you by email, and that agreement applies alongside these terms.</p>
+
+      <h2>Prices and payment</h2>
+      <p>Prices are in US dollars. Pro is sold through Polar Software, Inc., which acts as merchant of record and authorised reseller. Polar’s buyer terms apply to the payment itself, and Polar shows the final price, with any sales tax or VAT, before you pay.</p>
 
       <h2>Refunds</h2>
-      <p>You can ask for a refund of your first payment within 30 days, for any reason. See the <a href="refund.html">refund policy</a>.</p>
+      <p>You can ask for a refund of your first payment within 30 days, for any reason. See the <a href="/refund">refund policy</a>.</p>
 
       <h2>No warranty</h2>
-      <p>
-        Vocette is provided “as is”. Speech recognition makes mistakes: always check what it
-        wrote before you rely on it, especially for medical, legal, financial or safety-related
-        text. To the extent the law allows, we are not liable for indirect or consequential
-        loss, and our total liability is limited to the amount you paid for Pro in the twelve
-        months before the claim.
-      </p>
+      <p>Vocette is provided “as is”. Speech recognition makes mistakes: always check what it wrote before you rely on it, especially for legal, medical, financial or safety-related text, and for translations you deliver to clients. To the extent the law allows, we are not liable for indirect or consequential loss, and our total liability is limited to the amount you paid us for Vocette in the twelve months before the claim.</p>
 
       <h2>Changes</h2>
       <p>If these terms change, we will say so before your next renewal, and the new version applies from that renewal. You can cancel before it if you do not agree.</p>
 
       <h2>Governing law</h2>
-      <!-- Owner: confirm with a lawyer — Switzerland, canton of Geneva, is assumed here. -->
-      <p>These terms are governed by the law of Switzerland, without affecting any mandatory consumer rights you have where you live.</p>
+      <p>These terms are governed by the law of <span class="placeholder">[GOVERNING LAW]</span>, without affecting any mandatory consumer rights you have where you live.</p>
 
       <h2>Contact</h2>
-      <p><a href="mailto:support@example.com">support@example.com</a></p>
+      <p><a href="mailto:support@vocette.com">support@vocette.com</a></p>
     </main>
-    <footer class="site-footer">
+
+    <footer class="foot">
       <div class="wrap">
-        <nav aria-label="Legal"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="refund.html">Refunds</a></nav>
+        <a class="brand" href="/" aria-label="Vocette home">
+          <svg viewBox="0 0 56 56" aria-hidden="true"><g fill="currentColor"><rect x="9" y="22" width="5" height="12" rx="2.5"/><rect x="18" y="15" width="5" height="26" rx="2.5"/><rect x="27" y="9" width="5" height="38" rx="2.5"/><rect x="36" y="17" width="5" height="22" rx="2.5"/><rect x="45" y="23" width="5" height="10" rx="2.5"/></g></svg>
+          Vocette
+        </a>
+        <nav aria-label="Footer">
+          <a href="/translators">For translators</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/refund">Refunds</a>
+          <a href="https://github.com/banuca/vocette">Source code</a>
+          <a href="mailto:support@vocette.com">support@vocette.com</a>
+        </nav>
+        <p class="betas">Mac (Apple silicon) and Linux: <a href="/download/betas">beta builds</a>, not yet tested on a real Mac or Linux PC.</p>
+        <p>Vocette is an independent, open-source project. Speech model: NVIDIA Parakeet TDT 0.6B v3, used under CC BY 4.0.</p>
       </div>
     </footer>
   </body>

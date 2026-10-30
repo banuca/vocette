@@ -1,92 +1,142 @@
 <!doctype html>
-<!-- This text is a template, not legal advice. Have it reviewed before selling. -->
-<html lang="en">
+<!--
+  This text is a template, not legal advice. Have it reviewed before selling.
+  The network list follows SECURITY.md ("Every network request the app can make")
+  and README.md ("Privacy") on go-live. Placeholders in [CAPITALS] are for the owner.
+-->
+<html lang="en-GB">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Privacy — Vocette</title>
-    <meta name="description" content="What Vocette sends, when, and to whom. The short answer: nothing about you." />
-    <link rel="icon" href="assets/icon.png" />
+    <meta name="description" content="What Vocette sends, when, and to whom. With the on-device engine, which is the default, nothing you say leaves your PC." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vocette" />
+    <meta property="og:title" content="Vocette privacy: what leaves your PC, and when" />
+    <meta property="og:description" content="What Vocette sends, when, and to whom. With the on-device engine, which is the default, nothing you say leaves your PC." />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="assets/icon.png" sizes="512x512" type="image/png" />
+    <link rel="icon" href="assets/mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('vocette-theme');
+          if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+    <script src="site.js" defer></script>
   </head>
   <body>
-    <header class="wrap site-header">
-      <a class="wordmark" href="./"><img src="assets/icon.png" alt="" width="28" height="28" />Vocette</a>
-      <nav class="site-nav" aria-label="Site"><a href="./">Home</a></nav>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Vocette home">
+          <svg viewBox="0 0 56 56" aria-hidden="true"><g fill="currentColor"><rect x="9" y="22" width="5" height="12" rx="2.5"/><rect x="18" y="15" width="5" height="26" rx="2.5"/><rect x="27" y="9" width="5" height="38" rx="2.5"/><rect x="36" y="17" width="5" height="22" rx="2.5"/><rect x="45" y="23" width="5" height="10" rx="2.5"/></g></svg>
+          Vocette
+        </a>
+        <nav class="nav-links" aria-label="Site">
+          <a href="/translators">For translators</a>
+          <a href="/#how">How it works</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/privacy" aria-current="page">Privacy</a>
+        </nav>
+        <div class="nav-end">
+          <button class="icon-btn" id="theme" type="button" aria-label="Switch to dark theme" hidden>
+            <svg class="ico moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            <svg class="ico sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          </button>
+          <a class="btn btn-primary btn-small" href="/#download">Download</a>
+        </div>
+      </div>
     </header>
-    <main class="wrap legal">
+
+    <main id="main" class="wrap legal">
       <h1>Privacy</h1>
-      <p class="updated">Last updated 5 October 2026</p>
+      <p class="updated">Last updated 30 October 2026</p>
+      <p class="lead">Vocette is built so that it does not need to know anything about you. There is no account, no crash reporting and no analytics, apart from anonymous counts you can choose to send. This page lists every time the app goes online, what it sends and who receives it.</p>
 
-      <p>
-        Vocette is built so that it does not need to know anything about you. It has no
-        account, no analytics, no telemetry and no crash reporting. This page lists every
-        occasion on which the app uses the internet, what it sends, and who receives it.
-      </p>
+      <h2>Who is responsible</h2>
+      <p>Vocette is made by <span class="placeholder">[SELLER NAME]</span>, <span class="placeholder">[POSTAL ADDRESS]</span> (“we”). Write to <a href="mailto:support@vocette.com">support@vocette.com</a> about anything on this page.</p>
 
-      <h2>What stays on your computer</h2>
+      <h2>What stays on your PC</h2>
       <ul>
-        <li>Your voice. Speech is turned into text by a model running on your PC. The recording is held in memory only while it is transcribed, then erased; it is never written to disk.</li>
-        <li>Your transcripts, in a history file in your user profile, which you can clear at any time and set to delete itself after 30, 90 or 365 days.</li>
-        <li>Your settings, vocabulary, replacements and snippets.</li>
+        <li><strong>Your voice.</strong> With the on-device engine, which is the default, speech is turned into text on your PC. The recording is held in memory only while that happens, then erased. It is never written to disk.</li>
+        <li><strong>Your transcripts</strong>, in a history file in your user profile. You can clear it at any time, or have entries deleted after 30, 90 or 365 days. Transcripts are kept out of Windows clipboard history and cloud sync.</li>
+        <li><strong>Your settings</strong>, word list, replacements and snippets.</li>
+        <li><strong>A diagnostics log</strong> of what went wrong, such as a failed dictation or a refused paste. It never holds your words or audio. It leaves your PC only if you press <b>Copy diagnostics</b> and paste the report somewhere yourself.</li>
       </ul>
 
-      <h2>When Vocette uses the internet</h2>
-      <ol>
+      <h2>When Vocette goes online</h2>
+      <p>Each of these happens only when stated.</p>
+      <ol class="net">
         <li>
-          <strong>Downloading the speech model — once, when you press Download.</strong>
-          The model files are fetched from Hugging Face (huggingface.co) and checked against
-          fingerprints built into the app. Hugging Face sees an ordinary download request from
-          your internet address.
+          <h3>The speech model</h3>
+          <p class="when">Once, when you press <b>Download</b>.</p>
+          <p>Vocette downloads the 935 MB model from its releases on GitHub, and checks every file against fixed SHA-256 hashes before first use. GitHub sees an ordinary download request from your internet address. Nothing else is sent.</p>
         </li>
         <li>
-          <strong>A Pro subscription — only with a licence key activated.</strong>
-          When you press Activate, Vocette sends your licence key, a device label such as
-          “Vocette on Windows · 7F3A” and the app's version number to Polar (api.polar.sh), our
-          payment provider. After that, at most once a day, it sends the key and this PC's
-          activation to ask whether your subscription is still active; Polar records when it
-          was asked. Releasing a PC sends the key once more. Vocette discards everything in
-          Polar's replies except what it needs to know whether Pro is on.
+          <h3>Your Pro licence</h3>
+          <p class="when">Only once you activate a licence key.</p>
+          <p>When you press <b>Activate</b>, Vocette sends your key, a device label such as “Vocette on Windows · 7F3A” and the app’s version to Polar, our payment provider. After that, at most once a day, it sends the key and this PC’s activation to check that your subscription is still active; Polar records each check. Releasing a PC sends the key once more. Vocette discards your name and email address from Polar’s replies.</p>
         </li>
         <li>
-          <strong>Checking for updates — only if you switch it on, or press “Check now”.</strong>
-          Vocette asks GitHub (api.github.com) for the number of the latest version. Nothing
-          about you or your dictation is sent.
+          <h3>Updates</h3>
+          <p class="when">Only while the update check is on. The first-run card offers it, ticked, and you can turn it off in About.</p>
+          <p>At most once a day, Vocette asks GitHub for the number of the latest version, with no cookies or credentials. An update is downloaded only when you press <b>Download and install</b>.</p>
         </li>
         <li>
-          <strong>A cloud provider or AI polish — only if you set one up.</strong>
-          If you choose a cloud transcription provider, your recordings and your vocabulary go
-          to that provider using your own account. If you turn on AI polish (Pro) with a
-          provider other than one running on your PC, the text of each dictation — never the
-          audio — goes to that provider, with your polish instructions and your vocabulary.
-          Their privacy terms apply.
+          <h3>Cloud transcription</h3>
+          <p class="when">Only if you choose Cloud instead of the on-device engine.</p>
+          <p>Each recording, with your word list, goes to the OpenAI-compatible service you set up, using your own key, or to a server of your own. That provider’s privacy terms apply.</p>
+        </li>
+        <li>
+          <h3>AI polish, with Pro</h3>
+          <p class="when">Only if you switch it on.</p>
+          <p>The text of each dictation, never the audio, goes to the provider you choose, with your instructions and up to 100 terms from your word list. Choose Ollama or LM Studio to keep it on your PC.</p>
+        </li>
+        <li>
+          <h3>Anonymous counts</h3>
+          <p class="when">Only if you tick <b>Help improve Vocette</b>. It is off by default.</p>
+          <p>At most once a day, eight values go to our server at counts.vocette.com: your version, system, engine and plan, the weeks since you installed, the days you dictated and the dictations in the last seven days, and whether the free limit was reached. No words, no audio and no ID, so reports cannot be linked to each other or to you. The server stores them with the date and does not store your IP address. <b>About → Show what is sent</b> shows the exact report, and switching it off deletes the local tally.</p>
         </li>
       </ol>
-      <p>Nothing else. Vocette's source code is public, so this list can be checked by anyone.</p>
+      <p>Nothing else. There is no crash reporting. Vocette’s <a href="https://github.com/banuca/vocette">source code</a> is public, so anyone can check this list.</p>
 
       <h2>Buying Pro</h2>
-      <p>
-        Purchases are handled by Polar Software, Inc., which acts as merchant of record: it
-        takes the payment, handles sales tax and VAT, and issues your licence key. The details
-        you give at checkout are processed by Polar under its own privacy policy. We receive
-        your name, email address and order details from Polar so that we can support you and
-        process refunds, and we use them for nothing else.
-      </p>
+      <p>Pro is sold through Polar Software, Inc., which acts as merchant of record: it takes the payment, handles sales tax and VAT, and issues your licence key. The details you give at checkout are processed by Polar under its own privacy policy. We receive your name, email address and order details from Polar so that we can support you and handle refunds, and we use them for nothing else.</p>
+
+      <h2>Email</h2>
+      <p>If you write to <a href="mailto:support@vocette.com">support@vocette.com</a>, for help or about a Teams pilot, we use your message and address only to answer you.</p>
 
       <h2>This website</h2>
-      <p>
-        This site is static pages with no cookies, no analytics and no third-party scripts or
-        fonts. It is hosted on GitHub Pages, whose servers may keep technical logs such as your
-        IP address, as GitHub describes in its own privacy statement.
-      </p>
+      <p>These pages set no cookies, and load no analytics, no third-party scripts and no outside fonts. If you press the theme button, your choice is saved in your own browser and nowhere else. The site is hosted on Cloudflare Pages; Cloudflare’s servers may keep technical logs, such as your IP address, as Cloudflare’s own privacy policy describes.</p>
 
-      <h2>Contact</h2>
-      <!-- Owner: add the support email address and a postal address if required. -->
-      <p>Questions about privacy: <a href="mailto:support@example.com">support@example.com</a>.</p>
+      <h2>Your rights</h2>
+      <p>You can ask us what we hold about you, and ask us to correct or delete it. Write to <a href="mailto:support@vocette.com">support@vocette.com</a>.</p>
+
+      <h2>Changes</h2>
+      <p>If this page changes, the date at the top changes with it.</p>
     </main>
-    <footer class="site-footer">
+
+    <footer class="foot">
       <div class="wrap">
-        <nav aria-label="Legal"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="refund.html">Refunds</a></nav>
+        <a class="brand" href="/" aria-label="Vocette home">
+          <svg viewBox="0 0 56 56" aria-hidden="true"><g fill="currentColor"><rect x="9" y="22" width="5" height="12" rx="2.5"/><rect x="18" y="15" width="5" height="26" rx="2.5"/><rect x="27" y="9" width="5" height="38" rx="2.5"/><rect x="36" y="17" width="5" height="22" rx="2.5"/><rect x="45" y="23" width="5" height="10" rx="2.5"/></g></svg>
+          Vocette
+        </a>
+        <nav aria-label="Footer">
+          <a href="/translators">For translators</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/refund">Refunds</a>
+          <a href="https://github.com/banuca/vocette">Source code</a>
+          <a href="mailto:support@vocette.com">support@vocette.com</a>
+        </nav>
+        <p class="betas">Mac (Apple silicon) and Linux: <a href="/download/betas">beta builds</a>, not yet tested on a real Mac or Linux PC.</p>
+        <p>Vocette is an independent, open-source project. Speech model: NVIDIA Parakeet TDT 0.6B v3, used under CC BY 4.0.</p>
       </div>
     </footer>
   </body>
