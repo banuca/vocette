@@ -149,3 +149,5 @@ These also feed the "What leaves your computer" table idea (site-inspiration.md 
   and what Pro offers now that Free is unlimited.
 
 - Resolved (owner via CEO session, 30 Oct): "remove the 10K ceiling" meant the US$10k revenue goal. Free stays at 10,000 words a month; keep it in the copy.
+
+- Fact (CEO session, 30 Oct): model stays loaded 30 minutes after the last dictation (was 5); change "five minutes of rest" in the FAQ. New and fine to say: transcripts are kept out of Windows clipboard history and cloud sync.
