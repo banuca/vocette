@@ -24,6 +24,7 @@
     "pack:win": "electron-builder --win --x64",
     "pack:mac": "electron-builder --mac --arm64",
     "pack:linux": "electron-builder --linux --x64",
+    "pack:store": "electron-builder --win appx --x64",
     "release:win": "node scripts/release-win.mjs"
   },
   "dependencies": {

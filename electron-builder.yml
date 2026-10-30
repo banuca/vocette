@@ -75,6 +75,31 @@ nsis:
   # an app that is gone. An update leaves it: the app sets it again anyway.
   include: build/installer.nsh
 
+# The Microsoft Store package (MSIX). Only `npm run pack:store` builds it; the
+# default Windows build above stays NSIS and zip. Unsigned on purpose: the
+# Store signs what it publishes. See docs/store.md.
+appx:
+  # PLACEHOLDERS. Replace all three with the values in Partner Center → the
+  # app → Product management → Product identity: Package/Identity/Name,
+  # Package/Identity/Publisher and Package/Properties/PublisherDisplayName.
+  # A package built with these installs for testing; the Store refuses it.
+  identityName: REPLACE-ME.PartnerCenter.IdentityName
+  publisher: CN=REPLACE-ME-PartnerCenter-Publisher
+  publisherDisplayName: REPLACE ME with the Partner Center publisher display name
+  # Must be a name reserved for the app in Partner Center.
+  displayName: Vocette
+  # The Application Id in the AUMID (<package family>!Vocette).
+  applicationId: Vocette
+  # No plate behind the tiles: the icon draws on the Start menu as it is.
+  backgroundColor: transparent
+  # 19041 for the startup task's --background (uap10:Parameters).
+  minVersion: 10.0.19041.0
+  maxVersionTested: 10.0.26100.0
+  # resources/appx-manifest.xml: the startup task, the microphone capability
+  # and the `vocette` alias. The tile images are in resources/appx/.
+  customManifestPath: appx-manifest.xml
+  artifactName: ${productName}-${version}-store-${arch}.${ext}
+
 mac:
   target:
     # Apple silicon only for now: the testers' Macs are all Apple silicon, and
