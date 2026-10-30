@@ -44,6 +44,7 @@ import { createStartupTask, STARTUP_TASK_ID, StartupTaskSwitch } from './platfor
 import type { PlatformAdapter, ShortcutBackend, TargetTracker } from './platform/types'
 import { canInstallUpdates, isStoreInstall } from './distribution'
 import { createFullScreenProbe } from './platform/full-screen'
+import { createTranscriptWriter, windowHandle } from './platform/private-clipboard'
 import { createModifierProbe } from './platform/key-state'
 import { SYNTHETIC_ECHO_MS } from './shortcut-controller'
 import { rearmPlan } from './rearm-plan'
@@ -890,12 +891,29 @@ async function transcribe(payload: TranscriptionPayload, signal: AbortSignal): P
   })
 }
 
+/**
+ * How Vocette puts its own text on the clipboard. On Windows it is marked so
+ * that clipboard history and cloud sync leave it alone (see
+ * `platform/private-clipboard.ts`), the main window owning the item;
+ * elsewhere, and whenever that cannot be done, it is an ordinary write.
+ */
+const writeOwnText =
+  process.platform === 'win32'
+    ? createTranscriptWriter({
+        owner: () => {
+          const window = mainWindow
+          return window && !window.isDestroyed() ? windowHandle(window.getNativeWindowHandle()) : null
+        },
+        fallback: (text) => clipboard.writeText(text)
+      })
+    : (text: string): void => clipboard.writeText(text)
+
 function createDictationController(): DictationController {
   return new DictationController({
     sendToRecorder: (channel, payload) => recorderWindow?.webContents.send(channel, payload),
     getSettings: workflowSettings,
     transcribe,
-    writeClipboard: (text) => clipboard.writeText(text),
+    writeClipboard: (text) => writeOwnText(text),
     // The copy never leaves this process: it is held until the paste has
     // landed, written back, and dropped.
     snapshotClipboard: () => takeSnapshot(clipboard),
@@ -1663,7 +1681,9 @@ function registerIpc(): void {
   ipcMain.handle('clipboard:write', (event, text: unknown) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
     if (typeof text !== 'string' || text.length > 250_000) throw new Error('Invalid clipboard text.')
-    clipboard.writeText(text)
+    // A transcript copied from History, or the diagnostics report: Vocette's
+    // own text, kept out of clipboard history like a dictation.
+    writeOwnText(text)
   })
 
   ipcMain.handle('app:info', (event) => {
