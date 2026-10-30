@@ -1,4 +1,4 @@
 # Download links. Every download button on the site points at /download or
 # /download/betas. When a new version is published, change it here and nowhere else.
-/download        https://github.com/banuca/vocette/releases/download/v0.8.0-beta.1/Vocette-0.8.0-beta.1-win-x64.exe  302
-/download/betas  https://github.com/banuca/vocette/releases/tag/v0.8.0-beta.1  302
+/download        https://github.com/banuca/vocette/releases/download/v0.8.0-beta.2/Vocette-0.8.0-beta.2-win-x64.exe  302
+/download/betas  https://github.com/banuca/vocette/releases/tag/v0.8.0-beta.2  302
