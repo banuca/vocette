@@ -1936,10 +1936,13 @@ async function bootstrap(): Promise<void> {
       : undefined
   })
   // Nothing starts here: the worker is spawned by the first dictation that
-  // needs it, and killed again once it has been idle for a while.
+  // needs it, and killed again once it has been idle for a while. A
+  // development build can be told to unload sooner, for e2e/cold-wait-check.
+  const idleOverride = !app.isPackaged ? Number(process.env.MURMUR_ENGINE_IDLE_MS) : NaN
   localEngine = new LocalEngine({
     spawn: spawnEngineWorker,
     modelDir: modelStore.path(LOCAL_MODEL.id),
+    idleUnloadMs: Number.isFinite(idleOverride) && idleOverride > 0 ? idleOverride : undefined,
     onUnexpectedExit: (code, busy) => diagnosticsLog?.record({ kind: 'engine-exit', code, busy })
   })
   // Subscribed before the first write of the session, so a failure during the

@@ -73,7 +73,7 @@ class FakeWorker implements WorkerHandle {
   }
 }
 
-function harness(options: { spawnFails?: boolean } = {}) {
+function harness(options: { spawnFails?: boolean; idleUnloadMs?: number } = {}) {
   const workers: FakeWorker[] = []
   const exits: Array<[number, boolean]> = []
   const engine = new LocalEngine({
@@ -85,6 +85,7 @@ function harness(options: { spawnFails?: boolean } = {}) {
     },
     modelDir: 'C:\\models\\parakeet-tdt-0.6b-v3-q8rr',
     numThreads: 3,
+    idleUnloadMs: options.idleUnloadMs,
     onUnexpectedExit: (code, busy) => exits.push([code, busy])
   })
   const worker = (index = -1): FakeWorker => {
@@ -449,7 +450,7 @@ describe('idle unload', () => {
     await result
   }
 
-  it('kills the worker five minutes after the last transcription', async () => {
+  it('kills the worker thirty minutes after the last transcription', async () => {
     const { engine, worker } = harness()
     await transcribeOnce(engine, worker)
     await vi.advanceTimersByTimeAsync(IDLE_UNLOAD_MS - 1)
@@ -457,7 +458,26 @@ describe('idle unload', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(worker().killed).toBe(true)
     expect(worker().unloads()).toBe(1)
-    expect(IDLE_UNLOAD_MS).toBe(5 * 60 * 1000)
+    expect(IDLE_UNLOAD_MS).toBe(30 * 60 * 1000)
+  })
+
+  it('keeps the model through a five-minute pause', async () => {
+    const { engine, workers, worker } = harness()
+    await transcribeOnce(engine, worker)
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    expect(worker().killed).toBe(false)
+    await transcribeOnce(engine, worker)
+    expect(workers).toHaveLength(1)
+    expect(worker().loads()).toBe(1)
+  })
+
+  it('unloads sooner when told to, for the cold-wait check', async () => {
+    const { engine, worker } = harness({ idleUnloadMs: 20_000 })
+    await transcribeOnce(engine, worker)
+    await vi.advanceTimersByTimeAsync(19_999)
+    expect(worker().killed).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(worker().killed).toBe(true)
   })
 
   it('restarts the clock with every use', async () => {
@@ -473,13 +493,13 @@ describe('idle unload', () => {
   })
 
   it('never unloads under a transcription still running', async () => {
-    const { engine, worker } = harness()
-    // Five minutes of audio is allowed longer than five minutes to decode.
-    const result = engine.transcribe(audio(300), 16000)
+    // A minute of audio is allowed 100 s to decode, longer than this idle time.
+    const { engine, worker } = harness({ idleUnloadMs: 60_000 })
+    const result = engine.transcribe(audio(60), 16000)
     await flush()
     worker().send({ type: 'loaded', ms: 1 })
     await flush()
-    await vi.advanceTimersByTimeAsync(IDLE_UNLOAD_MS + 1000)
+    await vi.advanceTimersByTimeAsync(61_000)
     expect(worker().killed).toBe(false)
     worker().send({ type: 'result', id: worker().lastJob().id, text: 'Long.', ms: 1 })
     await expect(result).resolves.toBe('Long.')

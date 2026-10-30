@@ -2,8 +2,16 @@ import { randomUUID } from 'node:crypto'
 import { availableParallelism } from 'node:os'
 import { parseFromWorker, type FromWorker, type ToWorker } from './protocol'
 
-/** A worker that has done nothing for this long is killed, freeing its memory. */
-export const IDLE_UNLOAD_MS = 5 * 60 * 1000
+/**
+ * A worker that has done nothing for this long is killed, freeing its memory.
+ *
+ * Measured on 30 Oct (e2e/cold-wait-check.mjs, Core Ultra 7 265U): after an
+ * unload, a 2 s dictation waited 1.2–4.6 s for its text instead of 0.14–0.29 s,
+ * because the model loads again while the user speaks and a short take ends
+ * first; a 7 s take mostly hid the load. Thirty minutes keeps the model through
+ * an ordinary pause, at the cost of holding about 1 GB for longer.
+ */
+export const IDLE_UNLOAD_MS = 30 * 60 * 1000
 /**
  * Loading reads 640 MB and normally takes 2–3 s. The first load after a
  * download can be far slower — a cold disk cache, and an antivirus scan of a
@@ -44,6 +52,8 @@ export interface LocalEngineOptions {
   /** The folder holding the verified model files. */
   modelDir: string
   numThreads?: number
+  /** How long an unused worker is kept; `IDLE_UNLOAD_MS` unless a check needs it shorter. */
+  idleUnloadMs?: number
   /** A worker that exited on its own, for the diagnostics log: its exit code, and whether a take was waiting. */
   onUnexpectedExit?(code: number, busy: boolean): void
 }
@@ -83,9 +93,11 @@ export class LocalEngine {
   private activeCalls = 0
   private disposed = false
   private readonly numThreads: number
+  private readonly idleUnloadMs: number
 
   constructor(private readonly options: LocalEngineOptions) {
     this.numThreads = options.numThreads ?? defaultThreadCount()
+    this.idleUnloadMs = options.idleUnloadMs ?? IDLE_UNLOAD_MS
   }
 
   /**
@@ -325,7 +337,7 @@ export class LocalEngine {
     this.idleTimer = setTimeout(() => {
       this.idleTimer = null
       if (this.activeCalls === 0 && this.session) this.endSession(this.session, new Error(ENGINE_STOPPED))
-    }, IDLE_UNLOAD_MS)
+    }, this.idleUnloadMs)
   }
 
   private clearIdleTimer(): void {

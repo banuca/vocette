@@ -60,3 +60,4 @@ node e2e/quiet-check.mjs
 | `update-install-check` | Packaged app only (`E2E_EXE`): Download and install from a local feed, with progress; the installer's hash checked, then deleted. Never installs (K8) |
 | `prices-check` | The Pro page: both plans at their prices, the yearly saving, and no offer (checkout never clicked) |
 | `subscription-check` | Activation and renewal against a stand-in Polar over HTTPS |
+| `cold-wait-check` | The wait for text after a 2 s and a 7 s take, with the engine warm and just unloaded, and the app's memory either way. Shortcut off, clipboard kept in memory |

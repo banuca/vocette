@@ -306,7 +306,7 @@ describe('the Transcription card', () => {
     expect(content.innerHTML).toContain('<strong>On this PC</strong>')
     expect(content.innerHTML).toContain(
       'Private and offline. Nothing is sent anywhere. Uses about 1 GB of memory while ' +
-        'dictating, released after 5 minutes of rest.'
+        'dictating, released after 30 minutes of rest.'
     )
     expect(content.innerHTML).toContain('<strong>Cloud, with your API key</strong>')
     expect(content.innerHTML).toContain(

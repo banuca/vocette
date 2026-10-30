@@ -179,7 +179,7 @@ export function renderSettings(
         <div class="mode-choice engine-choice" role="radiogroup" aria-label="Where transcription runs">
           <label class="mode-option">
             <input type="radio" name="engine" value="local" id="engine-local" />
-            <div><strong>On this PC</strong><span>Private and offline. Nothing is sent anywhere. Uses about 1 GB of memory while dictating, released after 5 minutes of rest.</span></div>
+            <div><strong>On this PC</strong><span>Private and offline. Nothing is sent anywhere. Uses about 1 GB of memory while dictating, released after 30 minutes of rest.</span></div>
           </label>
           <label class="mode-option">
             <input type="radio" name="engine" value="cloud" id="engine-cloud" />
