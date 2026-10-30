@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Microsoft Store package's manifest. electron-builder fills in each
+  ${...} from the appx section of electron-builder.yml (`npm run pack:store`);
+  the identity values there are placeholders until Partner Center issues them.
+  See docs/store.md.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 uap10 desktop rescap">
+  <!-- Single quotes: a Partner Center publisher can contain double quotes. -->
+  <Identity Name="${identityName}"
+    ProcessorArchitecture="${arch}"
+    Publisher='${publisher}'
+    Version="${version}" />
+  <Properties>
+    <DisplayName>${displayName}</DisplayName>
+    <PublisherDisplayName>${publisherDisplayName}</PublisherDisplayName>
+    <Description>${description}</Description>
+    <Logo>${logo}</Logo>
+  </Properties>
+  <Resources>
+    ${resourceLanguages}
+  </Resources>
+  <Dependencies>
+    <!-- 10.0.19041 (Windows 10 2004) is the first to honour uap10:Parameters below. -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="${minVersion}" MaxVersionTested="${maxVersionTested}" />
+  </Dependencies>
+  <Capabilities>
+    <!-- A desktop app: the keyboard hook, the paste and the speech engine all need full trust. -->
+    <rescap:Capability Name="runFullTrust" />
+    <!-- Lists Vocette under Settings → Privacy → Microphone from the moment it is installed. -->
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+  <Applications>
+    <Application Id="${applicationId}" Executable="${executable}" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        BackgroundColor="${backgroundColor}"
+        DisplayName="${displayName}"
+        Square150x150Logo="${square150x150Logo}"
+        Square44x44Logo="${square44x44Logo}"
+        Description="${description}">
+        ${defaultTile}
+      </uap:VisualElements>
+      <Extensions>
+        <!--
+          Start with Windows. A package can't use the Run key the installer
+          writes, so this task does it instead, off until the app turns it on
+          (src/main/platform/startup-task.ts, which names the same TaskId).
+          It starts Vocette in the tray, as the Run key does.
+        -->
+        <desktop:Extension
+          Category="windows.startupTask"
+          Executable="${executable}"
+          EntryPoint="Windows.FullTrustApplication"
+          uap10:Parameters="--background">
+          <desktop:StartupTask TaskId="VocetteStartup" Enabled="false" DisplayName="${displayName}" />
+        </desktop:Extension>
+        <!--
+          `vocette` in the Run box or a terminal starts the installed package,
+          with its identity. CI uses it too: it is the supported way to run a
+          packaged app's executable with arguments (scripts/store-smoke.ps1).
+        -->
+        <uap3:Extension
+          Category="windows.appExecutionAlias"
+          Executable="${executable}"
+          EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="vocette.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>
