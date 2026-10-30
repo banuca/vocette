@@ -14,6 +14,7 @@ import {
 import {
   KEY_NOT_READY_REASON,
   MODEL_NOT_READY_REASON,
+  SELF_CHECK_FAILED_REASON,
   engineReady,
   type EngineStatus,
   type ModelState
@@ -130,6 +131,24 @@ describe('setupSteps', () => {
     )
     expect(steps.map((step) => step.id)).toEqual(['model'])
     expect(steps[0]?.detail).not.toMatch(/API key/iu)
+  })
+
+  it('says plainly when on-device transcription failed its check here, and points to Settings', () => {
+    const failed: EngineStatus = {
+      ...onThisPc('installed'),
+      selfCheck: 'failed',
+      ...engineReady({ engine: 'local', apiKeySource: 'none', apiEndpoint: '' }, 'installed', 'failed')
+    }
+    const steps = setupSteps(input({ engine: failed }))
+    expect(steps).toEqual([
+      {
+        id: 'transcription',
+        title: 'Set up transcription',
+        detail: SELF_CHECK_FAILED_REASON,
+        action: { kind: 'navigate-settings', label: 'Open Settings' },
+        blocking: true
+      }
+    ])
   })
 
   it('asks a cloud user without a key for one, through Settings', () => {

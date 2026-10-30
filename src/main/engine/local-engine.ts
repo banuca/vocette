@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { availableParallelism } from 'node:os'
+import { SELF_CHECK_FAILED_REASON, type SelfCheck } from '../../shared/engine'
 import { parseFromWorker, type FromWorker, type ToWorker } from './protocol'
+import { selfCheckPasses } from './self-check'
 
 /**
  * A worker that has done nothing for this long is killed, freeing its memory.
@@ -24,6 +26,8 @@ export const ENGINE_TOO_SLOW_TO_START = 'The speech engine took too long to star
 export const ENGINE_STOPPED = 'The speech engine stopped unexpectedly. Try again.'
 export const ENGINE_UNAVAILABLE = 'The speech engine could not start on this PC.'
 export const ENGINE_SHUT_DOWN = 'The speech engine has been shut down.'
+/** The engine read its known recording wrongly, so it would read the user's wrongly too. */
+export const ENGINE_FAILED_CHECK = SELF_CHECK_FAILED_REASON
 
 /**
  * The thread count for the recogniser.
@@ -56,6 +60,28 @@ export interface LocalEngineOptions {
   idleUnloadMs?: number
   /** A worker that exited on its own, for the diagnostics log: its exit code, and whether a take was waiting. */
   onUnexpectedExit?(code: number, busy: boolean): void
+  /**
+   * The known recording transcribed after every load, before any dictation
+   * (see `self-check.ts`). Asked for at each load; null when it cannot be had,
+   * and the load is then trusted, as it was before the check existed.
+   */
+  selfCheckClip?(): SelfCheckClip | null
+  /** How the self-check went, after every load that had a recording to check with. */
+  onSelfCheck?(outcome: SelfCheckOutcome): void
+}
+
+export interface SelfCheckClip {
+  samples: Float32Array
+  sampleRate: number
+}
+
+export interface SelfCheckOutcome {
+  passed: boolean
+  /**
+   * What the engine made of the known recording: never anything of the
+   * user's. Empty when it could not decode it at all.
+   */
+  heard: string
 }
 
 interface Job {
@@ -65,10 +91,14 @@ interface Job {
 
 interface Session {
   handle: WorkerHandle
-  loaded: Promise<void>
-  resolveLoad(): void
-  rejectLoad(error: Error): void
-  isLoaded: boolean
+  /**
+   * Settles once the model has loaded and, given a recording to check with,
+   * has passed its self-check: only then is a dictation sent to it.
+   */
+  ready: Promise<void>
+  resolveReady(): void
+  rejectReady(error: Error): void
+  stage: 'loading' | 'checking' | 'ready'
   loadTimer: NodeJS.Timeout | null
   jobs: Map<string, Job>
 }
@@ -85,6 +115,11 @@ function abortError(): DOMException {
  * Nothing here blocks the main process: the load and every decode run in the
  * worker, and each call either settles with its text or rejects with a plain
  * sentence — a stuck or crashed worker is never left holding a dictation.
+ *
+ * Every load is followed by the self-check: the known recording must come
+ * back as its own words before a dictation is sent. An engine that fails it
+ * refuses every call until the app restarts or the model is removed, rather
+ * than paste wrong words as if they were right.
  */
 export class LocalEngine {
   private session: Session | null = null
@@ -92,6 +127,8 @@ export class LocalEngine {
   /** Calls to `transcribe` that have not settled yet. The worker is never idle-killed under one. */
   private activeCalls = 0
   private disposed = false
+  /** How the last checked load went; undefined until one has been checked. */
+  private checked: SelfCheck | undefined
   private readonly numThreads: number
   private readonly idleUnloadMs: number
 
@@ -100,15 +137,28 @@ export class LocalEngine {
     this.idleUnloadMs = options.idleUnloadMs ?? IDLE_UNLOAD_MS
   }
 
+  /** How the self-check went at the last checked load; undefined before any. */
+  selfCheck(): SelfCheck | undefined {
+    return this.checked
+  }
+
+  /**
+   * Forgets the self-check's verdict, so the next load is checked afresh: for
+   * a model that has been removed, and may come back as different files.
+   */
+  forgetSelfCheck(): void {
+    this.checked = undefined
+  }
+
   /**
    * Starts the worker and loads the model if that is not already happening,
    * so the next dictation does not wait for it. Also restarts the idle clock.
    */
   prewarm(): void {
-    if (this.disposed) return
+    if (this.disposed || this.checked === 'failed') return
     const session = this.ensureSession()
     // A failed prewarm is reported by the call that actually needs the engine.
-    session?.loaded.catch(() => undefined)
+    session?.ready.catch(() => undefined)
     if (this.activeCalls === 0) this.armIdleTimer()
   }
 
@@ -125,12 +175,13 @@ export class LocalEngine {
     this.clearIdleTimer()
     try {
       if (this.disposed) throw new Error(ENGINE_SHUT_DOWN)
+      if (this.checked === 'failed') throw new Error(ENGINE_FAILED_CHECK)
       if (signal?.aborted) throw abortError()
       if (samples.length === 0) return ''
 
       const session = this.ensureSession()
       if (!session) throw new Error(ENGINE_UNAVAILABLE)
-      await this.untilLoaded(session, signal)
+      await this.untilReady(session, signal)
       return (await this.runJob(session, samples, sampleRate, signal)).trim()
     } finally {
       samples.fill(0)
@@ -165,22 +216,22 @@ export class LocalEngine {
       return null
     }
 
-    let resolveLoad!: () => void
-    let rejectLoad!: (error: Error) => void
-    const loaded = new Promise<void>((resolve, reject) => {
-      resolveLoad = resolve
-      rejectLoad = reject
+    let resolveReady!: () => void
+    let rejectReady!: (error: Error) => void
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve
+      rejectReady = reject
     })
     // Rejections are always handled by whoever awaits; this only keeps an
     // unobserved one (a prewarm nobody followed up) from being reported.
-    loaded.catch(() => undefined)
+    ready.catch(() => undefined)
 
     const session: Session = {
       handle,
-      loaded,
-      resolveLoad,
-      rejectLoad,
-      isLoaded: false,
+      ready,
+      resolveReady,
+      rejectReady,
+      stage: 'loading',
       loadTimer: null,
       jobs: new Map()
     }
@@ -199,7 +250,7 @@ export class LocalEngine {
 
     session.loadTimer = setTimeout(() => {
       session.loadTimer = null
-      if (this.session === session && !session.isLoaded) {
+      if (this.session === session && session.stage === 'loading') {
         this.endSession(session, new Error(ENGINE_TOO_SLOW_TO_START))
       }
     }, LOAD_TIMEOUT_MS)
@@ -214,10 +265,9 @@ export class LocalEngine {
 
   private onWorkerMessage(session: Session, message: FromWorker): void {
     if (message.type === 'loaded') {
-      session.isLoaded = true
       if (session.loadTimer) clearTimeout(session.loadTimer)
       session.loadTimer = null
-      session.resolveLoad()
+      void this.checkLoad(session)
       return
     }
     if (message.type === 'result') {
@@ -236,14 +286,61 @@ export class LocalEngine {
     this.endSession(session, new Error(message.message))
   }
 
-  /** Waits for the model, but lets a cancellation through at once. */
-  private untilLoaded(session: Session, signal?: AbortSignal): Promise<void> {
-    if (session.isLoaded) return Promise.resolve()
-    if (!signal) return session.loaded
+  /**
+   * The self-check after a load. Until it has passed, the session is not
+   * ready and no dictation is sent to it; a failure ends the worker and
+   * leaves the engine refusing calls.
+   */
+  private async checkLoad(session: Session): Promise<void> {
+    if (session.stage !== 'loading') return
+    session.stage = 'checking'
+    let clip: SelfCheckClip | null
+    try {
+      clip = this.options.selfCheckClip?.() ?? null
+    } catch {
+      clip = null
+    }
+    if (!clip || clip.samples.length === 0) {
+      this.markReady(session)
+      return
+    }
+
+    let heard = ''
+    try {
+      // A copy: posting zeroes what it is given, and every load checks again.
+      heard = (await this.runJob(session, clip.samples.slice(), clip.sampleRate)).trim()
+    } catch {
+      // The session ended meanwhile — the worker stopped, the check ran out
+      // of time, the engine was unloaded — and whatever ended it has already
+      // failed everyone waiting. Otherwise the worker could not decode the
+      // recording at all, which is as wrong as decoding the wrong words.
+    }
+    if (this.session !== session) return
+
+    const passed = selfCheckPasses(heard)
+    this.checked = passed ? 'passed' : 'failed'
+    try {
+      this.options.onSelfCheck?.({ passed, heard })
+    } catch {
+      // Reporting the outcome must never change it.
+    }
+    if (passed) this.markReady(session)
+    else this.endSession(session, new Error(ENGINE_FAILED_CHECK))
+  }
+
+  private markReady(session: Session): void {
+    session.stage = 'ready'
+    session.resolveReady()
+  }
+
+  /** Waits for the model to load and pass its check, but lets a cancellation through at once. */
+  private untilReady(session: Session, signal?: AbortSignal): Promise<void> {
+    if (session.stage === 'ready') return Promise.resolve()
+    if (!signal) return session.ready
     return new Promise<void>((resolve, reject) => {
       const onAbort = (): void => reject(abortError())
       signal.addEventListener('abort', onAbort, { once: true })
-      session.loaded.then(
+      session.ready.then(
         () => {
           signal.removeEventListener('abort', onAbort)
           resolve()
@@ -326,7 +423,7 @@ export class LocalEngine {
     } catch {
       // Likewise.
     }
-    if (!session.isLoaded) session.rejectLoad(error)
+    if (session.stage !== 'ready') session.rejectReady(error)
     for (const job of [...session.jobs.values()]) job.reject(error)
     session.jobs.clear()
   }

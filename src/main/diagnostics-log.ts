@@ -8,12 +8,19 @@ import { readJsonWithBackup, writeJsonAtomic, writeJsonAtomicAsync } from './ato
  * every string is checked or cut, and nothing that could carry what was said
  * (the text, the vocabulary, a window title, a key, an endpoint, a microphone
  * name) has a field to go in. The only free text is Vocette's own error
- * sentences, cut to 200 characters.
+ * sentences, cut to 200 characters, and for a failed engine check the
+ * processor's name and what the engine made of Vocette's own test recording.
  */
 
 export type TakeOutcome = 'pasted' | 'copied' | 'failed' | 'cancelled' | 'empty'
 export type PasteDeclined = 'not-verified' | 'focus-moved' | 'elevated' | 'keys-held' | 'blocked'
 export type CrashWhere = 'main' | 'window' | 'worker' | 'gpu' | 'other'
+/**
+ * The on-device engine's self-check: `failed` when it read its known
+ * recording wrongly (or not at all), `no-recording` when the recording could
+ * not be read, so loads went unchecked. A pass is not logged.
+ */
+export type EngineCheckOutcome = 'failed' | 'no-recording'
 
 export type DiagnosticEvent =
   | { kind: 'startup'; readyMs: number }
@@ -30,6 +37,14 @@ export type DiagnosticEvent =
   | { kind: 'mic-error'; name: string }
   | { kind: 'engine-exit'; code: number | null; busy: boolean }
   | { kind: 'crash'; where: CrashWhere; reason: string }
+  | {
+      kind: 'engine-check'
+      outcome: EngineCheckOutcome
+      /** The processor, as the OS names it: "AMD EPYC 7763 64-Core Processor". */
+      cpu: string
+      /** What the engine made of the test recording; absent when it made nothing of it. */
+      heard?: string
+    }
 
 export type LoggedEvent = DiagnosticEvent & { at: string }
 
@@ -93,6 +108,18 @@ export function cleanEvent(input: unknown): DiagnosticEvent | null {
         where: WHERE.has(event.where as CrashWhere) ? (event.where as CrashWhere) : 'other',
         reason: cut(event.reason, 120) || 'unknown'
       }
+    case 'engine-check': {
+      if (event.outcome !== 'failed' && event.outcome !== 'no-recording') return null
+      const check: DiagnosticEvent = {
+        kind: 'engine-check',
+        outcome: event.outcome,
+        cpu: cut(event.cpu, 80) || 'unknown'
+      }
+      // Only ever the engine's reading of Vocette's own recording.
+      const heard = cut(event.heard, 120)
+      if (heard) check.heard = heard
+      return check
+    }
     default:
       return null
   }

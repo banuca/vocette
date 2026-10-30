@@ -36,6 +36,32 @@ describe('cleanEvent', () => {
     expect(take && 'message' in take ? take.message?.length : 0).toBe(200)
   })
 
+  it('keeps a failed engine check with the processor and what the engine heard, and nothing else', () => {
+    expect(
+      cleanEvent({
+        kind: 'engine-check',
+        outcome: 'failed',
+        cpu: '  AMD EPYC 7763 64-Core Processor  ',
+        heard: 'Ask not what you’re comstrich and do for you…',
+        samples: [0.1, 0.2],
+        text: 'Remind me to send the invoice on Friday.'
+      })
+    ).toEqual({
+      kind: 'engine-check',
+      outcome: 'failed',
+      cpu: 'AMD EPYC 7763 64-Core Processor',
+      heard: 'Ask not what you’re comstrich and do for you…'
+    })
+    const long = cleanEvent({ kind: 'engine-check', outcome: 'failed', cpu: 'x'.repeat(300), heard: 'y'.repeat(300) })
+    expect(long).toEqual({ kind: 'engine-check', outcome: 'failed', cpu: 'x'.repeat(80), heard: 'y'.repeat(120) })
+    expect(cleanEvent({ kind: 'engine-check', outcome: 'no-recording' })).toEqual({
+      kind: 'engine-check',
+      outcome: 'no-recording',
+      cpu: 'unknown'
+    })
+    expect(cleanEvent({ kind: 'engine-check', outcome: 'passed', cpu: 'Intel' })).toBeNull()
+  })
+
   it('keeps a microphone error name but never a device label', () => {
     expect(cleanEvent({ kind: 'mic-error', name: 'NotFoundError' })).toEqual({ kind: 'mic-error', name: 'NotFoundError' })
     expect(cleanEvent({ kind: 'mic-error', name: 'Headset (Jabra Evolve2 65)' })).toEqual({

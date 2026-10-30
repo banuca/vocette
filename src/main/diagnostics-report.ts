@@ -58,6 +58,10 @@ export function describeEvent(event: LoggedEvent): string {
       return `engine-exit  code ${event.code ?? 'unknown'} · ${event.busy ? 'while busy' : 'while idle'}`
     case 'crash':
       return `crash        ${event.where} · ${event.reason}`
+    case 'engine-check':
+      return event.outcome === 'failed'
+        ? `engine-check failed · ${event.cpu} · ${event.heard === undefined ? 'heard nothing' : `heard "${event.heard}"`}`
+        : `engine-check not run, no test recording · ${event.cpu}`
   }
 }
 

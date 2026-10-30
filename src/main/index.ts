@@ -1,6 +1,6 @@
 import { basename, dirname, join } from 'node:path'
 import { writeFile } from 'node:fs/promises'
-import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import {
   BrowserWindow,
   Menu,
@@ -34,6 +34,7 @@ import { loadCommonWords } from './common-words'
 import { LocalEngine, type WorkerHandle } from './engine/local-engine'
 import { ModelStore, ModelStoreError, modelsRoot, type DownloadProgress } from './engine/model-store'
 import { LOCAL_MODEL, RETIRED_MODEL_IDS } from './engine/models'
+import { SELF_CHECK_FILE } from './engine/self-check'
 import { restoreSnapshot, takeSnapshot, type ClipboardSnapshot } from './clipboard-custody'
 import { recordHistoryWithRetention } from './history-retention'
 import { migrateLegacyProfile } from './legacy-profile'
@@ -52,7 +53,7 @@ import { UpdateChecker } from './update-check'
 import { CountsSender, countsUrl } from './counts-sender'
 import { DiagnosticsLog } from './diagnostics-log'
 import { formatDiagnostics } from './diagnostics-report'
-import { release, totalmem } from 'node:os'
+import { cpus, release, totalmem } from 'node:os'
 import { polishText, requestPolish } from './polish-service'
 import { OPENAI_POLISH_ENDPOINT, type PolishOutcome } from '../shared/polish'
 import {
@@ -67,7 +68,7 @@ import {
 import { SettingsStore } from './settings-store'
 import { runConnectionTest } from './connection-test'
 import { TranscriptionService } from './transcription-service'
-import { decodeWav } from './wav'
+import { decodeWav, type DecodedWav } from './wav'
 import {
   REMOVE_WHILE_DICTATING,
   engineReady,
@@ -656,7 +657,36 @@ function modelStatus(): ModelStatus {
 function engineStatus(): EngineStatus {
   const settings = settingsStore.getPublic()
   const model = modelStatus()
-  return { engine: settings.engine, model, ...engineReady(settings, model.state) }
+  const selfCheck = localEngine.selfCheck()
+  return {
+    engine: settings.engine,
+    model,
+    ...(selfCheck ? { selfCheck } : {}),
+    ...engineReady(settings, model.state, selfCheck)
+  }
+}
+
+/** The self-check's recording, read once when a load first needs it. */
+let selfCheckClip: DecodedWav | null | undefined
+
+function loadSelfCheckClip(): DecodedWav | null {
+  if (selfCheckClip !== undefined) return selfCheckClip
+  // A development build can be handed another recording, to see the check fail.
+  const standIn = !app.isPackaged ? process.env.MURMUR_SELF_CHECK_CLIP?.trim() : undefined
+  try {
+    selfCheckClip = decodeWav(readFileSync(standIn || resourcePath(SELF_CHECK_FILE)))
+  } catch {
+    selfCheckClip = null
+  }
+  // Packaging is checked for it, so this should not happen. If it does, loads
+  // go unchecked, as they did before the check existed, and the log says so.
+  if (!selfCheckClip) diagnosticsLog?.record({ kind: 'engine-check', outcome: 'no-recording', cpu: cpuName() })
+  return selfCheckClip
+}
+
+/** The processor as the OS names it, for the diagnostics log. */
+function cpuName(): string {
+  return cpus()[0]?.model.trim() || 'unknown'
 }
 
 /**
@@ -1522,6 +1552,8 @@ function registerIpc(): void {
     await stopModelDownload()
     // The worker holds the model in memory and may hold its files open.
     localEngine.unload()
+    // A model downloaded again is checked afresh.
+    localEngine.forgetSelfCheck()
     modelDownloadError = null
     try {
       await modelStore.remove(LOCAL_MODEL.id)
@@ -1943,7 +1975,15 @@ async function bootstrap(): Promise<void> {
     spawn: spawnEngineWorker,
     modelDir: modelStore.path(LOCAL_MODEL.id),
     idleUnloadMs: Number.isFinite(idleOverride) && idleOverride > 0 ? idleOverride : undefined,
-    onUnexpectedExit: (code, busy) => diagnosticsLog?.record({ kind: 'engine-exit', code, busy })
+    onUnexpectedExit: (code, busy) => diagnosticsLog?.record({ kind: 'engine-exit', code, busy }),
+    // After every load the engine reads a known recording before any
+    // dictation; one that reads it wrongly is not used (engine/self-check.ts).
+    selfCheckClip: loadSelfCheckClip,
+    onSelfCheck: ({ passed, heard }) => {
+      if (!passed) diagnosticsLog?.record({ kind: 'engine-check', outcome: 'failed', cpu: cpuName(), heard })
+      // Readiness follows the verdict: the window, the tray and the next take.
+      broadcastEngineStatus()
+    }
   })
   // Subscribed before the first write of the session, so a failure during the
   // startup retention pass is already reflected when the tray and window

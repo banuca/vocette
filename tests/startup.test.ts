@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/settings-store'
 import {
@@ -7,7 +8,7 @@ import {
   POLAR_ORGANIZATION_ID,
   POLAR_PRO_BENEFIT_IDS
 } from '../src/shared/product'
-import type { EngineStatus } from '../src/shared/engine'
+import { SELF_CHECK_FAILED_REASON, type EngineStatus } from '../src/shared/engine'
 import type {
   HistorySaveStatus,
   LicenceActivation,
@@ -46,6 +47,11 @@ interface EngineHarness {
   finishDownload: () => void
   failDownload: (error: Error) => void
   removals: () => number
+  /** The engine's self-check after a load, as it reports it to the main process. */
+  checkLoad: (passed: boolean, heard?: string) => void
+  /** The recording the main process hands the engine for its check. */
+  selfCheckClip: () => { samples: Float32Array; sampleRate: number } | null
+  forgetSelfCheck: Mock<() => void>
 }
 
 interface StartupHarness {
@@ -160,6 +166,14 @@ async function startApp(options: {
   const prewarmEngine = vi.fn<() => void>()
   const unloadEngine = vi.fn<() => void>()
   const disposeEngine = vi.fn<() => void>()
+  let selfCheckVerdict: 'passed' | 'failed' | undefined
+  const forgetSelfCheck = vi.fn<() => void>(() => {
+    selfCheckVerdict = undefined
+  })
+  let engineOptions: {
+    selfCheckClip?: () => { samples: Float32Array; sampleRate: number } | null
+    onSelfCheck?: (outcome: { passed: boolean; heard: string }) => void
+  } = {}
   const historyAdds: Array<{ text: string; durationMs: number; model: string }> = []
   const ipcListeners = new Map<string, (event: unknown, payload: unknown) => void>()
   const appListeners = new Map<string, (event: unknown) => void>()
@@ -499,10 +513,15 @@ async function startApp(options: {
   })
   vi.doMock('../src/main/engine/local-engine', () => ({
     LocalEngine: class {
+      constructor(options: typeof engineOptions) {
+        engineOptions = options
+      }
       transcribe = transcribeLocally
       unload = unloadEngine
       dispose = disposeEngine
       prewarm = prewarmEngine
+      selfCheck = (): 'passed' | 'failed' | undefined => selfCheckVerdict
+      forgetSelfCheck = forgetSelfCheck
     }
   }))
 
@@ -625,7 +644,13 @@ async function startApp(options: {
         settleDownload?.resolve()
       },
       failDownload: (error) => settleDownload?.reject(error),
-      removals: () => removals
+      removals: () => removals,
+      checkLoad: (passed, heard = '') => {
+        selfCheckVerdict = passed ? 'passed' : 'failed'
+        engineOptions.onSelfCheck?.({ passed, heard })
+      },
+      selfCheckClip: () => engineOptions.selfCheckClip?.() ?? null,
+      forgetSelfCheck
     },
     windowOptions,
     timeline,
@@ -1236,6 +1261,46 @@ describe('the on-device engine', () => {
     expect(app.engine.removals()).toBe(1)
     expect(status).toMatchObject({ model: { state: 'missing' }, ready: false })
     expect(lastEngineBroadcast(app)).toMatchObject({ model: { state: 'missing' } })
+    // A model downloaded again is checked afresh.
+    expect(app.engine.forgetSelfCheck).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops using the engine on this PC once it fails its self-check, and says why everywhere', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    app.engine.checkLoad(true)
+    expect(lastEngineBroadcast(app)).toMatchObject({ selfCheck: 'passed', ready: true })
+
+    app.engine.checkLoad(false, 'Ask not what you’re comstrich and do for you…')
+    expect(lastEngineBroadcast(app)).toMatchObject({
+      selfCheck: 'failed',
+      model: { state: 'installed' },
+      ready: false,
+      notReadyReason: SELF_CHECK_FAILED_REASON
+    })
+    expect(app.trayLabels()).toContain(SELF_CHECK_FAILED_REASON)
+
+    // The next press is refused at once and says why; nothing is recorded or
+    // sent to the engine.
+    app.pressShortcut()
+    await app.settle()
+    expect(app.sentToRecorder().filter(({ channel }) => channel === 'recorder:start')).toEqual([])
+    expect(app.engine.transcribe).not.toHaveBeenCalled()
+    expect(workflowErrors(app)).toEqual([SELF_CHECK_FAILED_REASON])
+  })
+
+  it('leaves a cloud user alone whatever the engine on this PC made of its check', async () => {
+    const app = await startApp({ engine: 'cloud', apiKeySource: 'stored' })
+    app.engine.checkLoad(false, '')
+    expect(lastEngineBroadcast(app)).toMatchObject({ engine: 'cloud', selfCheck: 'failed', ready: true })
+  })
+
+  it('hands the engine the recording it checks itself with, read once', async () => {
+    vi.stubEnv('MURMUR_SELF_CHECK_CLIP', join(__dirname, '..', 'resources', 'self-check.wav'))
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    const clip = app.engine.selfCheckClip()
+    expect(clip?.sampleRate).toBe(16000)
+    expect(clip?.samples.length).toBe(51_680)
+    expect(app.engine.selfCheckClip()).toBe(clip)
   })
 
   it('tells the window when a saved key makes the cloud ready', async () => {

@@ -16,6 +16,9 @@ extraResources:
     filter:
       - icon.png
       - tray.png
+      # The known recording the on-device engine reads after every load
+      # (src/main/engine/self-check.ts); check-native-packaging requires it.
+      - self-check.wav
 
 # The native modules must stay outside the asar: koffi, uiohook-napi and the
 # speech engine load real files from disk at runtime and cannot be read out of

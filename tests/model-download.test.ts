@@ -9,6 +9,7 @@ import {
 } from '../src/renderer/model-download'
 import {
   REMOVE_WHILE_DICTATING,
+  SELF_CHECK_FAILED_REASON,
   type EngineStatus,
   type ModelState,
   type ModelStatus
@@ -96,6 +97,25 @@ describe('modelRowState', () => {
       note: null,
       progress: null
     })
+  })
+
+  it('never reads Ready for a model that failed its self-check here, and says why', () => {
+    const failed: EngineStatus = {
+      ...status('installed'),
+      selfCheck: 'failed',
+      ready: false,
+      notReadyReason: SELF_CHECK_FAILED_REASON
+    }
+    expect(modelRowState(failed)).toMatchObject({
+      badge: 'Not working on this PC',
+      badgeTone: 'failed',
+      detail: SELF_CHECK_FAILED_REASON,
+      detailIsError: true,
+      downloadLabel: null,
+      removeVisible: true,
+      removeEnabled: true
+    })
+    expect(modelRowState({ ...status('installed'), selfCheck: 'passed' }).badge).toBe('Ready')
   })
 
   it('will not remove the model mid-dictation, and says why', () => {

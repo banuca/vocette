@@ -9,7 +9,8 @@
  * quietly loses the global shortcut and every paste-target check, which is
  * exactly the class of defect that shipped once already. The speech engine is
  * the same: packed into the archive, it only fails when the first on-device
- * dictation tries to load it.
+ * dictation tries to load it. So is the engine's self-check recording: left
+ * out, every load goes unchecked and only the diagnostics log says so.
  *
  * Run after `electron-builder`. It inspects the unpacked application directory
  * rather than the installer, so it works the same on all three platforms.
@@ -92,7 +93,13 @@ const REQUIRED = [
           relative: join('app.asar.unpacked', 'node_modules', `sherpa-onnx-win-${arch}`, 'onnxruntime.dll')
         }
       ]
-    : [])
+    : []),
+  // The recording the engine checks itself with after every load
+  // (src/main/engine/self-check.ts), copied by electron-builder's extraResources.
+  {
+    label: 'self-check recording',
+    relative: join('resources', 'self-check.wav')
+  }
 ]
 
 const roots = unpackedRoots()

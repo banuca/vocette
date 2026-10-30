@@ -1,5 +1,6 @@
 import {
   REMOVE_WHILE_DICTATING,
+  SELF_CHECK_FAILED_REASON,
   type EngineStatus,
   type ModelState
 } from '../shared/engine'
@@ -82,8 +83,16 @@ export function modelRowState(status: EngineStatus, dictating = false): ModelRow
     case 'installed':
       return {
         ...common,
-        badge: 'Ready',
-        badgeTone: 'ready',
+        // On disk and intact, but if it read its test recording wrongly on
+        // this PC it is not "Ready", and the row says why.
+        ...(status.selfCheck === 'failed'
+          ? {
+              badge: 'Not working on this PC',
+              badgeTone: 'failed' as const,
+              detail: SELF_CHECK_FAILED_REASON,
+              detailIsError: true
+            }
+          : { badge: 'Ready', badgeTone: 'ready' as const }),
         removeVisible: true,
         removeEnabled: !dictating,
         note: dictating ? REMOVE_WHILE_DICTATING : null

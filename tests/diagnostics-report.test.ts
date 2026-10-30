@@ -57,6 +57,25 @@ describe('formatDiagnostics', () => {
     ])
   })
 
+  it('names the processor and what the engine heard when its self-check fails', () => {
+    const events: LoggedEvent[] = [
+      {
+        kind: 'engine-check',
+        outcome: 'failed',
+        cpu: 'AMD EPYC 7763 64-Core Processor',
+        heard: 'Ask not what you’re comstrich and do for you…',
+        at: '2026-10-30T09:00:00.000Z'
+      },
+      { kind: 'engine-check', outcome: 'failed', cpu: 'AMD Ryzen 5 3600', at: '2026-10-30T09:01:00.000Z' },
+      { kind: 'engine-check', outcome: 'no-recording', cpu: 'Intel(R) Core(TM) i5-8250U', at: '2026-10-30T09:02:00.000Z' }
+    ]
+    expect(formatDiagnostics({ ...FACTS, events }).split('\n').slice(-3)).toEqual([
+      '  09:00:00 engine-check failed · AMD EPYC 7763 64-Core Processor · heard "Ask not what you’re comstrich and do for you…"',
+      '  09:01:00 engine-check failed · AMD Ryzen 5 3600 · heard nothing',
+      '  09:02:00 engine-check not run, no test recording · Intel(R) Core(TM) i5-8250U'
+    ])
+  })
+
   it('lists what this platform cannot do, and only the last 50 events', () => {
     const events: LoggedEvent[] = Array.from({ length: 80 }, (_, index) => ({
       kind: 'startup',

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  ENGINE_FAILED_CHECK,
   ENGINE_SHUT_DOWN,
   ENGINE_STOPPED,
   ENGINE_TOO_SLOW,
@@ -9,6 +10,8 @@ import {
   LOAD_TIMEOUT_MS,
   LocalEngine,
   defaultThreadCount,
+  type SelfCheckClip,
+  type SelfCheckOutcome,
   type WorkerHandle
 } from '../src/main/engine/local-engine'
 import type { FromWorker, ToWorker } from '../src/main/engine/protocol'
@@ -73,9 +76,12 @@ class FakeWorker implements WorkerHandle {
   }
 }
 
-function harness(options: { spawnFails?: boolean; idleUnloadMs?: number } = {}) {
+function harness(
+  options: { spawnFails?: boolean; idleUnloadMs?: number; clip?: () => SelfCheckClip | null } = {}
+) {
   const workers: FakeWorker[] = []
   const exits: Array<[number, boolean]> = []
+  const outcomes: SelfCheckOutcome[] = []
   const engine = new LocalEngine({
     spawn: () => {
       if (options.spawnFails) throw new Error('spawn EACCES')
@@ -86,14 +92,16 @@ function harness(options: { spawnFails?: boolean; idleUnloadMs?: number } = {}) 
     modelDir: 'C:\\models\\parakeet-tdt-0.6b-v3-q8rr',
     numThreads: 3,
     idleUnloadMs: options.idleUnloadMs,
-    onUnexpectedExit: (code, busy) => exits.push([code, busy])
+    onUnexpectedExit: (code, busy) => exits.push([code, busy]),
+    selfCheckClip: options.clip,
+    onSelfCheck: (outcome) => outcomes.push(outcome)
   })
   const worker = (index = -1): FakeWorker => {
     const found = workers.at(index)
     if (!found) throw new Error('No worker was spawned.')
     return found
   }
-  return { engine, workers, worker, exits }
+  return { engine, workers, worker, exits, outcomes }
 }
 
 /** One second of 16 kHz audio per `seconds`, never silent, so zeroing shows. */
@@ -582,6 +590,165 @@ describe('unload and dispose', () => {
     expect((await rejection(engine.transcribe(audio(1), 16000))).message).toBe(ENGINE_SHUT_DOWN)
     engine.prewarm()
     expect(workers).toHaveLength(1)
+  })
+})
+
+describe('the self-check after every load', () => {
+  /** A stand-in for the known recording: never silent, unlike nothing at all. */
+  const CLIP: SelfCheckClip = { samples: new Float32Array(16000 * 3).fill(0.5), sampleRate: 16000 }
+  const RIGHT = 'Ask not what your country can do for you, ask what you can do for your country.'
+  const GARBLED = 'Ask not what you’re comstrich and do for you…'
+
+  /** Loads the newest worker and answers its check, returning the check's job. */
+  async function loadAndCheck(worker: () => FakeWorker, text: string): Promise<void> {
+    worker().send({ type: 'loaded', ms: 1 })
+    await flush()
+    worker().send({ type: 'result', id: worker().lastJob().id, text, ms: 300 })
+    await flush()
+  }
+
+  it('reads the known recording before any dictation, and goes ahead when its words come back', async () => {
+    const { engine, worker, outcomes } = harness({ clip: () => CLIP })
+    const result = engine.transcribe(audio(2), 16000)
+    await flush()
+    worker().send({ type: 'loaded', ms: 1 })
+    await flush()
+
+    // Only the recording has been sent: the user's audio waits for the verdict.
+    expect(worker().jobs()).toHaveLength(1)
+    expect(worker().lastJob().samples).toEqual(CLIP.samples)
+    expect(engine.selfCheck()).toBeUndefined()
+
+    worker().send({ type: 'result', id: worker().lastJob().id, text: RIGHT, ms: 300 })
+    await flush()
+    expect(worker().jobs()).toHaveLength(2)
+    expect(worker().lastJob().samples).toEqual(audio(2))
+    worker().send({ type: 'result', id: worker().lastJob().id, text: 'Hello.', ms: 1 })
+    await expect(result).resolves.toBe('Hello.')
+    expect(outcomes).toEqual([{ passed: true, heard: RIGHT }])
+    expect(engine.selfCheck()).toBe('passed')
+  })
+
+  it('refuses the dictation when the words come back wrong, and every one after it', async () => {
+    const { engine, workers, worker, outcomes } = harness({ clip: () => CLIP })
+    const failed = rejection(engine.transcribe(audio(2), 16000))
+    await flush()
+    await loadAndCheck(worker, GARBLED)
+
+    expect((await failed).message).toBe(ENGINE_FAILED_CHECK)
+    // The user's audio was never sent to an engine that garbles speech.
+    expect(worker().jobs()).toHaveLength(1)
+    expect(worker().killed).toBe(true)
+    expect(outcomes).toEqual([{ passed: false, heard: GARBLED }])
+    expect(engine.selfCheck()).toBe('failed')
+
+    const samples = audio(1)
+    expect((await rejection(engine.transcribe(samples, 16000))).message).toBe(ENGINE_FAILED_CHECK)
+    expect(samples.every((value) => value === 0)).toBe(true)
+    engine.prewarm()
+    await flush()
+    expect(workers).toHaveLength(1)
+  })
+
+  it('counts a recording the worker cannot decode at all as a failure', async () => {
+    const { engine, worker, outcomes } = harness({ clip: () => CLIP })
+    const failed = rejection(engine.transcribe(audio(1), 16000))
+    await flush()
+    worker().send({ type: 'loaded', ms: 1 })
+    await flush()
+    worker().send({
+      type: 'error',
+      id: worker().lastJob().id,
+      message: 'The speech engine could not transcribe this recording. Try again.'
+    })
+    expect((await failed).message).toBe(ENGINE_FAILED_CHECK)
+    expect(outcomes).toEqual([{ passed: false, heard: '' }])
+  })
+
+  it('checks after every load, and keeps the recording intact for the next', async () => {
+    const { engine, workers, worker, outcomes } = harness({ clip: () => CLIP, idleUnloadMs: 60_000 })
+    engine.prewarm()
+    await loadAndCheck(worker, RIGHT)
+    expect(CLIP.samples.every((value) => value === 0.5)).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(worker().killed).toBe(true)
+    const result = engine.transcribe(audio(1), 16000)
+    await flush()
+    expect(workers).toHaveLength(2)
+    await loadAndCheck(worker, RIGHT)
+    worker().send({ type: 'result', id: worker().lastJob().id, text: 'Second load.', ms: 1 })
+    await expect(result).resolves.toBe('Second load.')
+    expect(outcomes).toHaveLength(2)
+  })
+
+  it('runs during a prewarm, so the take that follows does not wait for it', async () => {
+    const { engine, worker } = harness({ clip: () => CLIP })
+    engine.prewarm()
+    await loadAndCheck(worker, RIGHT)
+    const result = engine.transcribe(audio(1), 16000)
+    await flush()
+    expect(worker().jobs()).toHaveLength(2)
+    worker().send({ type: 'result', id: worker().lastJob().id, text: 'At once.', ms: 1 })
+    await expect(result).resolves.toBe('At once.')
+  })
+
+  it('trusts a load with no recording to check it with, as before', async () => {
+    const { engine, worker, outcomes } = harness({ clip: () => null })
+    const result = engine.transcribe(audio(1), 16000)
+    await flush()
+    worker().send({ type: 'loaded', ms: 1 })
+    await flush()
+    expect(worker().jobs()).toHaveLength(1)
+    worker().send({ type: 'result', id: worker().lastJob().id, text: 'Unchecked.', ms: 1 })
+    await expect(result).resolves.toBe('Unchecked.')
+    expect(outcomes).toEqual([])
+    expect(engine.selfCheck()).toBeUndefined()
+  })
+
+  it('treats a worker that dies during the check as stopped, not as failed', async () => {
+    const { engine, workers, worker, outcomes } = harness({ clip: () => CLIP })
+    const failed = rejection(engine.transcribe(audio(1), 16000))
+    await flush()
+    worker().send({ type: 'loaded', ms: 1 })
+    await flush()
+    worker().exit(3221225477)
+    expect((await failed).message).toBe(ENGINE_STOPPED)
+    expect(outcomes).toEqual([])
+    expect(engine.selfCheck()).toBeUndefined()
+
+    void engine.transcribe(audio(1), 16000).catch(() => undefined)
+    await flush()
+    expect(workers).toHaveLength(2)
+  })
+
+  it('gives up on a check that never answers, without a verdict', async () => {
+    const { engine, worker } = harness({ clip: () => CLIP })
+    const failed = rejection(engine.transcribe(audio(1), 16000))
+    await flush()
+    worker().send({ type: 'loaded', ms: 1 })
+    await flush()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect((await failed).message).toBe(ENGINE_TOO_SLOW)
+    expect(worker().killed).toBe(true)
+    expect(engine.selfCheck()).toBeUndefined()
+  })
+
+  it('tries again once the verdict is forgotten, as for a model removed and downloaded again', async () => {
+    const { engine, workers, worker } = harness({ clip: () => CLIP })
+    const first = rejection(engine.transcribe(audio(1), 16000))
+    await flush()
+    await loadAndCheck(worker, GARBLED)
+    await first
+
+    engine.forgetSelfCheck()
+    expect(engine.selfCheck()).toBeUndefined()
+    const result = engine.transcribe(audio(1), 16000)
+    await flush()
+    expect(workers).toHaveLength(2)
+    await loadAndCheck(worker, RIGHT)
+    worker().send({ type: 'result', id: worker().lastJob().id, text: 'Working again.', ms: 1 })
+    await expect(result).resolves.toBe('Working again.')
   })
 })
 

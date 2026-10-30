@@ -61,3 +61,4 @@ node e2e/quiet-check.mjs
 | `prices-check` | The Pro page: both plans at their prices, the yearly saving, and no offer (checkout never clicked) |
 | `subscription-check` | Activation and renewal against a stand-in Polar over HTTPS |
 | `cold-wait-check` | The wait for text after a 2 s and a 7 s take, with the engine warm and just unloaded, and the app's memory either way. Shortcut off, clipboard kept in memory |
+| `engine-self-check` | The engine's check after a load: the shipped recording passes and the take is delivered; a staged wrong recording fails the take in plain words, refuses the next, and logs the processor. With `E2E_EXE`, the first part only |

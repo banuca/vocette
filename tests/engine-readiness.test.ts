@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   KEY_NOT_READY_REASON,
   MODEL_NOT_READY_REASON,
+  SELF_CHECK_FAILED_REASON,
   engineReady,
   type ModelState
 } from '../src/shared/engine'
@@ -47,6 +48,24 @@ describe('engineReady', () => {
     expect(
       engineReady({ engine: 'local', apiKeySource: 'none', apiEndpoint: OPENAI }, 'installed').ready
     ).toBe(true)
+  })
+
+  it('is not ready on this PC once the engine has failed its self-check, and says why', () => {
+    const local = { engine: 'local', apiKeySource: 'none', apiEndpoint: OPENAI } as const
+    expect(engineReady(local, 'installed', 'failed')).toEqual({
+      ready: false,
+      notReadyReason: SELF_CHECK_FAILED_REASON
+    })
+    expect(SELF_CHECK_FAILED_REASON).toBe(
+      "On-device transcription isn't working correctly on this PC. To keep dictating, choose Cloud in Settings."
+    )
+    expect(engineReady(local, 'installed', 'passed')).toEqual({ ready: true, notReadyReason: null })
+    // Without the model, the model is what is missing.
+    expect(engineReady(local, 'missing', 'failed').notReadyReason).toBe(MODEL_NOT_READY_REASON)
+    // The cloud does not care how the on-device engine fared.
+    expect(
+      engineReady({ engine: 'cloud', apiKeySource: 'stored', apiEndpoint: OPENAI }, 'installed', 'failed')
+    ).toEqual({ ready: true, notReadyReason: null })
   })
 
   it('still needs the model on this PC, whatever endpoint is saved', () => {
