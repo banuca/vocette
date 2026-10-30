@@ -6,6 +6,7 @@ import { createWindowsAdapter } from '../src/main/platform/windows'
 import type { DesktopServices } from '../src/main/platform/desktop'
 import type { HookModule } from '../src/main/platform/hook-backend'
 import type { MacBindings } from '../src/main/platform/macos-native'
+import { StartupTaskSwitch, type StartupTaskState } from '../src/main/platform/startup-task'
 import type { CapabilityContext, ShortcutBackend } from '../src/main/platform/types'
 import type { ShortcutChord } from '../src/shared/shortcuts'
 
@@ -161,6 +162,58 @@ describe('Windows adapter', () => {
     const desktop = services()
     createWindowsAdapter(hookModule(), desktop).setLaunchAtLogin(true)
     expect(desktop.login).toEqual([{ openAtLogin: true, args: ['--background'] }])
+  })
+})
+
+describe('Windows adapter in the Microsoft Store build', () => {
+  /** The startup task as Windows would answer it. */
+  function storeServices(answer: StartupTaskState) {
+    const asked: string[] = []
+    const api = {
+      state: async () => answer,
+      enable: async () => {
+        asked.push('enable')
+        return answer
+      },
+      disable: async () => {
+        asked.push('disable')
+        return 'disabled' as const
+      }
+    }
+    const desktop = services()
+    desktop.startupTask = new StartupTaskSwitch(api, { onChange: () => {}, log: () => {} })
+    return { desktop, asked, toggle: desktop.startupTask }
+  }
+
+  it('switches the startup task and never writes the Run key, which a package cannot use', async () => {
+    const { desktop, asked, toggle } = storeServices('enabled')
+    const adapter = createWindowsAdapter(hookModule(), desktop)
+    adapter.setLaunchAtLogin(true)
+    await toggle.set(true)
+    adapter.setLaunchAtLogin(false)
+    await toggle.set(false)
+    expect(asked).toEqual(['enable', 'disable'])
+    expect(desktop.login).toEqual([])
+  })
+
+  it('says so when the user has turned it off in Windows, where only they can turn it on', async () => {
+    const { desktop, toggle } = storeServices('disabled-by-user')
+    const adapter = createWindowsAdapter(hookModule(), desktop)
+    await toggle.set(true)
+    const map = adapter.capabilities(context())
+    expect(map.launchAtLogin.state).toBe('unavailable')
+    expect(map.launchAtLogin.reason).toContain('Settings → Apps → Startup')
+    // Everything else is as in the installer build.
+    expect(map.globalHold.state).toBe('available')
+    expect(map.autoPaste.state).toBe('available')
+  })
+
+  it('keeps the toggle available while Windows lets the app decide', async () => {
+    const { desktop, toggle } = storeServices('enabled')
+    await toggle.set(true)
+    expect(createWindowsAdapter(hookModule(), desktop).capabilities(context()).launchAtLogin.state).toBe(
+      'available'
+    )
   })
 })
 
