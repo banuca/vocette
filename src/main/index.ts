@@ -35,6 +35,7 @@ import { LocalEngine, type WorkerHandle } from './engine/local-engine'
 import { ModelStore, ModelStoreError, modelsRoot, type DownloadProgress } from './engine/model-store'
 import { LOCAL_MODEL, RETIRED_MODEL_IDS } from './engine/models'
 import { SELF_CHECK_FILE } from './engine/self-check'
+import { wrapUtilityChild } from './engine/worker-handle'
 import { restoreSnapshot, takeSnapshot, type ClipboardSnapshot } from './clipboard-custody'
 import { recordHistoryWithRetention } from './history-retention'
 import { migrateLegacyProfile } from './legacy-profile'
@@ -765,12 +766,8 @@ function spawnEngineWorker(): WorkerHandle {
   const child = utilityProcess.fork(join(__dirname, 'engine-worker.js'), [], {
     serviceName: 'Vocette speech engine'
   })
-  return {
-    postMessage: (message) => child.postMessage(message),
-    kill: () => void child.kill(),
-    onMessage: (listener) => void child.on('message', listener),
-    onExit: (listener) => void child.on('exit', listener)
-  }
+  // Never posts to, or kills, a worker that has exited: see worker-handle.ts.
+  return wrapUtilityChild(child)
 }
 
 function playSound(kind: SoundKind): void {
