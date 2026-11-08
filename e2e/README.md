@@ -54,6 +54,7 @@ node e2e/quiet-check.mjs
 | `welcome-check` | The first-run card: both ticked, Done saves, gone for good (S2, S3) |
 | `language-check` | Prints the system languages and the language a fresh profile starts in (S6) |
 | `update-install-check` | Packaged app only (`E2E_EXE`): Download and install from a local feed, with progress; the installer's hash checked, then deleted. Never installs (K8) |
+| `free-check` | Free for everyone: a profile left by the paid version (ended trial, 12,000 words this month, a licence key) opens with no Pro page and no limit, two takes in a row are kept, counts say "free", the key is taken off the disk, and nothing names or asks Polar. Shortcuts and paste off, takes from the window |
 | `cold-wait-check` | The wait for text after a 2 s and a 7 s take, with the engine warm and just unloaded, and the app's memory either way. Shortcut off, clipboard kept in memory |
 | `clipboard-privacy-check` | Windows: a delivered dictation and a copy from History carry the three formats that keep them out of clipboard history and cloud sync, and read back exactly. Uses the real clipboard briefly |
 | `engine-self-check` | The engine's check after a load: the shipped recording passes and the take is delivered; a staged wrong recording fails the take in plain words, refuses the next, and logs the processor. With `E2E_EXE`, the first part only |
