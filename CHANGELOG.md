@@ -5,6 +5,15 @@ All notable changes to this project are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-11-08 (final release: free for everyone)
+
+- **Vocette is free for everyone:** no monthly word limit, 500 terms, 200 replacements and
+  snippets, and AI polish.
+- The Pro page, trial, subscriptions and licence keys are gone. Vocette never contacts Polar,
+  and an old licence key is removed from your settings.
+- About says Vocette is free, open source (MIT) and no longer actively developed.
+- The installer's licence page names GitHub as the model's download source.
+
 ## [0.8.0-beta.2] — 2026-10-30 (test build: new prices, engine fixes)
 
 - **Pro is US$9.99 a month or US$99 a year.** The yearly plan still saves a little over two

@@ -7,7 +7,7 @@ at https://github.com/banuca/vocette/blob/main/LICENSE.
 Every feature is free for everyone: there is nothing to buy and no account.
 Vocette is no longer actively developed.
 
-The speech model is downloaded separately, on first use, from Hugging Face. It
+The speech model is downloaded separately, on first use, from GitHub. It
 is NVIDIA Parakeet TDT 0.6B v3 (ONNX export by the sherpa-onnx project) and is
 licensed under CC-BY-4.0.
 
