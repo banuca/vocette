@@ -16,6 +16,7 @@ import { MODEL_NOT_READY_REASON } from '../src/shared/engine'
 import type { PublicSettings, TranscriptionEngine } from '../src/shared/types'
 import type { UpdateInstall, UpdateStatus } from '../src/shared/update'
 import type { CountsReport, CountsStatus } from '../src/shared/usage-counts'
+import { PLAN_WORDS } from './fixtures/plan-words'
 
 const REPORT: CountsReport = {
   v: '0.8.0',
@@ -241,6 +242,18 @@ describe('renderAbout', () => {
     expect(html).toContain('Free, open-source push-to-talk dictation for Windows, macOS and Linux.')
     // It comes first, before the cards about how Vocette works.
     expect(html.indexOf(PROJECT_STATUS)).toBeLessThan(html.indexOf('<h3>Simple by design</h3>'))
+  })
+
+  it('shows no price, trial, Pro tier or limit, on either engine', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    for (const engine of ['local', 'cloud'] as const) {
+      const { content, context } = render(engine)
+      renderAbout(context)
+      await flush()
+      expect(content.innerHTML).not.toMatch(PLAN_WORDS)
+      expect(content.querySelector('#privacy-notice')?.textContent).not.toMatch(PLAN_WORDS)
+      expect(content.querySelector('#counts-report')?.textContent).toContain('"plan": "free"')
+    }
   })
 
   it('keeps the update, counts, diagnostics and attribution cards', async () => {

@@ -5,6 +5,7 @@ import { available, type PlatformStatus } from '../src/shared/capabilities'
 import type { EngineStatus } from '../src/shared/engine'
 import { MAX_REPLACEMENT_RULES } from '../src/shared/replacements'
 import type { PublicSettings } from '../src/shared/types'
+import { PLAN_WORDS } from './fixtures/plan-words'
 
 /**
  * The vocabulary card, driven through the same render function the app uses.
@@ -502,5 +503,18 @@ describe('the notes under long lists', () => {
   it('keep counting ignored lines', async () => {
     const { at } = await makeHarness({ replacements: `${rules(25)}\nno arrow here` })
     expect(at('#replacements-note').textContent).toContain('25 rules — 1 line ignored:')
+  })
+
+  it('leave the whole page free of prices, trials, Pro and limits, on either engine', async () => {
+    for (const engine of ['local', 'cloud'] as const) {
+      const { at, context } = await makeHarness({
+        engine,
+        vocabulary: terms(600),
+        replacements: rules(250)
+      })
+      expect(context.content.innerHTML).not.toMatch(PLAN_WORDS)
+      expect(at('#vocabulary-note').textContent).not.toMatch(PLAN_WORDS)
+      expect(at('#replacements-note').textContent).not.toMatch(PLAN_WORDS)
+    }
   })
 })

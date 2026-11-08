@@ -1,8 +1,8 @@
 /**
  * The product's name and where its releases live.
  *
- * Vocette is free for everyone and open source (MIT). There are no plans,
- * no trial and nothing to buy: every feature is there for every user.
+ * Vocette is free for everyone and open source (MIT). There are no plans
+ * and nothing to buy: every feature is there for every user.
  */
 
 export const PRODUCT_NAME = 'Vocette'
