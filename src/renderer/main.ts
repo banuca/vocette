@@ -5,17 +5,15 @@ import { createHistorySaveWarning, trackHistorySaveStatus } from './history-save
 import { createRecordingControl } from './recording-control'
 import { BRAND_MARK_SVG } from './brand'
 import { icon } from './icons'
-import { trialBadge } from './licence-text'
 import { applyTheme, createThemeToggle, type ThemeToggle } from './theme'
 import type { MicrophoneAccess } from './setup-guide'
 import { renderAbout, type AboutView } from './pages/about'
 import { renderHistory, type HistoryView } from './pages/history'
-import { renderPro, type ProView } from './pages/pro'
 import { renderSettings, type SettingsView } from './pages/settings'
 import { effectiveRecordingMode, globalShortcutUsable } from '../shared/capabilities'
 import type { EngineStatus } from '../shared/engine'
 import { chordLabel } from '../shared/keycodes'
-import type { AppInfo, HistoryEntry, LicenceStatus, Page, PublicSettings } from '../shared/types'
+import type { AppInfo, HistoryEntry, Page, PublicSettings } from '../shared/types'
 import type { UpdateStatus } from '../shared/update'
 
 const root = document.querySelector<HTMLDivElement>('#app')
@@ -59,14 +57,12 @@ async function mount(): Promise<void> {
   let history: HistoryEntry[]
   let appInfo: AppInfo
   let engine: EngineStatus
-  let licence: LicenceStatus
   try {
-    ;[settings, history, appInfo, engine, licence] = await Promise.all([
+    ;[settings, history, appInfo, engine] = await Promise.all([
       window.murmur.getSettings(),
       window.murmur.getHistory(),
       window.murmur.getAppInfo(),
-      window.murmur.getEngineStatus(),
-      window.murmur.getLicenceStatus()
+      window.murmur.getEngineStatus()
     ])
   } catch (error) {
     appRoot.innerHTML = `<div class="fatal-error"><h1>Vocette could not open</h1><p>${escapeHtml(friendlyError(error))}</p></div>`
@@ -80,7 +76,6 @@ async function mount(): Promise<void> {
   let activePage: Page = 'history'
   let historyView: HistoryView | null = null
   let settingsView: SettingsView | null = null
-  let proView: ProView | null = null
   let aboutView: AboutView | null = null
 
   appRoot.innerHTML = `
@@ -93,7 +88,6 @@ async function mount(): Promise<void> {
         <nav class="navigation" aria-label="Primary navigation">
           <button class="nav-item active" data-page="history" title="History"><span class="nav-icon">${icon('history')}</span><span>History</span></button>
           <button class="nav-item" data-page="settings" title="Settings"><span class="nav-icon">${icon('settings')}</span><span>Settings</span></button>
-          <button class="nav-item" data-page="pro" title="Pro"><span class="nav-icon">${icon('sparkle')}</span><span>Pro<small class="nav-suffix" id="nav-pro-suffix" hidden></small></span></button>
           <button class="nav-item" data-page="about" title="About"><span class="nav-icon">${icon('info')}</span><span>About<i class="nav-dot" id="nav-about-dot" hidden></i></span></button>
         </nav>
         <div class="sidebar-footer">
@@ -170,18 +164,6 @@ async function mount(): Promise<void> {
     updateRecordControl()
   }
 
-  /**
-   * The sidebar's Pro item says "Trial · 23d" during the trial and nothing
-   * otherwise: no countdown in red, and nothing at all on Free or Pro.
-   */
-  const updateProNav = (): void => {
-    const suffix = appRoot.querySelector<HTMLElement>('#nav-pro-suffix')
-    if (!suffix) return
-    const badge = trialBadge(context.licence)
-    suffix.textContent = badge ?? ''
-    suffix.hidden = badge === null
-  }
-
   const context: AppContext = {
     content,
     settings,
@@ -191,7 +173,6 @@ async function mount(): Promise<void> {
     engine,
     workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
-    licence,
     setHeading: (nextTitle, nextSubtitle) => {
       title.textContent = nextTitle
       subtitle.textContent = nextSubtitle
@@ -226,17 +207,6 @@ async function mount(): Promise<void> {
       else historyView?.applyEngine(next)
       settingsView?.applyEngine(next)
     },
-    applyLicence: (next) => {
-      // Asked for on every focus, so an answer that changes nothing changes
-      // nothing on screen either.
-      if (JSON.stringify(next) === JSON.stringify(context.licence)) return
-      context.licence = next
-      updateProNav()
-      // Each view repaints only what the plan changes: History's notice and
-      // the Pro page itself.
-      historyView?.applyLicence(next)
-      proView?.apply(next)
-    },
     navigate: (page, intent) => {
       activePage = page
       renderPage(intent)
@@ -268,13 +238,10 @@ async function mount(): Promise<void> {
     settingsView?.dispose()
     settingsView = null
     historyView = null
-    proView?.dispose()
-    proView = null
     aboutView = null
     try {
       if (activePage === 'history') historyView = renderHistory(context)
       if (activePage === 'settings') settingsView = renderSettings(context, intent)
-      if (activePage === 'pro') proView = renderPro(context)
       if (activePage === 'about') aboutView = renderAbout(context)
     } catch (error) {
       // A page bug must be visible — once, a render error after the HTML was
@@ -293,7 +260,7 @@ async function mount(): Promise<void> {
   appRoot.querySelectorAll<HTMLButtonElement>('.nav-item').forEach((button) => {
     button.addEventListener('click', () => {
       const page = button.dataset.page
-      if (page === 'history' || page === 'settings' || page === 'pro' || page === 'about') {
+      if (page === 'history' || page === 'settings' || page === 'about') {
         context.navigate(page)
       }
     })
@@ -334,10 +301,6 @@ async function mount(): Promise<void> {
     context.navigate(page)
   })
 
-  window.murmur.onLicenceChanged((next) => {
-    context.applyLicence(next)
-  })
-
   // A dot on About while an update is on offer, and the page kept current.
   const applyUpdate = (status: UpdateStatus): void => {
     const dot = appRoot.querySelector<HTMLElement>('#nav-about-dot')
@@ -350,18 +313,6 @@ async function mount(): Promise<void> {
   window.murmur.onUpdateStatus(applyUpdate)
   window.murmur.onUpdateInstall((install) => aboutView?.applyInstall(install))
 
-  // The trial ends on its own, perhaps while the window sits behind other
-  // work, so coming back to it asks again. Nothing leaves this computer: the
-  // answer is worked out in the main process from the clock.
-  const refreshLicence = (): void => {
-    void window.murmur
-      .getLicenceStatus()
-      .then((next) => context.applyLicence(next))
-      .catch(() => undefined)
-  }
-  window.addEventListener('focus', refreshLicence)
-
-  updateProNav()
   renderPage()
   // Tells the main process the renderer can receive navigation now, instead of
   // guessing with a timeout.
@@ -382,7 +333,6 @@ async function mount(): Promise<void> {
     .getEngineStatus()
     .then((next) => context.applyEngine(next))
     .catch(() => undefined)
-  refreshLicence()
   void window.murmur
     .getUpdateStatus()
     .then(applyUpdate)

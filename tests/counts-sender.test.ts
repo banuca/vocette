@@ -13,7 +13,7 @@ const REPORT: CountsReport = {
   v: '0.8.0',
   os: 'windows',
   engine: 'local',
-  plan: 'trial',
+  plan: 'free',
   week: 1,
   activeDays7: 5,
   dictations7: 42,

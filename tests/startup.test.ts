@@ -1,21 +1,9 @@
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/settings-store'
-import {
-  CHECKOUT_URL_MONTHLY,
-  CHECKOUT_URL_YEARLY,
-  CUSTOMER_PORTAL_URL,
-  POLAR_ORGANIZATION_ID,
-  POLAR_PRO_BENEFIT_IDS
-} from '../src/shared/product'
 import { SELF_CHECK_FAILED_REASON, type EngineStatus } from '../src/shared/engine'
-import type {
-  HistorySaveStatus,
-  LicenceActivation,
-  LicenceRelease,
-  LicenceStatus,
-  TranscriptionTestResult
-} from '../src/shared/types'
+import type { HistorySaveStatus, TranscriptionTestResult } from '../src/shared/types'
+import type { CountsStatus } from '../src/shared/usage-counts'
 
 /**
  * Covers `bootstrap()` through its real calling path — `app.whenReady()` and
@@ -98,15 +86,12 @@ interface StartupHarness {
   /** Makes the next settings save report a stored key. */
   keySavedOnNextSave: () => void
   registeredAccelerators: () => string[]
-  /** What the main process asked Polar, through the fake `net.fetch`. */
-  polarRequests: () => Array<{ url: string; init: RequestInit }>
+  /** Anything else the main process asked for through the fake `net.fetch`. */
+  otherRequests: () => Array<{ url: string; init: RequestInit }>
   /** What the update check asked GitHub. */
   githubRequests: () => Array<{ url: string; init: RequestInit }>
   /** The update switch as the fake store holds it. */
   storedUpdateCheck: () => boolean
-  /** What the store was asked to keep after an activation. */
-  savedLicences: () => Array<Record<string, unknown>>
-  licenceCleared: () => number
   openedExternally: () => string[]
   /** What the app last told the operating system about its palette. */
   themeSource: () => string
@@ -133,12 +118,8 @@ async function startApp(options: {
   modelState?: StoredModelState
   /** Another application already owns every system shortcut Vocette asks for. */
   acceleratorTaken?: boolean
-  /** When the stored trial began; null is a profile the store has not yet dated. */
-  trialStartedAt?: string | null
-  /** A licence is already active on this PC. */
-  licensed?: boolean
-  /** Polar's answer to whatever the main process sends it. */
-  polarReply?: (url: string, init: RequestInit) => Response | Promise<Response>
+  /** When the profile first ran; null is a profile the store has not yet dated. */
+  firstRunAt?: string | null
   /** GitHub's answer to an update check; without one, GitHub cannot be reached. */
   githubReply?: () => Response
   /** The saved transcription key, as the store would decrypt it. */
@@ -204,27 +185,13 @@ async function startApp(options: {
   let storedSettings: typeof DEFAULT_SETTINGS = {
     ...DEFAULT_SETTINGS,
     historyRetentionDays: 30,
-    trialStartedAt: options.trialStartedAt ?? null,
-    deviceTag: '7F3A',
+    firstRunAt: options.firstRunAt ?? null,
     apiEndpoint: options.apiEndpoint ?? DEFAULT_SETTINGS.apiEndpoint,
     ...options.polish,
     ...(options.restingPill === undefined ? {} : { restingPill: options.restingPill })
   }
   let fullScreen = false
-  // Confirmed a minute ago, so Pro holds and no check is due.
-  let licence: Record<string, string> | null = options.licensed
-    ? {
-        activationId: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe',
-        benefitId: 'benefit-under-test',
-        displayKey: '****-E304DA',
-        activatedAt: '2026-09-25T13:48:13.251Z',
-        subscription: 'active',
-        confirmedAt: new Date(Date.now() - 60_000).toISOString()
-      }
-    : null
-  const savedLicences: Array<Record<string, unknown>> = []
-  let licenceClears = 0
-  const polarRequests: Array<{ url: string; init: RequestInit }> = []
+  const otherRequests: Array<{ url: string; init: RequestInit }> = []
   const githubRequests: Array<{ url: string; init: RequestInit }> = []
   const openedExternally: string[] = []
   const nativeThemeFake = {
@@ -346,7 +313,8 @@ async function startApp(options: {
         return Promise.resolve()
       })
     },
-    // Only the licence client reaches this: the model store is faked below.
+    // The update check reaches this; the model store is faked below. Anything
+    // else is recorded, and nothing else should ever come here.
     net: {
       fetch: vi.fn(async (url: string, init: RequestInit) => {
         if (url.startsWith('https://api.github.com/')) {
@@ -354,9 +322,8 @@ async function startApp(options: {
           if (!options.githubReply) throw new TypeError('fetch failed')
           return options.githubReply()
         }
-        polarRequests.push({ url, init })
-        if (!options.polarReply) throw new TypeError('fetch failed')
-        return options.polarReply(url, init)
+        otherRequests.push({ url, init })
+        throw new TypeError('fetch failed')
       })
     },
     screen: {
@@ -419,28 +386,6 @@ async function startApp(options: {
       clearSessionApiKey = vi.fn()
       recordUsageDay = vi.fn()
       takeWarning = () => null
-      licenceRecord = () => licence
-      getLicenceKey = (): string => {
-        if (!licence) throw new Error('No licence is active on this PC.')
-        return 'MURMUR-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA'
-      }
-      saveLicence = (input: Record<string, string>): void => {
-        savedLicences.push(input)
-        const { key: _key, ...record } = input
-        licence = { ...record, subscription: 'active', confirmedAt: input.activatedAt ?? '' }
-      }
-      recordSubscriptionCheck = (result: 'active' | 'ended', at: string): void => {
-        if (!licence) return
-        licence =
-          result === 'active'
-            ? { ...licence, subscription: 'active', confirmedAt: at }
-            : { ...licence, subscription: 'ended' }
-      }
-      clearLicence = (): void => {
-        licenceClears += 1
-        licence = null
-        storedSettings = { ...storedSettings, trialEndNoticeDismissed: true }
-      }
       setUpdateCheck = (enabled: boolean): void => {
         storedSettings = { ...storedSettings, updateCheck: enabled }
       }
@@ -701,11 +646,9 @@ async function startApp(options: {
       saveStatusListeners.forEach((listener) => listener(status))
     },
     registeredAccelerators: () => [...accelerators],
-    polarRequests: () => polarRequests,
+    otherRequests: () => otherRequests,
     githubRequests: () => githubRequests,
     storedUpdateCheck: () => storedSettings.updateCheck,
-    savedLicences: () => savedLicences,
-    licenceCleared: () => licenceClears,
     openedExternally: () => openedExternally,
     themeSource: () => nativeThemeFake.themeSource,
     overlayShows: () => overlayWindow?.showInactive.mock.calls.length ?? 0,
@@ -1466,39 +1409,10 @@ describe('a take the recorder heard no speech in', () => {
   })
 })
 
-describe('Pro over IPC', () => {
+describe('free for everyone', () => {
   const DAY = 86_400_000
-  /** Fifty terms, then Dataverse as the fifty-first. */
+  /** Fifty terms, then Dataverse as the fifty-first: past the old Free list. */
   const TERMS = [...Array.from({ length: 50 }, (_, index) => `Term${index}`), 'Dataverse'].join('\n')
-
-  /** Polar's 200, cut down to what matters, with a buyer the app must ignore. */
-  const granted = (): Response =>
-    new Response(
-      JSON.stringify({
-        id: 'activation-under-test',
-        license_key: {
-          status: 'granted',
-          benefit_id: 'benefit-under-test',
-          display_key: '****-E304DA',
-          expires_at: null,
-          customer: { email: 'buyer@example.com', name: 'Ada Buyer' }
-        }
-      }),
-      { status: 200, headers: { 'content-type': 'application/json' } }
-    )
-
-  /** Points the licence client at a sandbox that only the fake `net.fetch` answers. */
-  const configure = (): void => {
-    vi.stubEnv('MURMUR_POLAR_API_BASE', 'https://sandbox-api.polar.sh')
-    vi.stubEnv('MURMUR_POLAR_ORG_ID', 'org-under-test')
-    vi.stubEnv('MURMUR_POLAR_BENEFIT_ID', 'benefit-under-test')
-  }
-
-  const licenceBroadcasts = (app: StartupHarness): LicenceStatus[] =>
-    app
-      .sentToMain()
-      .filter((message) => message.channel === 'licence:changed')
-      .map((message) => message.payload as LicenceStatus)
 
   /**
    * One take from the window's Record button, however many came before it.
@@ -1524,165 +1438,77 @@ describe('Pro over IPC', () => {
     await app.settle()
   }
 
-  it('serves the status only to the main window, with no key or Polar identifier in it', async () => {
-    configure()
-    const app = await startApp({ trialStartedAt: new Date().toISOString() })
-    const status = app.invoke('licence:status', true) as LicenceStatus
-    expect(status).toMatchObject({
-      plan: 'trial',
-      trialDaysLeft: 30,
-      licence: null,
-      purchasesConfigured: true,
-      trialEndNoticeDue: false,
-      deviceLabel: 'Vocette on Windows · 7F3A'
-    })
-    const shown = JSON.stringify(status)
-    for (const secret of ['org-under-test', 'benefit-under-test', 'sandbox']) {
-      expect(shown).not.toContain(secret)
-    }
-    expect(() => app.invoke('licence:status', false)).toThrow('Forbidden.')
-  })
-
-  it('refuses every licence command from any other window', async () => {
-    configure()
-    const app = await startApp({ polarReply: granted })
-    await expect(app.invoke('licence:activate', false, 'MURMUR-KEY')).rejects.toThrow('Forbidden.')
-    await expect(app.invoke('licence:deactivate', false)).rejects.toThrow('Forbidden.')
-    expect(() => app.invoke('licence:remove-local', false)).toThrow('Forbidden.')
-    expect(app.polarRequests()).toEqual([])
-  })
-
-  it('ships configured for Polar, without telling the window the identifiers', async () => {
-    // Unconfigured purchases ask Polar nothing; that is held in licence.test.ts.
-    const app = await startApp({ polarReply: granted })
-    const status = app.invoke('licence:status', true) as LicenceStatus
-    expect(status).toMatchObject({
-      purchasesConfigured: true,
-      monthlyCheckoutAvailable: true,
-      yearlyCheckoutAvailable: true,
-      portalAvailable: true
-    })
-    const shown = JSON.stringify(status)
-    for (const id of [POLAR_ORGANIZATION_ID, ...POLAR_PRO_BENEFIT_IDS, CHECKOUT_URL_MONTHLY]) {
-      expect(shown).not.toContain(id)
+  it('registers no licence, trial or subscription channel', async () => {
+    const app = await startApp()
+    for (const channel of [
+      'licence:status',
+      'licence:activate',
+      'licence:check-now',
+      'licence:deactivate',
+      'licence:remove-local'
+    ]) {
+      expect(() => app.invoke(channel, true)).toThrow(`No handler registered for ${channel}.`)
     }
   })
 
-  it('activates with one request, keeps the licence, and tells the window', async () => {
-    configure()
-    const app = await startApp({ polarReply: granted })
-    const result = (await app.invoke('licence:activate', true, '  MURMUR-KEY \n')) as LicenceActivation
-
-    expect(result.ok).toBe(true)
-    expect(result.status.plan).toBe('pro')
-    expect(result.status.licence).toEqual({
-      displayKey: '****-E304DA',
-      activatedAt: expect.any(String),
-      standing: 'active',
-      confirmedAt: expect.any(String),
-      graceDaysLeft: 30
-    })
-    expect(app.polarRequests()).toHaveLength(1)
-    const [request] = app.polarRequests()
-    expect(request?.url).toBe('https://sandbox-api.polar.sh/v1/customer-portal/license-keys/activate')
-    expect(JSON.parse(String(request?.init.body))).toEqual({
-      key: 'MURMUR-KEY',
-      organization_id: 'org-under-test',
-      label: 'Vocette on Windows · 7F3A',
-      meta: { app_version: '0.3.2' }
-    })
-    expect(request?.init.headers).toEqual({ 'Content-Type': 'application/json' })
-    expect(app.savedLicences()).toEqual([
-      {
-        key: 'MURMUR-KEY',
-        activationId: 'activation-under-test',
-        benefitId: 'benefit-under-test',
-        displayKey: '****-E304DA',
-        activatedAt: expect.any(String)
-      }
-    ])
-    expect(licenceBroadcasts(app).at(-1)?.plan).toBe('pro')
-    // The key goes to Polar once and stays in the main process; the buyer
-    // details Polar sent back go nowhere at all.
-    expect(JSON.stringify(result)).not.toContain('MURMUR-KEY')
-    expect(JSON.stringify(result)).not.toContain('buyer@example.com')
-
-    // A second activation would take a second device slot, so none is sent.
-    const again = (await app.invoke('licence:activate', true, 'MURMUR-KEY')) as LicenceActivation
-    expect(again).toMatchObject({ ok: false, error: 'Pro is already active on this PC.' })
-    expect(app.polarRequests()).toHaveLength(1)
+  it('opens no checkout and no customer portal', async () => {
+    const app = await startApp()
+    for (const target of ['checkout', 'checkout-monthly', 'checkout-yearly', 'customer-portal']) {
+      await app.invoke('app:open-external', true, target)
+    }
+    expect(app.openedExternally()).toEqual([])
   })
 
-  it('sends one request however quickly Activate is pressed twice', async () => {
-    configure()
-    let answer: (response: Response) => void = () => undefined
+  it('asks nothing of Polar, or of anyone, as it starts, and pushes no plan to the window', async () => {
+    const app = await startApp({ firstRunAt: new Date(Date.now() - 60 * DAY).toISOString() })
+    await app.settle()
+    expect(app.otherRequests()).toEqual([])
+    expect(app.githubRequests()).toEqual([])
+    expect(app.sentToMain().map((message) => message.channel)).not.toContain('licence:changed')
+  })
+
+  it('uses every term in every take, however long it has been installed', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const start = Date.parse('2026-09-01T09:00:00.000Z')
+    vi.setSystemTime(start)
     const app = await startApp({
-      polarReply: () =>
-        new Promise<Response>((resolve) => {
-          answer = resolve
-        })
+      engine: 'local',
+      modelState: 'installed',
+      firstRunAt: new Date(start).toISOString()
     })
-    const first = app.invoke('licence:activate', true, 'MURMUR-KEY') as Promise<LicenceActivation>
-    const second = (await app.invoke('licence:activate', true, 'MURMUR-KEY')) as LicenceActivation
-    expect(second.ok).toBe(false)
-    answer(granted())
-    expect((await first).ok).toBe(true)
-    expect(app.polarRequests()).toHaveLength(1)
+    await app.invoke('settings:save', true, { vocabulary: TERMS })
+    app.engine.transcribe.mockResolvedValue('Open data verse now.')
+
+    // The same session, days apart, past the end of the old trial: the
+    // fifty-first term corrects every take.
+    for (const day of [29, 31, 45]) {
+      vi.setSystemTime(start + day * DAY)
+      await dictateAgain(app)
+      expect(app.historyAdds().at(-1)?.text).toBe('Open Dataverse now.')
+    }
+    expect(app.historyAdds()).toHaveLength(3)
   })
 
-  it('says why an activation failed, and keeps nothing', async () => {
-    configure()
-    const app = await startApp({
-      polarReply: () =>
-        new Response(JSON.stringify({ error: 'ResourceNotFound', detail: 'Not found' }), { status: 404 })
-    })
-    const result = (await app.invoke('licence:activate', true, 'MURMUR-KEY')) as LicenceActivation
-    expect(result).toMatchObject({
-      ok: false,
-      error: 'That licence key was not recognised. Check it and try again.'
-    })
-    expect(app.savedLicences()).toEqual([])
-    expect(licenceBroadcasts(app)).toEqual([])
+  it('takes a dictation of more than 10,000 words, and the next one after it', async () => {
+    const app = await startApp({ engine: 'local', modelState: 'installed' })
+    app.engine.transcribe.mockResolvedValueOnce(
+      Array.from({ length: 10_001 }, (_, index) => `word${index}`).join(' ')
+    )
+    await dictateAgain(app)
+    app.engine.transcribe.mockResolvedValueOnce('And one more.')
+    await dictateAgain(app)
+    expect(app.historyAdds()).toHaveLength(2)
+    expect(app.historyAdds().at(-1)?.text).toBe('And one more.')
   })
 
-  it('releases this PC, forgets the licence and tells the window', async () => {
-    configure()
-    const app = await startApp({ licensed: true, polarReply: () => new Response(null, { status: 204 }) })
-    expect((app.invoke('licence:status', true) as LicenceStatus).plan).toBe('pro')
-
-    const result = (await app.invoke('licence:deactivate', true)) as LicenceRelease
-    expect(result.ok).toBe(true)
-    expect(app.licenceCleared()).toBe(1)
-    const [request] = app.polarRequests()
-    expect(request?.url).toBe('https://sandbox-api.polar.sh/v1/customer-portal/license-keys/deactivate')
-    expect(JSON.parse(String(request?.init.body))).toEqual({
-      key: 'MURMUR-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA',
-      organization_id: 'org-under-test',
-      activation_id: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe'
-    })
-    expect(licenceBroadcasts(app).at(-1)?.licence).toBeNull()
+  it('reports the free plan and no limit in the opt-in counts', async () => {
+    const app = await startApp({ firstRunAt: new Date(Date.now() - 15 * DAY).toISOString() })
+    const { report } = app.invoke('counts:status', true) as CountsStatus
+    expect(report).toMatchObject({ plan: 'free', limitHit: false, week: 2 })
   })
+})
 
-  it('offers to remove the licence here when Polar cannot be reached, and does so only when asked', async () => {
-    configure()
-    // No reply configured: the fake network fails every request.
-    const app = await startApp({ licensed: true })
-    const result = (await app.invoke('licence:deactivate', true)) as LicenceRelease
-    expect(result).toMatchObject({
-      ok: false,
-      canRemoveLocally: true,
-      error:
-        'Could not reach Polar, so this PC was not released. Check your internet connection and try again.'
-    })
-    expect(app.licenceCleared()).toBe(0)
-    expect(result.status.licence).not.toBeNull()
-
-    const after = app.invoke('licence:remove-local', true) as LicenceStatus
-    expect(app.licenceCleared()).toBe(1)
-    expect(after.licence).toBeNull()
-    expect(licenceBroadcasts(app).at(-1)?.licence).toBeNull()
-  })
-
+describe('the title bar', () => {
   it('tells Windows the palette, so the title bar matches the window', async () => {
     const app = await startApp()
     expect(app.themeSource()).toBe('system')
@@ -1690,48 +1516,6 @@ describe('Pro over IPC', () => {
     expect(app.themeSource()).toBe('dark')
     await app.invoke('settings:save', true, { theme: 'light' })
     expect(app.themeSource()).toBe('light')
-  })
-
-  it('tells the window when the trial notice is dismissed', async () => {
-    const app = await startApp({ trialStartedAt: new Date(Date.now() - 40 * DAY).toISOString() })
-    expect(app.invoke('licence:status', true)).toMatchObject({ plan: 'free', trialEndNoticeDue: true })
-    await app.invoke('settings:save', true, { trialEndNoticeDismissed: true })
-    expect(licenceBroadcasts(app).at(-1)?.trialEndNoticeDue).toBe(false)
-  })
-
-  it('opens the two checkouts and the portal, and nothing it does not know', async () => {
-    const app = await startApp()
-    await app.invoke('app:open-external', true, 'checkout')
-    expect(app.openedExternally()).toEqual([])
-    await app.invoke('app:open-external', true, 'checkout-monthly')
-    await app.invoke('app:open-external', true, 'checkout-yearly')
-    await app.invoke('app:open-external', true, 'customer-portal')
-    expect(app.openedExternally()).toEqual([
-      CHECKOUT_URL_MONTHLY,
-      CHECKOUT_URL_YEARLY,
-      CUSTOMER_PORTAL_URL
-    ])
-  })
-
-  it('uses every term in every take, before and after the old trial date, and refuses none', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    const start = Date.parse('2026-09-01T09:00:00.000Z')
-    vi.setSystemTime(start)
-    const app = await startApp({
-      engine: 'local',
-      modelState: 'installed',
-      trialStartedAt: new Date(start).toISOString()
-    })
-    await app.invoke('settings:save', true, { vocabulary: TERMS })
-    app.engine.transcribe.mockResolvedValue('Open data verse now.')
-
-    // The same session, days apart: the fifty-first term corrects every take.
-    for (const day of [29, 31, 45]) {
-      vi.setSystemTime(start + day * DAY)
-      await dictateAgain(app)
-      expect(app.historyAdds().at(-1)?.text).toBe('Open Dataverse now.')
-    }
-    expect(app.historyAdds()).toHaveLength(3)
   })
 })
 
@@ -2110,89 +1894,6 @@ describe('an isolated profile', () => {
   it('does set it for the ordinary profile', async () => {
     const app = await startApp()
     expect(app.loginItems).toEqual([{ openAtLogin: true }])
-  })
-})
-
-describe('the subscription check', () => {
-  const configure = (): void => {
-    vi.stubEnv('MURMUR_POLAR_API_BASE', 'https://sandbox-api.polar.sh')
-    vi.stubEnv('MURMUR_POLAR_ORG_ID', 'org-under-test')
-    vi.stubEnv('MURMUR_POLAR_BENEFIT_ID', 'benefit-under-test')
-  }
-  const reply = (status: number, body: unknown): Response =>
-    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
-
-  it('answers Check now only from the main window, and sends nothing without a licence', async () => {
-    configure()
-    const app = await startApp({ polarReply: () => reply(200, { status: 'granted' }) })
-    await expect(Promise.resolve().then(() => app.invoke('licence:check-now', false))).rejects.toThrow(
-      'Forbidden.'
-    )
-    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
-    expect(status.licence).toBeNull()
-    expect(app.polarRequests()).toEqual([])
-  })
-
-  it('asks Polar with the key, the organisation, this PC and its benefit, and keeps Pro', async () => {
-    configure()
-    const app = await startApp({
-      licensed: true,
-      polarReply: () => reply(200, { status: 'granted', expires_at: null })
-    })
-    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
-    expect(app.polarRequests()).toHaveLength(1)
-    const [request] = app.polarRequests()
-    expect(request?.url).toBe('https://sandbox-api.polar.sh/v1/customer-portal/license-keys/validate')
-    expect(JSON.parse(String(request?.init.body))).toEqual({
-      key: 'MURMUR-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA',
-      organization_id: 'org-under-test',
-      activation_id: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe',
-      benefit_id: 'benefit-under-test'
-    })
-    expect(status).toMatchObject({ plan: 'pro', licence: { standing: 'active' }, checking: false })
-  })
-
-  it('drops to Free when the subscription has ended, keeping the key for a new one', async () => {
-    configure()
-    const app = await startApp({
-      licensed: true,
-      trialStartedAt: new Date(Date.now() - 60 * 86_400_000).toISOString(),
-      polarReply: () => reply(404, { error: 'ResourceNotFound', detail: 'License key is no longer active.' })
-    })
-    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
-    expect(status).toMatchObject({ plan: 'free', licence: { standing: 'ended' }, trialEndNoticeDue: false })
-    expect(app.licenceCleared()).toBe(0)
-    const pushed = app
-      .sentToMain()
-      .filter((message) => message.channel === 'licence:changed')
-      .at(-1)?.payload as LicenceStatus
-    expect(pushed).toMatchObject({ plan: 'free', licence: { standing: 'ended' } })
-  })
-
-  it('forgets the licence when Polar no longer knows this PC, and says why', async () => {
-    configure()
-    const app = await startApp({
-      licensed: true,
-      polarReply: () => reply(404, { error: 'ResourceNotFound', detail: 'Not found' })
-    })
-    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
-    expect(app.licenceCleared()).toBe(1)
-    expect(status.licence).toBeNull()
-    expect(status.checkMessage).toBe(
-      'This PC was released, or its key was changed, in your Polar account. Enter your licence ' +
-        'key to activate it again.'
-    )
-  })
-
-  it('keeps Pro when Polar cannot be reached, and says it will try again', async () => {
-    configure()
-    const app = await startApp({ licensed: true })
-    const status = (await app.invoke('licence:check-now', true)) as LicenceStatus
-    expect(status).toMatchObject({
-      plan: 'pro',
-      licence: { standing: 'active' },
-      checkMessage: 'Could not reach Polar to confirm your subscription. Vocette tries again later.'
-    })
   })
 })
 

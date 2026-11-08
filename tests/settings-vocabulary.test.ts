@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_POLISH } from '../src/shared/polish'
-import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import type { EngineStatus } from '../src/shared/engine'
 import { MAX_REPLACEMENT_RULES } from '../src/shared/replacements'
-import type { LicenceStatus, PublicSettings } from '../src/shared/types'
+import type { PublicSettings } from '../src/shared/types'
 
 /**
  * The vocabulary card, driven through the same render function the app uses.
@@ -172,10 +171,7 @@ function baseSettings(overrides: Partial<PublicSettings> = {}): PublicSettings {
   }
 }
 
-async function makeHarness(
-  overrides: Partial<PublicSettings> = {},
-  licence: LicenceStatus = licenceStatus()
-) {
+async function makeHarness(overrides: Partial<PublicSettings> = {}) {
   const elements = new Map<string, FakeElement>()
   SELECTORS.forEach((selector) => elements.set(selector, new FakeElement()))
   const content = new FakeElement(elements)
@@ -190,12 +186,10 @@ async function makeHarness(
     engine: TEST_ENGINE,
     workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
-    licence,
     setHeading: vi.fn(),
     applySettings: vi.fn(),
     applyPlatform: vi.fn(),
     applyEngine: vi.fn(),
-    applyLicence: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }

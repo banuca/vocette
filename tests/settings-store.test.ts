@@ -1026,56 +1026,53 @@ describe('replacements', () => {
   })
 })
 
-describe('the Pro trial', () => {
+describe('the first run', () => {
   const T0 = Date.parse('2026-09-25T09:00:00.000Z')
   const clock = (at: number) => ({ now: () => at })
   const usable = { usable: true, reason: '', backend: 'os' }
 
-  it('starts on the first load and is written straight away', () => {
+  it('is dated on the first load and written straight away', () => {
     const store = new SettingsStore(file, {}, usable, clock(T0))
-    expect(store.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
-    expect(JSON.parse(readFileSync(file, 'utf8')).trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(store.getInternal().firstRunAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(JSON.parse(readFileSync(file, 'utf8')).firstRunAt).toBe('2026-09-25T09:00:00.000Z')
   })
 
-  it('is set once: a later launch keeps the first date', () => {
+  it('is dated once: a later launch keeps the first date', () => {
     new SettingsStore(file, {}, usable, clock(T0))
     const later = new SettingsStore(file, {}, usable, clock(T0 + 12 * 86_400_000))
-    expect(later.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(later.getInternal().firstRunAt).toBe('2026-09-25T09:00:00.000Z')
     later.update({ playSounds: false })
-    expect(JSON.parse(readFileSync(file, 'utf8')).trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(JSON.parse(readFileSync(file, 'utf8')).firstRunAt).toBe('2026-09-25T09:00:00.000Z')
   })
 
-  it('starts for an existing user on their first launch of this version, changing nothing else', () => {
+  it('is dated for an existing profile without one, changing nothing else', () => {
     const before = { ...DEFAULT_SETTINGS, theme: 'light', vocabulary: 'Kirinde' } as Record<
       string,
       unknown
     >
-    delete before.trialStartedAt
-    delete before.trialEndNoticeDismissed
-    delete before.deviceTag
-    delete before.licence
+    delete before.firstRunAt
     writeFileSync(file, JSON.stringify(before))
 
     const store = new SettingsStore(file, {}, usable, clock(T0))
-    expect(store.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(store.getInternal().firstRunAt).toBe('2026-09-25T09:00:00.000Z')
     const written = JSON.parse(readFileSync(file, 'utf8'))
-    expect(written.trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(written.firstRunAt).toBe('2026-09-25T09:00:00.000Z')
     expect(written.theme).toBe('light')
     expect(written.vocabulary).toBe('Kirinde')
     expect(written.version).toBe(SETTINGS_VERSION)
   })
 
-  it('starts again from now when the stored date cannot be read', () => {
-    expect(normaliseSettings({ trialStartedAt: 'last Tuesday' }).trialStartedAt).toBeNull()
-    expect(normaliseSettings({ trialStartedAt: 42 }).trialStartedAt).toBeNull()
-    writeFileSync(file, JSON.stringify({ ...DEFAULT_SETTINGS, trialStartedAt: 'garbage' }))
+  it('is dated afresh when the stored date cannot be read', () => {
+    expect(normaliseSettings({ firstRunAt: 'last Tuesday' }).firstRunAt).toBeNull()
+    expect(normaliseSettings({ firstRunAt: 42 }).firstRunAt).toBeNull()
+    writeFileSync(file, JSON.stringify({ ...DEFAULT_SETTINGS, firstRunAt: 'garbage' }))
     const store = new SettingsStore(file, {}, usable, clock(T0))
-    expect(store.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(store.getInternal().firstRunAt).toBe('2026-09-25T09:00:00.000Z')
   })
 
   it('keeps a readable stored date exactly as written', () => {
     const stored = '2026-08-01T10:00:00.000Z'
-    expect(normaliseSettings({ trialStartedAt: stored }).trialStartedAt).toBe(stored)
+    expect(normaliseSettings({ firstRunAt: stored }).firstRunAt).toBe(stored)
   })
 
   it('still opens when the first write fails, and the next save writes the date', () => {
@@ -1091,68 +1088,11 @@ describe('the Pro trial', () => {
       usable,
       clock(T0)
     )
-    expect(store.getInternal().trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
+    expect(store.getInternal().firstRunAt).toBe('2026-09-25T09:00:00.000Z')
     expect(existsSync(file)).toBe(false)
     fail = false
     store.update({ playSounds: false })
-    expect(JSON.parse(readFileSync(file, 'utf8')).trialStartedAt).toBe('2026-09-25T09:00:00.000Z')
-  })
-})
-
-describe('the device tag', () => {
-  const usable = { usable: true, reason: '', backend: 'os' }
-
-  it('is four upper-case hexadecimal characters, made once and kept', () => {
-    const store = new SettingsStore(file)
-    const tag = store.getInternal().deviceTag
-    expect(tag).toMatch(/^[0-9A-F]{4}$/u)
-    expect(JSON.parse(readFileSync(file, 'utf8')).deviceTag).toBe(tag)
-    expect(new SettingsStore(file).getInternal().deviceTag).toBe(tag)
-  })
-
-  it('uses the tag it is given, and replaces a stored one that is not a tag', () => {
-    const tagged = new SettingsStore(file, {}, usable, { newDeviceTag: () => '7F3A' })
-    expect(tagged.getInternal().deviceTag).toBe('7F3A')
-    expect(normaliseSettings({ deviceTag: '7f3a' }).deviceTag).toBe('')
-    expect(normaliseSettings({ deviceTag: 'ZZZZ' }).deviceTag).toBe('')
-    expect(normaliseSettings({ deviceTag: 1234 }).deviceTag).toBe('')
-    expect(normaliseSettings({ deviceTag: 'BEEF' }).deviceTag).toBe('BEEF')
-  })
-})
-
-describe('the trial-end notice', () => {
-  it('is not dismissed on a fresh install or in a file that predates it', () => {
-    expect(DEFAULT_SETTINGS.trialEndNoticeDismissed).toBe(false)
-    expect(new SettingsStore(file).getInternal().trialEndNoticeDismissed).toBe(false)
-    expect(normaliseSettings({ version: 5 }).trialEndNoticeDismissed).toBe(false)
-  })
-
-  it('is dismissed through a settings update, for good, and survives a restart', () => {
-    const store = new SettingsStore(file)
-    store.update({ trialEndNoticeDismissed: true })
-    expect(store.getInternal().trialEndNoticeDismissed).toBe(true)
-    expect(JSON.parse(readFileSync(file, 'utf8')).trialEndNoticeDismissed).toBe(true)
-    expect(new SettingsStore(file).getInternal().trialEndNoticeDismissed).toBe(true)
-
-    // Once dismissed, nothing brings it back.
-    store.update({ trialEndNoticeDismissed: false })
-    expect(store.getInternal().trialEndNoticeDismissed).toBe(true)
-  })
-
-  it('ignores anything but true, on both paths', () => {
-    const store = new SettingsStore(file)
-    store.update({ trialEndNoticeDismissed: 'yes' as unknown as boolean })
-    expect(store.getInternal().trialEndNoticeDismissed).toBe(false)
-    expect(normaliseSettings({ trialEndNoticeDismissed: 'true' }).trialEndNoticeDismissed).toBe(false)
-    expect(normaliseSettings({ trialEndNoticeDismissed: 1 }).trialEndNoticeDismissed).toBe(false)
-    expect(normaliseSettings({ trialEndNoticeDismissed: true }).trialEndNoticeDismissed).toBe(true)
-  })
-
-  it('is left alone by an update that does not mention it', () => {
-    const store = new SettingsStore(file)
-    store.update({ trialEndNoticeDismissed: true })
-    store.update({ vocabulary: 'Kirinde' })
-    expect(new SettingsStore(file).getInternal().trialEndNoticeDismissed).toBe(true)
+    expect(JSON.parse(readFileSync(file, 'utf8')).firstRunAt).toBe('2026-09-25T09:00:00.000Z')
   })
 })
 
@@ -1306,178 +1246,116 @@ describe('AI polish', () => {
   })
 })
 
-describe('the licence', () => {
+/**
+ * A profile written by a version that sold subscriptions: a trial date, a
+ * dismissed notice, a device tag, a month's word count and an activated
+ * licence. Vocette is free now, so none of it is read, except the trial's
+ * start as the first run, and a licence key is taken off the disk.
+ */
+describe('a profile from a version that sold subscriptions', () => {
   const KEY_TEXT = 'MURMUR-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA'
-  const activated = {
-    key: KEY_TEXT,
+  const LICENCE = {
+    encryptedKey: KEY_TEXT,
+    keyStorage: 'plain',
     activationId: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe',
     benefitId: '32a8eda4-56cf-4a94-8228-792d324a519e',
     displayKey: '****-E304DA',
-    activatedAt: '2026-09-25T13:48:13.251Z'
+    activatedAt: '2026-09-25T13:48:13.251Z',
+    subscription: 'active',
+    confirmedAt: '2026-10-05T10:00:00.000Z'
   }
-  const unusable = { usable: false, reason: 'No keyring here.', backend: 'basic_text' }
+  const RETIRED = ['trialStartedAt', 'trialEndNoticeDismissed', 'deviceTag', 'wordUsage', 'licence']
+  const oldProfile = (licence: unknown = null): Record<string, unknown> => ({
+    version: SETTINGS_VERSION,
+    engine: 'local',
+    theme: 'light',
+    vocabulary: 'Kirinde\nITU-T',
+    polishEnabled: true,
+    trialStartedAt: '2026-09-25T09:00:00.000Z',
+    trialEndNoticeDismissed: true,
+    deviceTag: '7F3A',
+    wordUsage: { month: '2026-10', words: 12_000 },
+    licence
+  })
 
-  it('is kept encrypted where the system can hold it, and read back for a release', () => {
+  it('loads without a warning, keeps the user’s settings and reads none of the plan fields', () => {
+    writeFileSync(file, JSON.stringify(oldProfile(LICENCE)))
     const store = new SettingsStore(file)
-    store.saveLicence(activated)
-    const onDisk = readFileSync(file, 'utf8')
-    expect(onDisk).not.toContain(KEY_TEXT)
-    const written = JSON.parse(onDisk)
-    expect(written.licence.keyStorage).toBe('encrypted')
-    expect(written.licence.activationId).toBe(activated.activationId)
-
-    const reopened = new SettingsStore(file)
-    expect(reopened.getLicenceKey()).toBe(KEY_TEXT)
-    expect(reopened.licenceRecord()).toEqual({
-      activationId: activated.activationId,
-      benefitId: activated.benefitId,
-      displayKey: '****-E304DA',
-      activatedAt: '2026-09-25T13:48:13.251Z',
-      // Activation is Polar confirming the subscription.
-      subscription: 'active',
-      confirmedAt: '2026-09-25T13:48:13.251Z'
-    })
-  })
-
-  it('is kept as typed, and says so, where the system has no secure storage', () => {
-    const store = new SettingsStore(file, {}, unusable)
-    store.saveLicence(activated)
-    const written = JSON.parse(readFileSync(file, 'utf8'))
-    expect(written.licence.keyStorage).toBe('plain')
-    expect(written.licence.encryptedKey).toBe(KEY_TEXT)
-    expect(new SettingsStore(file, {}, unusable).getLicenceKey()).toBe(KEY_TEXT)
-  })
-
-  it('never reaches the public settings or the internal ones', () => {
-    const store = new SettingsStore(file, {}, unusable)
-    store.saveLicence(activated)
-    const shown = JSON.stringify(store.getPublic())
-    expect(shown).not.toContain(KEY_TEXT)
-    expect(shown).not.toContain(activated.activationId)
-    expect(shown).not.toContain('licence')
-    expect(shown).not.toContain('trialStartedAt')
-    expect(shown).not.toContain('deviceTag')
-    expect(shown).not.toContain('trialEndNoticeDismissed')
-    expect('licence' in store.getInternal()).toBe(false)
-    expect(JSON.stringify(store.getInternal())).not.toContain(KEY_TEXT)
-    expect(JSON.stringify(store.licenceRecord())).not.toContain(KEY_TEXT)
-  })
-
-  it('says in a sentence when an encrypted key cannot be read back', async () => {
-    const { safeStorage } = await import('electron')
-    const store = new SettingsStore(file)
-    store.saveLicence(activated)
-    const decrypt = vi.spyOn(safeStorage, 'decryptString').mockImplementation(() => {
-      throw new Error('DPAPI refused')
-    })
-    try {
-      expect(() => store.getLicenceKey()).toThrow(
-        'The saved licence key could not be read on this PC, so it cannot be released from here.'
-      )
-    } finally {
-      decrypt.mockRestore()
+    expect(store.takeWarning()).toBeNull()
+    expect(store.getPublic()).toMatchObject({ theme: 'light', vocabulary: 'Kirinde\nITU-T' })
+    expect(store.getPublic().polish.enabled).toBe(true)
+    for (const field of RETIRED) {
+      expect(store.getInternal()).not.toHaveProperty(field)
+      expect(store.getPublic()).not.toHaveProperty(field)
     }
+    expect(JSON.stringify(store.getInternal())).not.toContain(KEY_TEXT)
+    expect(JSON.stringify(store.getPublic())).not.toContain(KEY_TEXT)
   })
 
-  it('is forgotten on this PC, recovery copies and all, and settles the trial notice', () => {
-    const store = new SettingsStore(file, {}, unusable)
-    store.saveLicence(activated)
-    store.update({ autoPaste: false })
+  it('keeps the trial’s start as the first run, so opt-in counts keep the install’s age', () => {
+    expect(normaliseSettings(oldProfile()).firstRunAt).toBe('2026-09-25T09:00:00.000Z')
+    writeFileSync(file, JSON.stringify(oldProfile()))
+    expect(new SettingsStore(file).getInternal().firstRunAt).toBe('2026-09-25T09:00:00.000Z')
+  })
+
+  it('takes a licence key off the disk as it loads, recovery copies and all', () => {
+    writeFileSync(file, JSON.stringify(oldProfile(LICENCE)))
+    writeFileSync(`${file}.bak`, JSON.stringify(oldProfile(LICENCE)))
     writeFileSync(`${file}.tmp`, 'stale temporary copy')
     writeFileSync(`${file}.corrupt`, 'stale corrupt copy')
 
-    store.clearLicence()
-    expect(store.licenceRecord()).toBeNull()
-    expect(() => store.getLicenceKey()).toThrow()
-    expect(store.getInternal().trialEndNoticeDismissed).toBe(true)
-    expect(readFileSync(file, 'utf8')).not.toContain(KEY_TEXT)
-    expect(readFileSync(`${file}.bak`, 'utf8')).not.toContain(KEY_TEXT)
+    new SettingsStore(file)
+    for (const copy of [file, `${file}.bak`]) {
+      const text = readFileSync(copy, 'utf8')
+      expect(text).not.toContain(KEY_TEXT)
+      for (const field of RETIRED) expect(text).not.toContain(`"${field}"`)
+    }
     expect(existsSync(`${file}.tmp`)).toBe(false)
     expect(existsSync(`${file}.corrupt`)).toBe(false)
-    expect(new SettingsStore(file, {}, unusable).licenceRecord()).toBeNull()
-  })
-
-  it('is untouched by settings saves', () => {
-    const store = new SettingsStore(file)
-    store.saveLicence(activated)
-    store.update({ vocabulary: 'Kirinde', playSounds: false })
-    expect(new SettingsStore(file).getLicenceKey()).toBe(KEY_TEXT)
-  })
-
-  it('is read back only when every field is there, on the load path', () => {
-    const record = {
-      encryptedKey: KEY_TEXT,
-      keyStorage: 'plain',
-      activationId: activated.activationId,
-      benefitId: activated.benefitId,
-      displayKey: '****-E304DA',
-      activatedAt: activated.activatedAt
-    }
-    // A record from before subscriptions counts as confirmed when it was activated.
-    expect(normaliseSettings({ licence: record }).licence).toEqual({
-      ...record,
-      subscription: 'active',
-      confirmedAt: activated.activatedAt
-    })
-    expect(
-      normaliseSettings({
-        licence: { ...record, subscription: 'ended', confirmedAt: '2026-10-01T08:00:00.000Z' }
-      }).licence
-    ).toMatchObject({ subscription: 'ended', confirmedAt: '2026-10-01T08:00:00.000Z' })
-    expect(
-      normaliseSettings({ licence: { ...record, subscription: 'paused', confirmedAt: 'never' } }).licence
-    ).toMatchObject({ subscription: 'active', confirmedAt: activated.activatedAt })
-    expect(normaliseSettings({}).licence).toBeNull()
-    expect(normaliseSettings({ licence: 'MURMUR-KEY' }).licence).toBeNull()
-    expect(normaliseSettings({ licence: { ...record, keyStorage: 'rot13' } }).licence).toBeNull()
-    expect(normaliseSettings({ licence: { ...record, activationId: '' } }).licence).toBeNull()
-    expect(normaliseSettings({ licence: { ...record, activatedAt: 'soon' } }).licence).toBeNull()
-    const partial: Record<string, unknown> = { ...record }
-    delete partial.benefitId
-    expect(normaliseSettings({ licence: partial }).licence).toBeNull()
-  })
-})
-
-describe('the subscription behind the licence', () => {
-  const activated = {
-    key: 'VOCETTE-1C285B2D-6CE6-4BC7-B8BE-ADB6A7E304DA',
-    activationId: 'b6724bc8-7ad9-4ca0-b143-7c896fcbb6fe',
-    benefitId: '32a8eda4-56cf-4a94-8228-792d324a519e',
-    displayKey: '****-E304DA',
-    activatedAt: '2026-09-25T13:48:13.251Z'
-  }
-
-  it('moves the confirmation on when a check finds it active, and survives a restart', () => {
-    const store = new SettingsStore(file)
-    store.saveLicence(activated)
-    store.recordSubscriptionCheck('active', '2026-10-05T10:00:00.000Z')
-    expect(new SettingsStore(file).licenceRecord()).toMatchObject({
-      subscription: 'active',
-      confirmedAt: '2026-10-05T10:00:00.000Z'
+    // Everything else is written back as it was.
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({
+      theme: 'light',
+      vocabulary: 'Kirinde\nITU-T',
+      polishEnabled: true,
+      firstRunAt: '2026-09-25T09:00:00.000Z'
     })
   })
 
-  it('keeps the key and the last confirmation when a check finds it ended', () => {
-    const store = new SettingsStore(file)
-    store.saveLicence(activated)
-    store.recordSubscriptionCheck('ended', '2026-10-05T10:00:00.000Z')
-    const reopened = new SettingsStore(file)
-    expect(reopened.licenceRecord()).toMatchObject({
-      subscription: 'ended',
-      confirmedAt: activated.activatedAt
-    })
-    expect(reopened.getLicenceKey()).toBe(activated.key)
-    // Subscribing again brings it straight back.
-    reopened.recordSubscriptionCheck('active', '2026-10-06T10:00:00.000Z')
-    expect(reopened.licenceRecord()?.subscription).toBe('active')
+  it('writes nothing as it loads when there is no key to take off', () => {
+    writeFileSync(file, JSON.stringify(oldProfile()))
+    const writes = vi.fn(writeJsonAtomic)
+    const removes = vi.fn(removeJsonRecoveryCopies)
+    new SettingsStore(file, { writeJsonAtomic: writes, removeJsonRecoveryCopies: removes })
+    expect(writes).not.toHaveBeenCalled()
+    expect(removes).not.toHaveBeenCalled()
   })
 
-  it('does nothing without a licence, or with a date it cannot read', () => {
+  it('still opens when taking the key off fails, and the next save leaves it out', () => {
+    writeFileSync(file, JSON.stringify(oldProfile(LICENCE)))
+    let fail = true
+    const store = new SettingsStore(file, {
+      writeJsonAtomic: (path, value) => {
+        if (fail) throw new Error('disk full')
+        writeJsonAtomic(path, value)
+      }
+    })
+    expect(store.getPublic().vocabulary).toBe('Kirinde\nITU-T')
+    expect(readFileSync(file, 'utf8')).toContain(KEY_TEXT)
+    fail = false
+    store.update({ playSounds: false })
+    expect(readFileSync(file, 'utf8')).not.toContain(KEY_TEXT)
+  })
+
+  it('cannot be given a licence, a trial or a word count by a settings update', () => {
     const store = new SettingsStore(file)
-    store.recordSubscriptionCheck('active', '2026-10-05T10:00:00.000Z')
-    expect(store.licenceRecord()).toBeNull()
-    store.saveLicence(activated)
-    store.recordSubscriptionCheck('active', 'later')
-    expect(store.licenceRecord()?.confirmedAt).toBe(activated.activatedAt)
+    store.update({
+      licence: LICENCE,
+      trialStartedAt: '2026-01-01T00:00:00.000Z',
+      trialEndNoticeDismissed: true,
+      wordUsage: { month: '2026-11', words: 1 }
+    } as never)
+    const written = readFileSync(file, 'utf8')
+    expect(written).not.toContain(KEY_TEXT)
+    for (const field of RETIRED) expect(written).not.toContain(`"${field}"`)
   })
 })

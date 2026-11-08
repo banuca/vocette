@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 export const REPO = process.env.E2E_REPO ?? join(dirname(fileURLToPath(import.meta.url)), '..')
 /**
  * Where the checks keep what is not in git: profiles, screenshots, the test
- * audio, a copy of the speech model, and the stand-in Polar certificate.
+ * audio and a copy of the speech model.
  */
 export const WORK = process.env.E2E_WORK ?? join(process.env.LOCALAPPDATA ?? '.', 'vocette-e2e')
 export const ELECTRON = join(REPO, 'node_modules/electron/dist/electron.exe')

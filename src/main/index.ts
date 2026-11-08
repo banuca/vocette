@@ -58,15 +58,6 @@ import { formatDiagnostics } from './diagnostics-report'
 import { cpus, release, totalmem } from 'node:os'
 import { polishText, requestPolish } from './polish-service'
 import { OPENAI_POLISH_ENDPOINT, type PolishOutcome } from '../shared/polish'
-import {
-  LICENCE_MESSAGES,
-  LicenceClient,
-  checkoutConfig,
-  deviceLabel,
-  licenceConfig,
-  licenceStatusFor,
-  purchasesConfigured
-} from './licence'
 import { SettingsStore } from './settings-store'
 import { runConnectionTest } from './connection-test'
 import { TranscriptionService } from './transcription-service'
@@ -77,15 +68,13 @@ import {
   type EngineStatus,
   type ModelStatus
 } from '../shared/engine'
-import { entitlementFor, subscriptionStanding, type Entitlement } from '../shared/entitlement'
-import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
+import { UPDATE_REPOSITORY } from '../shared/product'
 import { withOwnName, withOwnNameRules } from '../shared/own-name'
 import { parseReplacements } from '../shared/replacements'
 import { parseVocabulary } from '../shared/vocabulary'
 import { buildReport, type CountsReport, type CountsStatus } from '../shared/usage-counts'
 import { createOverlayPeek, type OverlayPeek } from './overlay-peek'
 import { AppUpdater } from './app-updater'
-import { SubscriptionChecker } from './subscription-check'
 import { displayVersion } from '../shared/update'
 import {
   autoPasteSupported,
@@ -100,9 +89,6 @@ import { formatDuration } from '../shared/format'
 import { chordLabel } from '../shared/keycodes'
 import {
   type HistorySaveStatus,
-  type LicenceActivation,
-  type LicenceRelease,
-  type LicenceStatus,
   type Page,
   type PasteLastStatus,
   type RecorderAudioPayload,
@@ -155,13 +141,9 @@ let foreground!: TargetTracker
 let capabilities!: CapabilityMap
 let modelStore!: ModelStore
 let localEngine!: LocalEngine
-let licenceClient!: LicenceClient
-let subscriptionChecker!: SubscriptionChecker
 let updateChecker!: UpdateChecker
 let countsSender!: CountsSender
 let appUpdater!: AppUpdater
-/** An activation or a release is on its way to Polar; a second click waits for it. */
-let licenceRequestInFlight = false
 
 const transcriber = new TranscriptionService()
 
@@ -457,13 +439,8 @@ function countsReport(): CountsReport {
     version: app.getVersion(),
     os: platform.id === 'unknown' ? 'other' : platform.id,
     engine: settings.engine === 'local' ? 'local' : 'cloud',
-    plan: entitlement().plan,
-    // Set on the first launch of a version with the trial, which for a new
-    // install is its first run.
-    firstRunAt: settings.trialStartedAt,
+    firstRunAt: settings.firstRunAt,
     days: settings.usageDays,
-    // There is no limit to reach; the counts server still expects the field.
-    limitHit: false,
     now: new Date()
   })
 }
@@ -485,7 +462,6 @@ function diagnosticsReport(): string {
     instantCapture: settings.instantCapture,
     restoreClipboard: settings.restoreClipboard,
     language: settings.language,
-    plan: entitlement().plan,
     limits: CAPABILITY_IDS.filter((id) => capabilities[id].state !== 'available').map((id) => ({
       name: id,
       state: capabilities[id].state,
@@ -493,129 +469,6 @@ function diagnosticsReport(): string {
     })),
     events: diagnosticsLog?.recent() ?? []
   })
-}
-
-/** The plan in force right now: read fresh, because the trial ends on its own. */
-function entitlement(): Entitlement {
-  const now = Date.now()
-  return entitlementFor({
-    trialStartedAt: settingsStore.getInternal().trialStartedAt,
-    subscribed: subscriptionStanding(settingsStore.licenceRecord(), now) === 'active',
-    now
-  })
-}
-
-/** "Vocette on Windows · 7F3A": how activation names this PC to Polar. */
-function thisDeviceLabel(): string {
-  return deviceLabel(platform.id, settingsStore.getInternal().deviceTag)
-}
-
-function licenceStatus(): LicenceStatus {
-  const checkout = checkoutConfig(process.env)
-  return licenceStatusFor({
-    entitlement: entitlement(),
-    licence: settingsStore.licenceRecord(),
-    config: licenceConfig(process.env),
-    trialEndNoticeDismissed: settingsStore.getInternal().trialEndNoticeDismissed,
-    deviceLabel: thisDeviceLabel(),
-    now: Date.now(),
-    checking: subscriptionChecker?.isChecking() ?? false,
-    checkMessage: subscriptionChecker?.lastMessage() ?? null,
-    monthlyCheckoutUrl: checkout.monthly,
-    yearlyCheckoutUrl: checkout.yearly
-  })
-}
-
-function broadcastLicenceStatus(): void {
-  mainWindow?.webContents.send('licence:changed', licenceStatus())
-}
-
-/**
- * Activates a key on this PC. One request to Polar, only when the user asks;
- * after that the subscription is checked at most once a day (see
- * `SubscriptionChecker`). Answers with a sentence rather than throwing, so the
- * Pro page can show it as it is.
- */
-async function activateLicence(rawKey: string): Promise<LicenceActivation> {
-  const refuse = (error: string): LicenceActivation => ({ ok: false, error, status: licenceStatus() })
-  if (settingsStore.licenceRecord()) return refuse('Pro is already active on this PC.')
-  // Every activation takes a device slot, so a second click must not send a
-  // second request.
-  if (licenceRequestInFlight) return refuse('Vocette is already talking to Polar. Wait a moment.')
-  const config = licenceConfig(process.env)
-  if (!purchasesConfigured(config)) return refuse(LICENCE_MESSAGES.notConfigured)
-
-  licenceRequestInFlight = true
-  try {
-    const key = rawKey.trim()
-    const result = await licenceClient.activate(key, {
-      ...config,
-      label: thisDeviceLabel(),
-      appVersion: app.getVersion()
-    })
-    if (!result.ok) return refuse(result.error)
-    try {
-      settingsStore.saveLicence({
-        key,
-        activationId: result.activationId,
-        benefitId: result.benefitId,
-        displayKey: result.displayKey,
-        activatedAt: new Date().toISOString()
-      })
-    } catch (error) {
-      return refuse(
-        `Pro was activated, but this PC could not save it: ${storageFailureReason(error)}`
-      )
-    }
-    // Whatever the last check said was about a licence this PC no longer has.
-    subscriptionChecker.clearMessage()
-    broadcastLicenceStatus()
-    return { ok: true, status: licenceStatus() }
-  } finally {
-    licenceRequestInFlight = false
-  }
-}
-
-/**
- * Releases this PC's activation, freeing a device slot, then forgets the
- * licence here. When Polar cannot be asked, the answer says whether the Pro
- * page may offer to forget it here anyway.
- */
-async function releaseLicence(): Promise<LicenceRelease> {
-  const refuse = (error: string, canRemoveLocally: boolean): LicenceRelease => ({
-    ok: false,
-    error,
-    canRemoveLocally,
-    status: licenceStatus()
-  })
-  const record = settingsStore.licenceRecord()
-  if (!record) return { ok: true, status: licenceStatus() }
-  if (licenceRequestInFlight) return refuse('Vocette is already talking to Polar. Wait a moment.', false)
-
-  let key: string
-  try {
-    key = settingsStore.getLicenceKey()
-  } catch (error) {
-    return refuse(storageFailureReason(error), true)
-  }
-
-  licenceRequestInFlight = true
-  try {
-    const result = await licenceClient.deactivate(key, record.activationId, licenceConfig(process.env))
-    if (!result.released) return refuse(result.error, result.canRemoveLocally)
-    try {
-      settingsStore.clearLicence()
-    } catch (error) {
-      return refuse(
-        `This PC was released, but the change could not be saved: ${storageFailureReason(error)}`,
-        false
-      )
-    }
-    broadcastLicenceStatus()
-    return { ok: true, status: licenceStatus() }
-  } finally {
-    licenceRequestInFlight = false
-  }
 }
 
 /**
@@ -1456,9 +1309,6 @@ function registerIpc(): void {
     if (before.pasteLastShortcut !== after.pasteLastShortcut) {
       applyPasteLastShortcut(after.pasteLastShortcut)
     }
-    if (before.trialEndNoticeDismissed !== after.trialEndNoticeDismissed) {
-      broadcastLicenceStatus()
-    }
 
     if (await historyStore.prune(after.historyRetentionDays)) {
       mainWindow?.webContents.send('history:changed')
@@ -1685,14 +1535,9 @@ function registerIpc(): void {
   })
   ipcMain.handle('app:open-external', async (event, target: unknown) => {
     if (!fromMain(event)) throw new Error('Forbidden.')
-    const checkout = checkoutConfig(process.env)
     const targets: Record<string, string> = {
       'api-keys': 'https://platform.openai.com/api-keys',
       'transcription-docs': 'https://developers.openai.com/api/docs/guides/speech-to-text',
-      // Empty until the owner fills them in, and then nothing opens.
-      'checkout-monthly': checkout.monthly,
-      'checkout-yearly': checkout.yearly,
-      'customer-portal': CUSTOMER_PORTAL_URL,
       // Only the release page a check has just validated, and only while an
       // update is on offer.
       release: updateChecker.downloadPage() ?? ''
@@ -1749,41 +1594,6 @@ function registerIpc(): void {
     settingsStore.setUsageCounts(enabled)
     countsSender.enabledChanged()
     return { enabled, report: countsReport() }
-  })
-
-  // Pro. The window learns the plan and what it may offer; it never sees a
-  // key once it has been sent, an activation id, or Polar's identifiers.
-  ipcMain.handle('licence:status', (event): LicenceStatus => {
-    if (!fromMain(event)) throw new Error('Forbidden.')
-    return licenceStatus()
-  })
-  ipcMain.handle('licence:activate', async (event, key: unknown): Promise<LicenceActivation> => {
-    if (!fromMain(event)) throw new Error('Forbidden.')
-    if (typeof key !== 'string') {
-      return { ok: false, error: LICENCE_MESSAGES.empty, status: licenceStatus() }
-    }
-    return activateLicence(key)
-  })
-  // "Check now" on the Pro page: one validation, then the status as it stands.
-  ipcMain.handle('licence:check-now', async (event): Promise<LicenceStatus> => {
-    if (!fromMain(event)) throw new Error('Forbidden.')
-    await subscriptionChecker.checkNow()
-    return licenceStatus()
-  })
-  ipcMain.handle('licence:deactivate', async (event): Promise<LicenceRelease> => {
-    if (!fromMain(event)) throw new Error('Forbidden.')
-    return releaseLicence()
-  })
-  // Local only: the device slot stays in use until it is released from the
-  // purchase email. The Pro page says so before offering this.
-  ipcMain.handle('licence:remove-local', (event): LicenceStatus => {
-    if (!fromMain(event)) throw new Error('Forbidden.')
-    if (licenceRequestInFlight) throw new Error('Vocette is already talking to Polar. Wait a moment.')
-    if (settingsStore.licenceRecord()) {
-      settingsStore.clearLicence()
-      broadcastLicenceStatus()
-    }
-    return licenceStatus()
   })
 
   ipcMain.handle('shortcut:begin-capture', (event) => {
@@ -1897,17 +1707,6 @@ async function bootstrap(): Promise<void> {
   // Only an installed app: a development build shares the folder with the
   // installed (perhaps older) Vocette, whose model it must not take away.
   if (app.isPackaged) void modelStore.removeRetired(RETIRED_MODEL_IDS)
-  // The same network stack, for activation and the daily subscription check.
-  licenceClient = new LicenceClient({ fetch: (url, init) => net.fetch(url, init) })
-  subscriptionChecker = new SubscriptionChecker({
-    licence: () => settingsStore.licenceRecord(),
-    key: () => settingsStore.getLicenceKey(),
-    check: (key, record) => licenceClient.check(key, record, licenceConfig(process.env)),
-    record: (result, at) => settingsStore.recordSubscriptionCheck(result, at),
-    release: () => settingsStore.clearLicence(),
-    busy: () => licenceRequestInFlight,
-    onChange: () => broadcastLicenceStatus()
-  })
   appUpdater = new AppUpdater({
     // The Windows installer and a Linux AppImage replace themselves; a
     // development run and the unsigned Mac build keep the download page, and
@@ -2076,8 +1875,6 @@ async function bootstrap(): Promise<void> {
   updateChecker.start()
   countsSender.start()
   diagnosticsLog?.record({ kind: 'startup', readyMs: Math.round(process.uptime() * 1000) })
-  // Likewise: a minute from here, and only with a key activated on this PC.
-  subscriptionChecker.start()
   applyPasteLastShortcut(initial.pasteLastShortcut)
   // Starting may have discovered the shortcut cannot be registered at all.
   refreshCapabilities()
@@ -2168,7 +1965,6 @@ app.on('before-quit', (event) => {
   localEngine?.dispose()
   updateChecker?.stop()
   countsSender?.stop()
-  subscriptionChecker?.stop()
   shortcutController?.stop()
   globalShortcut.unregisterAll()
   captureTimeout = clearTimer(captureTimeout)

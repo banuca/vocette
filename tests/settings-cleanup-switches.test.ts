@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_POLISH } from '../src/shared/polish'
-import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import { available, type PlatformStatus } from '../src/shared/capabilities'
 import type { EngineStatus } from '../src/shared/engine'
@@ -118,12 +117,10 @@ async function makeHarness(overrides: Partial<PublicSettings> = {}) {
     engine: TEST_ENGINE,
     workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
-    licence: licenceStatus(),
     setHeading: vi.fn(),
     applySettings: vi.fn(),
     applyPlatform: vi.fn(),
     applyEngine: vi.fn(),
-    applyLicence: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }

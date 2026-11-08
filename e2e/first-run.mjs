@@ -29,9 +29,9 @@ try {
   await main.evaluate(() => document.querySelector('[data-page="settings"]')?.click())
   await sleep(800)
   await main.screenshot({ path: join(shots, '2-settings.png') })
-  await main.evaluate(() => document.querySelector('[data-page="pro"]')?.click())
+  await main.evaluate(() => document.querySelector('[data-page="about"]')?.click())
   await sleep(800)
-  await main.screenshot({ path: join(shots, '3-pro.png') })
+  await main.screenshot({ path: join(shots, '3-about.png') })
 } finally {
   await app.close()
 }

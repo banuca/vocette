@@ -17,7 +17,7 @@ try {
   for (const theme of ['light', 'dark']) {
     await main.evaluate((t) => window.murmur.saveSettings({ theme: t }), theme)
     await main.evaluate((t) => { document.documentElement.dataset.theme = t }, theme)
-    for (const page of ['history', 'settings', 'pro', 'about']) {
+    for (const page of ['history', 'settings', 'about']) {
       await main.evaluate((p) => document.querySelector(`[data-page="${p}"]`)?.click(), page)
       await sleep(600)
       await main.screenshot({ path: join(shots, `${theme}-${page}.png`) })

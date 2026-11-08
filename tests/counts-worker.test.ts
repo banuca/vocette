@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 // @ts-expect-error The Worker is plain JavaScript with no type declarations.
 import { handle, parseReport, utcDay } from '../server/counts/src/index.js'
-import type { CountsReport } from '../src/shared/usage-counts'
+import { buildReport, type CountsReport } from '../src/shared/usage-counts'
 
 const REPORT: CountsReport = {
   v: '0.8.0',
   os: 'windows',
   engine: 'local',
-  plan: 'trial',
+  plan: 'free',
   week: 1,
   activeDays7: 5,
   dictations7: 42,
@@ -39,6 +39,25 @@ describe('parseReport', () => {
     expect(parseReport(REPORT)).toEqual(REPORT)
   })
 
+  it('accepts the report the app builds now that everyone is on the free plan', () => {
+    const built = buildReport({
+      version: '1.0.0',
+      os: 'macos',
+      engine: 'cloud',
+      firstRunAt: '2026-10-01T08:00:00Z',
+      days: { '2026-11-07': 3 },
+      now: new Date(2026, 10, 8, 12)
+    })
+    expect(built).toMatchObject({ plan: 'free', limitHit: false })
+    expect(parseReport(JSON.parse(JSON.stringify(built)))).toEqual(built)
+  })
+
+  it('still accepts the plans older versions send', () => {
+    for (const plan of ['trial', 'pro']) {
+      expect(parseReport({ ...REPORT, plan, limitHit: true })).toMatchObject({ plan })
+    }
+  })
+
   it('refuses an extra field, a missing one, or a value out of range', () => {
     expect(parseReport({ ...REPORT, id: 'abc' })).toBeNull()
     const { limitHit: _dropped, ...missing } = REPORT
@@ -58,7 +77,7 @@ describe('handle', () => {
     const db = fakeDb()
     const response = await handle(post(JSON.stringify(REPORT)), db, new Date('2026-10-19T23:30:00Z'))
     expect(response.status).toBe(204)
-    expect(db.rows).toEqual([['2026-10-19', '0.8.0', 'windows', 'local', 'trial', 1, 5, 42, 0]])
+    expect(db.rows).toEqual([['2026-10-19', '0.8.0', 'windows', 'local', 'free', 1, 5, 42, 0]])
   })
 
   it('refuses anything that is not a report, and stores nothing', async () => {

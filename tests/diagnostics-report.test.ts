@@ -15,21 +15,21 @@ const FACTS: DiagnosticsFacts = {
   instantCapture: true,
   restoreClipboard: true,
   language: 'en',
-  plan: 'trial',
   limits: [],
   events: []
 }
 
 describe('formatDiagnostics', () => {
-  it('opens with the install and settings, in plain lines', () => {
+  it('opens with the install and settings, in plain lines, and no plan', () => {
     expect(formatDiagnostics(FACTS).split('\n').slice(0, 5)).toEqual([
       'Vocette 0.8.0 · Windows 10.0.26100 · x64 · 16 GB',
       'Engine: on this PC · model installed',
       'Shortcut: Left Ctrl + Left Shift · hold',
       'Auto-paste on · instant capture on · restore clipboard on · language en',
-      'Plan: trial'
+      ''
     ])
     expect(formatDiagnostics(FACTS)).toContain('No events recorded yet')
+    expect(formatDiagnostics(FACTS)).not.toMatch(/\bplan\b|\btrial\b|\bpro\b/iu)
   })
 
   it('describes each kind of event, grouped by day', () => {
@@ -43,7 +43,7 @@ describe('formatDiagnostics', () => {
       { kind: 'crash', where: 'window', reason: 'crashed (1)', at: '2026-10-20T10:05:00.000Z' }
     ]
     const report = formatDiagnostics({ ...FACTS, events })
-    expect(report.split('\n').slice(6)).toEqual([
+    expect(report.split('\n').slice(5)).toEqual([
       'Last 7 events (UTC)',
       '  2026-10-19',
       '  09:14:02 startup      ready in 1.8 s',

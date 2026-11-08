@@ -4,7 +4,6 @@ import { escapeHtml, formatDate, formatDuration, wordCount } from '../dom'
 import { formatWait, isMeasuredWait, TYPICAL_WAIT_SAMPLE, typicalWait } from '../../shared/format'
 import { commandFailure, createModelRow, type ModelRowView } from '../model-download'
 import { setupHeading, setupSteps, type SetupStep } from '../setup-guide'
-import { createTrialEndNotice } from '../trial-end-notice'
 import { createWelcomeCard, welcomeSystemName } from '../welcome-card'
 import { effectiveRecordingMode, globalShortcutUsable } from '../../shared/capabilities'
 import type { EngineStatus } from '../../shared/engine'
@@ -13,8 +12,7 @@ import {
   EMPTY_EDIT_REFUSAL,
   MAX_HISTORY_TEXT_CHARS,
   originalTextOf,
-  type HistoryEntry,
-  type LicenceStatus
+  type HistoryEntry
 } from '../../shared/types'
 
 /** Initial render cap; "Show more" reveals the rest in steps. */
@@ -42,8 +40,6 @@ export interface HistoryView {
   refresh(): void
   /** Download progress: only the model step changes, so only it is repainted. */
   applyEngine(status: EngineStatus): void
-  /** Only the trial's end notice depends on the plan, so only it is repainted. */
-  applyLicence(status: LicenceStatus): void
 }
 
 /**
@@ -62,7 +58,6 @@ export function renderHistory(context: AppContext): HistoryView {
       <div id="hero-record"></div>
       <p class="hero-hint" id="hero-hint"></p>
     </section>
-    <div id="trial-end-notice"></div>
     <div id="setup-guide"></div>
     <div id="welcome"></div>
     <section class="metrics" aria-label="Dictation totals">
@@ -104,21 +99,6 @@ export function renderHistory(context: AppContext): HistoryView {
   const updateHeroHint = (): void => {
     if (heroHint) heroHint.textContent = firstDictationHint()
   }
-
-  const noticeHost = context.content.querySelector<HTMLDivElement>('#trial-end-notice')
-  const trialEndNotice = noticeHost
-    ? createTrialEndNotice(noticeHost, {
-        seePro: () => context.navigate('pro'),
-        dismiss: () => {
-          // Gone at once, and for good once saved. If saving fails it comes
-          // back, rather than vanishing for this session only.
-          context.applyLicence({ ...context.licence, trialEndNoticeDue: false })
-          void window.murmur.saveSettings({ trialEndNoticeDismissed: true }).catch(() => {
-            context.applyLicence({ ...context.licence, trialEndNoticeDue: true })
-          })
-        }
-      })
-    : null
 
   const welcomeHost = context.content.querySelector<HTMLDivElement>('#welcome')
   const welcomeCard = welcomeHost
@@ -641,7 +621,6 @@ export function renderHistory(context: AppContext): HistoryView {
   })
 
   updateHeroHint()
-  trialEndNotice?.apply(context.licence.trialEndNoticeDue)
   welcomeCard?.apply(!context.settings.welcomeAnswered)
   renderSetup()
   renderMetrics()
@@ -650,12 +629,10 @@ export function renderHistory(context: AppContext): HistoryView {
   return {
     refresh: () => {
       updateHeroHint()
-      trialEndNotice?.apply(context.licence.trialEndNoticeDue)
       renderSetup()
       renderMetrics()
       renderList()
     },
-    applyEngine: (status) => modelStep?.apply(status),
-    applyLicence: (status) => trialEndNotice?.apply(status.trialEndNoticeDue)
+    applyEngine: (status) => modelStep?.apply(status)
   }
 }

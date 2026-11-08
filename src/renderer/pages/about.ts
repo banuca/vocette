@@ -45,11 +45,6 @@ const INDEPENDENT =
   'Vocette is an independent MIT-licensed project with no affiliation to any commercial ' +
   'dictation product.'
 
-/** Pro's one request, said wherever the notice says what leaves this computer. */
-export const PRO_ACTIVATION_NOTICE =
-  'Pro sends your licence key and a device label to Polar, the payment provider, when you ' +
-  'press Activate, and then asks Polar once a day whether your subscription is still active.'
-
 /** The update check's one request, said with the others. */
 export const UPDATE_CHECK_NOTICE =
   'Checking for updates, which you switch on below or ask for with Check now, asks GitHub ' +
@@ -94,16 +89,14 @@ export function privacyNotice(engine: TranscriptionEngine, polish = false, count
     return (
       `${INDEPENDENT} Your audio is transcribed on this PC and never leaves it, and ` +
       'neither does the vocabulary you set in Settings. The only thing Vocette downloads is ' +
-      `the speech model, once, from GitHub.${polishing} ${PRO_ACTIVATION_NOTICE} ` +
-      UPDATE_CHECK_NOTICE +
-      counting
+      `the speech model, once, from GitHub.${polishing} ${UPDATE_CHECK_NOTICE}${counting}`
     )
   }
   return (
     `${INDEPENDENT} It sends your audio — and the vocabulary you set in Settings, which is ` +
     'what makes those words come back spelled correctly — only to the transcription provider ' +
-    `you configure, using your own API key.${polishing} ${PRO_ACTIVATION_NOTICE} ` +
-    `${UPDATE_CHECK_NOTICE}${counting} Nothing else leaves this computer.`
+    `you configure, using your own API key.${polishing} ${UPDATE_CHECK_NOTICE}${counting} ` +
+    'Nothing else leaves this computer.'
   )
 }
 

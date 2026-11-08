@@ -19,7 +19,6 @@ export interface DiagnosticsFacts {
   instantCapture: boolean
   restoreClipboard: boolean
   language: string
-  plan: string
   /** Capabilities that are not available here, with the app's reason. */
   limits: Array<{ name: string; state: string; reason: string }>
   events: LoggedEvent[]
@@ -71,8 +70,7 @@ export function formatDiagnostics(facts: DiagnosticsFacts): string {
     `Engine: ${facts.engine === 'local' ? 'on this PC' : 'cloud'} · model ${facts.modelState}`,
     `Shortcut: ${facts.shortcut} · ${facts.mode}`,
     `Auto-paste ${onOff(facts.autoPaste)} · instant capture ${onOff(facts.instantCapture)} · ` +
-      `restore clipboard ${onOff(facts.restoreClipboard)} · language ${facts.language}`,
-    `Plan: ${facts.plan}`
+      `restore clipboard ${onOff(facts.restoreClipboard)} · language ${facts.language}`
   ]
   if (facts.limits.length > 0) {
     lines.push('', 'Not available here')

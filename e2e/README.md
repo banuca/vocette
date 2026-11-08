@@ -16,9 +16,6 @@ The checks also need files that are kept out of git. They live in the work folde
 - `audio\a-itu-kirinde.wav`: the test recording, used as the fake microphone.
 - `models\`: a copy of the on-device speech model (about 640 MB), so no check downloads it.
   Any installed model folder will do.
-- `fake-polar-key.pem` and `fake-polar-cert.pem`: a self-signed certificate for 127.0.0.1, used only by
-  `subscription-check` for its stand-in Polar server. To make a new one:
-  `openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=127.0.0.1 -keyout fake-polar-key.pem -out fake-polar-cert.pem -days 3650`.
 - `profiles\` and the screenshot folders are created as the checks run.
 
 ## Running one
@@ -57,8 +54,6 @@ node e2e/quiet-check.mjs
 | `welcome-check` | The first-run card: both ticked, Done saves, gone for good (S2, S3) |
 | `language-check` | Prints the system languages and the language a fresh profile starts in (S6) |
 | `update-install-check` | Packaged app only (`E2E_EXE`): Download and install from a local feed, with progress; the installer's hash checked, then deleted. Never installs (K8) |
-| `prices-check` | The Pro page: both plans at their prices, the yearly saving, and no offer (checkout never clicked) |
-| `subscription-check` | Activation and renewal against a stand-in Polar over HTTPS |
 | `cold-wait-check` | The wait for text after a 2 s and a 7 s take, with the engine warm and just unloaded, and the app's memory either way. Shortcut off, clipboard kept in memory |
 | `clipboard-privacy-check` | Windows: a delivered dictation and a copy from History carry the three formats that keep them out of clipboard history and cloud sync, and read back exactly. Uses the real clipboard briefly |
 | `engine-self-check` | The engine's check after a load: the shipped recording passes and the take is delivered; a staged wrong recording fails the take in plain words, refuses the next, and logs the processor. With `E2E_EXE`, the first part only |

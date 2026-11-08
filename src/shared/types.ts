@@ -1,6 +1,5 @@
 import type { PolishSettings, PolishSettingsUpdate } from './polish'
 import type { PlatformStatus, RecordingMode } from './capabilities'
-import type { Plan } from './entitlement'
 import type { ShortcutChord } from './shortcuts'
 
 export type WorkflowPhase =
@@ -287,8 +286,6 @@ export interface SettingsUpdate {
    * process memory only; it is the offer made where secure storage is unfit.
    */
   apiKeyScope?: 'persist' | 'session'
-  /** Dismisses the one notice that the trial has ended. Only `true` does anything. */
-  trialEndNoticeDismissed?: boolean
   /** Any of the polish settings; the rest are left as they are. */
   polish?: PolishSettingsUpdate
   /** A key for the polish provider, stored encrypted. Empty changes nothing. */
@@ -322,64 +319,7 @@ export interface AppInfo {
   platformStatus: PlatformStatus
 }
 
-export type Page = 'history' | 'settings' | 'pro' | 'about'
-
-/**
- * Where this PC stands with Pro, as the window may know it. Carries no key,
- * no activation id and no Polar identifier: whether purchases are set up is a
- * yes or no, worked out in the main process.
- */
-export interface LicenceStatus {
-  plan: Plan
-  /** Whole days left in the trial, rounded up; 0 outside it. */
-  trialDaysLeft: number
-  trialEndsAt: string | null
-  /** The subscription on this PC, as the Pro page shows it; never the key itself. */
-  licence: {
-    displayKey: string
-    activatedAt: string
-    standing: 'active' | 'unconfirmed' | 'ended'
-    /** When Polar last confirmed the subscription. */
-    confirmedAt: string
-    /** Days Pro keeps working if no check succeeds from now; 0 once paused. */
-    graceDaysLeft: number
-  } | null
-  /** A subscription check is on its way to Polar. */
-  checking: boolean
-  /** Why the last check could not tell, or what it found, in a sentence; null when there is nothing to say. */
-  checkMessage: string | null
-  /** An organisation and a benefit are configured, so a key can be activated. */
-  purchasesConfigured: boolean
-  monthlyCheckoutAvailable: boolean
-  yearlyCheckoutAvailable: boolean
-  portalAvailable: boolean
-  /** "US$9.99 a month". */
-  monthlyPriceLabel: string
-  /** "US$99 a year". */
-  yearlyPriceLabel: string
-  /** "two months free". */
-  yearlySavingLabel: string
-  /** How many devices one subscription covers. */
-  devices: number
-  /** The trial has ended and its one notice has not been dismissed. */
-  trialEndNoticeDue: boolean
-  /** What activation names this PC to Polar: "Vocette on Windows · 7F3A". */
-  deviceLabel: string
-}
-
-/** Activating answers with the new status, or the sentence that says why not. */
-export type LicenceActivation =
-  | { ok: true; status: LicenceStatus }
-  | { ok: false; error: string; status: LicenceStatus }
-
-/**
- * Releasing this PC. `canRemoveLocally` is true when Polar could not be asked —
- * no connection, or a key this PC cannot read — so the Pro page can offer to
- * remove the licence here anyway, saying the device slot stays in use.
- */
-export type LicenceRelease =
-  | { ok: true; status: LicenceStatus }
-  | { ok: false; error: string; canRemoveLocally: boolean; status: LicenceStatus }
+export type Page = 'history' | 'settings' | 'about'
 
 export interface RecorderStartRequest {
   requestId: string

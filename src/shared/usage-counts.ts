@@ -17,15 +17,19 @@ export interface CountsReport {
   v: string
   os: 'windows' | 'macos' | 'linux' | 'other'
   engine: 'local' | 'cloud'
-  plan: 'free' | 'trial' | 'pro'
+  /**
+   * Always "free": Vocette has no plans now, but the counts server
+   * (server/counts) still requires the field.
+   */
+  plan: 'free'
   /** Whole weeks since this install's first run, 0 to 12; 12 means 12 or more. */
   week: number
   /** Days with at least one dictation among the last seven, today included. */
   activeDays7: number
   /** Dictations in those seven days, at most 999. */
   dictations7: number
-  /** The free monthly limit has been reached this month. */
-  limitHit: boolean
+  /** Always false: there is no limit to reach, and the server requires the field. */
+  limitHit: false
 }
 
 /** What the About page shows: the switch, and the report as it would be sent now. */
@@ -97,10 +101,8 @@ export function buildReport(input: {
   version: string
   os: CountsReport['os']
   engine: CountsReport['engine']
-  plan: CountsReport['plan']
   firstRunAt: string | null
   days: UsageDays | null
-  limitHit: boolean
   now: Date
 }): CountsReport {
   const days = prune(input.days ?? {}, input.now)
@@ -109,10 +111,10 @@ export function buildReport(input: {
     v: input.version,
     os: input.os,
     engine: input.engine,
-    plan: input.plan,
+    plan: 'free',
     week: weeksSince(input.firstRunAt, input.now),
     activeDays7: counts.length,
     dictations7: Math.min(MAX_DICTATIONS, counts.reduce((sum, count) => sum + count, 0)),
-    limitHit: input.limitHit
+    limitHit: false
   }
 }

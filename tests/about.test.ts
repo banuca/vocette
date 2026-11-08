@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { licenceStatus } from './fixtures/licence-status'
 import type { AppContext } from '../src/renderer/app-context'
 import {
   COUNTS_EXPLANATION,
   DIAGNOSTICS_EXPLANATION,
   COUNTS_NOTICE,
-  PRO_ACTIVATION_NOTICE,
   UPDATE_CHECK_EXPLANATION,
   UPDATE_CHECK_NOTICE,
   attributions,
@@ -21,7 +19,7 @@ const REPORT: CountsReport = {
   v: '0.8.0',
   os: 'windows',
   engine: 'local',
-  plan: 'trial',
+  plan: 'free',
   week: 1,
   activeDays7: 5,
   dictations7: 42,
@@ -134,12 +132,10 @@ function render(
     },
     workflow: { phase: 'idle', message: 'Ready' },
     microphone: 'unknown',
-    licence: licenceStatus(),
     setHeading: vi.fn(),
     applySettings: vi.fn(),
     applyPlatform: vi.fn(),
     applyEngine: vi.fn(),
-    applyLicence: vi.fn(),
     navigate: vi.fn(),
     reloadHistory: vi.fn(async () => undefined)
   }
@@ -203,17 +199,16 @@ describe('privacyNotice', () => {
     expect(text).toContain('the vocabulary you set in Settings')
   })
 
-  it("says what Pro's activation sends, on either engine, before claiming nothing else leaves", () => {
-    expect(PRO_ACTIVATION_NOTICE).toBe(
-      'Pro sends your licence key and a device label to Polar, the payment provider, when you ' +
-        'press Activate, and then asks Polar once a day whether your subscription is still active.'
-    )
-    expect(privacyNotice('local')).toContain(PRO_ACTIVATION_NOTICE)
-    const cloud = privacyNotice('cloud')
-    expect(cloud).toContain(PRO_ACTIVATION_NOTICE)
-    expect(cloud.indexOf(PRO_ACTIVATION_NOTICE)).toBeLessThan(
-      cloud.indexOf('Nothing else leaves this computer.')
-    )
+  it('names no payment provider, licence or subscription, on either engine', () => {
+    for (const engine of ['local', 'cloud'] as const) {
+      for (const polish of [false, true]) {
+        for (const counts of [false, true]) {
+          expect(privacyNotice(engine, polish, counts)).not.toMatch(
+            /Polar|licen[cs]e key|subscri|\bPro\b|\btrial\b/iu
+          )
+        }
+      }
+    }
   })
 
   it('says what the update check sends, on either engine, before claiming nothing else leaves', () => {

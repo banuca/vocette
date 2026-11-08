@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import { safeStorage } from 'electron'
 import {
   readJsonWithBackup,
@@ -46,54 +45,6 @@ import { assessSecureStorage, type SecureStorageAssessment } from './secure-stor
 /** v5 added `theme`; earlier files load with the default. */
 export const SETTINGS_VERSION = 5
 
-/**
- * A Pro licence activated on this PC: what releasing it later needs, and what
- * the Pro page shows. Nothing else from Polar's answer is kept — it names the
- * buyer, and none of that is Vocette's business.
- *
- * `encryptedKey` holds the key encrypted by the operating system wherever
- * that is possible. Where it is not, it holds the key as typed, and
- * `keyStorage` says `plain`. The API key is refused in that case, but a
- * licence key is an entitlement token rather than a credential: it unlocks
- * Pro in this app, and it spends no money and opens no account. Refusing to
- * keep it would take Pro away from a paying user for very little protection.
- * It is still encrypted where it can be, because whoever holds a key can use
- * one of its device slots and see the buyer details Polar returns.
- */
-export interface StoredLicence {
-  encryptedKey: string
-  keyStorage: 'encrypted' | 'plain'
-  activationId: string
-  benefitId: string
-  /** Polar's masked form of the key, "****-E304DA", or its last four characters. */
-  displayKey: string
-  activatedAt: string
-  /**
-   * What Polar last said about the subscription behind the key. "ended" keeps
-   * the key, so a new subscription brings Pro back at the next check.
-   */
-  subscription: 'active' | 'ended'
-  /** When Polar last confirmed the subscription as active; activation counts. */
-  confirmedAt: string
-}
-
-/** The licence as the main process may pass it around: no key material. */
-export type LicenceRecord = Omit<StoredLicence, 'encryptedKey' | 'keyStorage'>
-
-/** What activating hands the store to keep. */
-export interface NewLicence {
-  key: string
-  activationId: string
-  benefitId: string
-  displayKey: string
-  activatedAt: string
-}
-
-/** Four upper-case hexadecimal characters, generated once per profile. */
-const DEVICE_TAG_PATTERN = /^[0-9A-F]{4}$/u
-const MAX_LICENCE_FIELD_CHARS = 200
-const MAX_STORED_KEY_CHARS = 4096
-
 export interface StoredSettings {
   version: number
   engine: TranscriptionEngine
@@ -124,16 +75,10 @@ export interface StoredSettings {
   apiEndpoint: string
   encryptedApiKey: string
   /**
-   * When this profile's Pro trial began. Absent in a file written before the
-   * trial existed, and then set the first time this version loads it — so an
-   * existing user's trial starts on their first launch of it, like a new one's.
+   * When this profile was first run, so opt-in counts can say how many weeks
+   * Vocette has been in use. Set the first time a profile without one loads.
    */
-  trialStartedAt: string | null
-  /** The one notice that the trial has ended has been dismissed, for good. */
-  trialEndNoticeDismissed: boolean
-  /** Names this PC in the activation label: the 7F3A of "Vocette on Windows · 7F3A". */
-  deviceTag: string
-  licence: StoredLicence | null
+  firstRunAt: string | null
   /** The daily update check. Off unless the user switches it on on the About page. */
   updateCheck: boolean
   /** When an update check last finished, so a restart cannot make it daily-plus. */
@@ -191,10 +136,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   replacements: '',
   apiEndpoint: '',
   encryptedApiKey: '',
-  trialStartedAt: null,
-  trialEndNoticeDismissed: false,
-  deviceTag: '',
-  licence: null,
+  firstRunAt: null,
   updateCheck: false,
   lastUpdateCheckAt: null,
   uiZoom: DEFAULT_ZOOM,
@@ -232,18 +174,29 @@ interface SettingsPersistence {
 /** What the store needs from the world beyond its file; injectable for tests. */
 export interface StoreEnvironment {
   now?: () => number
-  /** Four upper-case hexadecimal characters; random unless a test supplies them. */
-  newDeviceTag?: () => string
   /** The system's preferred languages, most wanted first ("fr-CH"); read only for a new profile. */
   systemLanguages?: () => readonly string[]
 }
 
-function randomDeviceTag(): string {
-  return randomBytes(2).toString('hex').toUpperCase()
-}
-
 function isLanguageCode(value: unknown): value is string {
   return typeof value === 'string' && (value === 'auto' || /^[a-z]{2}$/u.test(value))
+}
+
+/** A stored date that can be read, as written, or null. */
+function storedDate(value: unknown): string | null {
+  return typeof value === 'string' && value.length <= 64 && !Number.isNaN(Date.parse(value))
+    ? value
+    : null
+}
+
+/**
+ * Whether a loaded file still holds a licence key from the version that sold
+ * subscriptions. A profile that never activated one holds `null` there.
+ */
+function holdsRetiredLicence(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const licence = (value as Record<string, unknown>).licence
+  return licence !== null && licence !== undefined
 }
 
 /**
@@ -403,20 +356,11 @@ export function normaliseSettings(value: unknown): StoredSettings {
     apiEndpoint,
     encryptedApiKey:
       typeof candidate.encryptedApiKey === 'string' ? candidate.encryptedApiKey : '',
-    // Added within v5, like the switches. Absent, or a date that cannot be
-    // read, means not started — and the store starts it as it loads.
-    trialStartedAt:
-      typeof candidate.trialStartedAt === 'string' &&
-      candidate.trialStartedAt.length <= 64 &&
-      !Number.isNaN(Date.parse(candidate.trialStartedAt))
-        ? candidate.trialStartedAt
-        : null,
-    trialEndNoticeDismissed: candidate.trialEndNoticeDismissed === true,
-    deviceTag:
-      typeof candidate.deviceTag === 'string' && DEVICE_TAG_PATTERN.test(candidate.deviceTag)
-        ? candidate.deviceTag
-        : '',
-    licence: normaliseLicence(candidate.licence),
+    // Absent, or a date that cannot be read, means not dated yet, and the store
+    // dates it as it loads. Versions that sold subscriptions kept the same
+    // date as the start of a trial, so a profile from one keeps its age. Its
+    // trial, licence, device tag and word count are not read at all.
+    firstRunAt: storedDate(candidate.firstRunAt) ?? storedDate(candidate.trialStartedAt),
     // Added within v5: absent means off, as on a fresh install. Only a real
     // true switches it on, so no damaged file can start sending requests.
     updateCheck: candidate.updateCheck === true,
@@ -461,48 +405,6 @@ export function normaliseSettings(value: unknown): StoredSettings {
       !Number.isNaN(Date.parse(candidate.lastCountsSentAt))
         ? candidate.lastCountsSentAt
         : null
-  }
-}
-
-/**
- * A stored licence, or null when there is none or it cannot be used. Every
- * field is needed — releasing this PC sends the key and the activation id —
- * so a record missing one is treated as no licence rather than half of one.
- */
-function normaliseLicence(value: unknown): StoredLicence | null {
-  if (!value || typeof value !== 'object') return null
-  const candidate = value as Record<string, unknown>
-  const text = (field: unknown, max = MAX_LICENCE_FIELD_CHARS): string | null =>
-    typeof field === 'string' && field.length > 0 && field.length <= max ? field : null
-  const encryptedKey = text(candidate.encryptedKey, MAX_STORED_KEY_CHARS)
-  const keyStorage =
-    candidate.keyStorage === 'encrypted' || candidate.keyStorage === 'plain'
-      ? candidate.keyStorage
-      : null
-  const activationId = text(candidate.activationId)
-  const benefitId = text(candidate.benefitId)
-  const displayKey = text(candidate.displayKey)
-  const activatedText = text(candidate.activatedAt)
-  const activatedAt =
-    activatedText !== null && !Number.isNaN(Date.parse(activatedText)) ? activatedText : null
-  if (!encryptedKey || !keyStorage || !activationId || !benefitId || !displayKey || !activatedAt) {
-    return null
-  }
-  // Added with subscriptions: a record without them counts as confirmed when
-  // it was activated, so the next check decides, within the grace period.
-  const confirmedText = text(candidate.confirmedAt)
-  const confirmedAt =
-    confirmedText !== null && !Number.isNaN(Date.parse(confirmedText)) ? confirmedText : activatedAt
-  const subscription = candidate.subscription === 'ended' ? 'ended' : 'active'
-  return {
-    encryptedKey,
-    keyStorage,
-    activationId,
-    benefitId,
-    displayKey,
-    activatedAt,
-    subscription,
-    confirmedAt
   }
 }
 
@@ -557,30 +459,35 @@ export class SettingsStore {
         // English, as the defaults have it.
       }
     }
-    this.startTrialAndTagDevice(environment)
+    this.settle(environment, holdsRetiredLicence(value))
   }
 
   /**
-   * The trial starts the first time this version loads a profile, and this PC
-   * gets its tag the same way. Both are written straight away, so a restart
-   * moves neither. A write that fails here is not fatal: both stay in memory
-   * for this session, and the next save writes them.
+   * Two things a profile is given as it loads, each written straight away.
+   *
+   * The first run is dated if it has no date yet, so a restart cannot move it.
+   *
+   * A licence key kept by a version that sold subscriptions unlocks nothing
+   * now, and whoever holds one can see the buyer's details at Polar, so it is
+   * not left on disk: the file is written without it, and the recovery copies
+   * that may still hold it are scrubbed, as when the API key is removed.
+   *
+   * A write that fails here is not fatal: the profile still opens, and the
+   * next save writes the file in full.
    */
-  private startTrialAndTagDevice(environment: StoreEnvironment): void {
-    let changed = false
-    if (this.settings.trialStartedAt === null) {
+  private settle(environment: StoreEnvironment, retiredLicence: boolean): void {
+    const undated = this.settings.firstRunAt === null
+    if (undated) {
       const now = (environment.now ?? Date.now)()
-      this.settings.trialStartedAt = new Date(Number.isFinite(now) ? now : Date.now()).toISOString()
-      changed = true
+      this.settings.firstRunAt = new Date(Number.isFinite(now) ? now : Date.now()).toISOString()
     }
-    if (this.settings.deviceTag === '') {
-      const tag = environment.newDeviceTag?.() ?? ''
-      this.settings.deviceTag = DEVICE_TAG_PATTERN.test(tag) ? tag : randomDeviceTag()
-      changed = true
-    }
-    if (!changed) return
+    if (!undated && !retiredLicence) return
     try {
       this.write()
+      if (retiredLicence) {
+        this.persistence.removeJsonRecoveryCopies(this.filePath)
+        this.persistence.refreshJsonRecoveryBackup(this.filePath)
+      }
     } catch {
       // Kept in memory; the next save persists it.
     }
@@ -598,7 +505,7 @@ export class SettingsStore {
    *
    * An allow-list on purpose. This used to copy the stored settings and delete
    * the fields that must not cross, so every field added to the file crossed
-   * into the window by default — the trial date and the licence among them.
+   * into the window by default — dates and licence records among them.
    * Now a new stored field stays in the main process until it is listed here,
    * and the key-set test fails if one is added to either side alone.
    */
@@ -653,18 +560,14 @@ export class SettingsStore {
   }
 
   /**
-   * Main process only. Leaves out the API key and the licence, which have
-   * their own accessors, so neither is handed around with the rest.
+   * Main process only. Leaves out the API and polish keys, which have their
+   * own accessors, so neither is handed around with the rest.
    */
-  getInternal(): Omit<
-    StoredSettings,
-    'encryptedApiKey' | 'encryptedPolishKey' | 'version' | 'licence'
-  > {
+  getInternal(): Omit<StoredSettings, 'encryptedApiKey' | 'encryptedPolishKey' | 'version'> {
     const {
       encryptedApiKey: _key,
       encryptedPolishKey: _polishKey,
       version: _version,
-      licence: _licence,
       ...values
     } = this.settings
     return { ...values }
@@ -691,72 +594,6 @@ export class SettingsStore {
     this.persistence.refreshJsonRecoveryBackup(this.filePath)
     this.settings = next
     return this.getPublic()
-  }
-
-  /** The licence activated on this PC, without its key, or null. */
-  licenceRecord(): LicenceRecord | null {
-    const licence = this.settings.licence
-    if (!licence) return null
-    const { encryptedKey: _key, keyStorage: _storage, ...record } = licence
-    return record
-  }
-
-  /**
-   * The licence key itself, which only releasing this PC needs. Throws when a
-   * key the operating system encrypted cannot be read back — on another user
-   * account, say, or with secure storage gone.
-   */
-  getLicenceKey(): string {
-    const licence = this.settings.licence
-    if (!licence) throw new Error('No licence is active on this PC.')
-    if (licence.keyStorage === 'plain') return licence.encryptedKey
-    try {
-      if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable.')
-      return safeStorage.decryptString(Buffer.from(licence.encryptedKey, 'base64'))
-    } catch {
-      throw new Error(
-        'The saved licence key could not be read on this PC, so it cannot be released from here.'
-      )
-    }
-  }
-
-  /**
-   * Keeps a licence Polar has just activated: encrypted wherever the system
-   * can hold it safely, and see `StoredLicence` for why it is kept plain
-   * where it cannot.
-   */
-  saveLicence(input: NewLicence): void {
-    const encrypted = this.storage.usable
-    const licence: StoredLicence = {
-      encryptedKey: encrypted ? safeStorage.encryptString(input.key).toString('base64') : input.key,
-      keyStorage: encrypted ? 'encrypted' : 'plain',
-      activationId: input.activationId,
-      benefitId: input.benefitId,
-      displayKey: input.displayKey,
-      activatedAt: input.activatedAt,
-      // Activation itself is Polar saying the key is granted.
-      subscription: 'active',
-      confirmedAt: input.activatedAt
-    }
-    const next = { ...this.settings, licence }
-    this.persistence.writeJsonAtomic(this.filePath, next)
-    this.settings = next
-  }
-
-  /**
-   * Keeps what a subscription check found. "active" moves the confirmation to
-   * `at`; "ended" keeps the last confirmation, and the key, as they were.
-   */
-  recordSubscriptionCheck(result: 'active' | 'ended', at: string): void {
-    const licence = this.settings.licence
-    if (!licence || Number.isNaN(Date.parse(at))) return
-    const updated: StoredLicence =
-      result === 'active'
-        ? { ...licence, subscription: 'active', confirmedAt: at }
-        : { ...licence, subscription: 'ended' }
-    const next = { ...this.settings, licence: updated }
-    this.persistence.writeJsonAtomic(this.filePath, next)
-    this.settings = next
   }
 
   /** Switches the daily update check on or off. */
@@ -800,20 +637,6 @@ export class SettingsStore {
     if (Number.isNaN(Date.parse(iso))) return
     this.settings = { ...this.settings, lastUpdateCheckAt: iso }
     this.write()
-  }
-
-  /**
-   * Forgets the licence on this PC, and scrubs the recovery copies so the key
-   * does not linger in a backup. It also settles the notice that the trial
-   * has ended: someone who has just taken Pro off this PC knows their plan,
-   * and "your Pro trial has ended" would be news about something else.
-   */
-  clearLicence(): void {
-    const next = { ...this.settings, licence: null, trialEndNoticeDismissed: true }
-    this.persistence.writeJsonAtomic(this.filePath, next)
-    this.persistence.removeJsonRecoveryCopies(this.filePath)
-    this.persistence.refreshJsonRecoveryBackup(this.filePath)
-    this.settings = next
   }
 
   getApiKey(): string {
@@ -914,8 +737,6 @@ export class SettingsStore {
     if (typeof update.replacements === 'string') {
       this.settings.replacements = clampReplacements(update.replacements)
     }
-    // Only ever set: once dismissed, the notice is gone for good.
-    if (update.trialEndNoticeDismissed === true) this.settings.trialEndNoticeDismissed = true
     if (update.welcomeAnswered === true) this.settings.welcomeAnswered = true
     if (update.polish && typeof update.polish === 'object') this.applyPolishUpdate(update.polish)
     if (typeof update.polishKey === 'string' && update.polishKey.trim()) {

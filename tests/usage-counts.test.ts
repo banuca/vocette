@@ -47,22 +47,20 @@ describe('weeksSince', () => {
 })
 
 describe('buildReport', () => {
-  it('holds exactly the agreed fields and nothing else', () => {
+  it('holds exactly the agreed fields and nothing else, with the plan always free and no limit hit', () => {
     const report = buildReport({
       version: '0.8.0',
       os: 'windows',
       engine: 'local',
-      plan: 'trial',
       firstRunAt: '2026-10-10T08:00:00Z',
       days: { '2026-10-11': 9, '2026-10-14': 2, '2026-10-17': 3, '2026-10-19': 4 },
-      limitHit: false,
       now: at(19)
     })
     expect(report).toEqual({
       v: '0.8.0',
       os: 'windows',
       engine: 'local',
-      plan: 'trial',
+      plan: 'free',
       week: 1,
       activeDays7: 3,
       dictations7: 9,
@@ -76,10 +74,8 @@ describe('buildReport', () => {
       version: '0.8.0',
       os: 'linux',
       engine: 'cloud',
-      plan: 'pro',
       firstRunAt: null,
       days: { [dayKey(at(18))]: 999, [dayKey(at(19))]: 999 },
-      limitHit: false,
       now: at(19)
     })
     expect(report.dictations7).toBe(999)

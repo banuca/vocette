@@ -25,9 +25,7 @@ describe('renaming the product (dry run)', () => {
   it('reaches what people read: window titles, messages, documents', () => {
     expect(changed('src/renderer/index.html').length).toBeGreaterThan(0)
     expect(changed('README.md').length).toBeGreaterThan(0)
-    expect(
-      plan.some((change) => change.after.includes(`That does not look like a ${TARGET} licence key.`))
-    ).toBe(true)
+    expect(plan.some((change) => change.after.includes(`'${TARGET} could not start'`))).toBe(true)
   })
 
   it('never touches the folders on disk, the identifiers, or history', () => {
