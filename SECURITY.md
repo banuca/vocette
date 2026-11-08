@@ -98,21 +98,7 @@ This is the complete list. Each one happens only when stated.
    use, and a `verified.json` marker records the check. Stored in
    `%LOCALAPPDATA%\Murmur\models` on Windows. Nothing is sent but the requests
    for those files.
-2. **Pro subscription** — only with a licence key activated on this PC. **Activate**:
-   one POST to `api.polar.sh/v1/customer-portal/license-keys/activate` carrying the
-   key, Polar's organisation id, a device label ("Vocette on Windows · 7F3A") and the
-   app version. Then, while the key stays activated, at most one POST a day to
-   `/validate` — a minute after startup when the last confirmation is a day old, and
-   on **Check now** — carrying the key, the organisation id, this PC's activation id
-   and the benefit id; Polar records each validation. **Release this PC**: one POST to
-   `/deactivate` with the key and the activation id. No Authorization header on any
-   of them. A failed check changes nothing: Pro keeps working for 30 days after the
-   last confirmation. The buyer's name and email
-   in Polar's reply are discarded; only the activation id, the benefit id, a
-   masked key and the date are kept. The key itself is stored with `safeStorage`
-   where the OS allows, and otherwise in plain text: it is an entitlement token,
-   not a credential to anything else.
-3. **Updates** — the check only if the user turned it on (the first-run card
+2. **Updates** — the check only if the user turned it on (the first-run card
    offers it ticked; About has the switch), then at most once a day, or pressed
    **Check now**: one GET to
    `https://api.github.com/repos/<repository>/releases/latest` with no cookies or
@@ -125,16 +111,18 @@ This is the complete list. Each one happens only when stated.
    installer's SHA-512 before running it. A downloaded update installs on
    **Restart to update** or when Vocette next quits. On a Mac or with the
    `.deb`, Vocette opens the release page instead.
-4. **Cloud transcription** — only with **Cloud** chosen: each recording, with the
+3. **Cloud transcription** — only with **Cloud** chosen: each recording, with the
    vocabulary, to the endpoint the user configured, with their key.
-5. **AI polish** — only if switched on, and only with Pro: the cleaned text of
-   each dictation (never audio), with the style, the user's extra instructions and
-   up to 100 vocabulary terms, to the chat endpoint the user configured.
-6. **Opt-in counts** — only if the user ticked **Help improve Vocette** (first-run card
+4. **AI polish** — only if switched on: the cleaned text of each dictation (never
+   audio), with the style, the user's extra instructions and up to 100 vocabulary
+   terms, to the chat endpoint the user configured.
+5. **Opt-in counts** — only if the user ticked **Help improve Vocette** (first-run card
    or About; off by default): at most one POST a day to
    `https://counts.vocette.com/v1/report` with no cookies and the User-Agent `Vocette`,
    carrying exactly `v`, `os`, `engine`, `plan`, `week`, `activeDays7`, `dictations7` and
-   `limitHit` (`src/shared/usage-counts.ts`). No identifier of any kind. The Worker
+   `limitHit` (`src/shared/usage-counts.ts`). `plan` is always `free` and `limitHit`
+   always `false`: Vocette has no plans or limits, and the Worker still requires both
+   fields. No identifier of any kind. The Worker
    (`server/counts`) accepts only that shape and stores it with the UTC day; it stores no
    IP or headers and has request logging off. Development builds send only to
    `MURMUR_COUNTS_URL`. Switching off deletes the local seven-day tally.
@@ -143,7 +131,7 @@ Nothing else. No crash reporting, no automatic updates, and no analytics beyond 
 opt-in counts. The diagnostics log (`diagnostics.json` in the profile folder,
 `src/main/diagnostics-log.ts`) is local only: typed events with fixed fields, the newest
 500, and no field that can hold dictated text, audio, window or app names, vocabulary,
-keys, endpoints or device labels. It leaves the PC only when the user presses
+keys or endpoints. It leaves the PC only when the user presses
 **Copy diagnostics** and pastes the report somewhere themselves. With the on-device engine and none of the optional features switched
 on, audio and text never leave the computer.
 
@@ -199,19 +187,23 @@ on, audio and text never leave the computer.
   never written to disk, never exposed through public settings or diagnostics,
   and gone when the app quits. Unlocking a keyring and saving again is the
   other option, and the app says so.
-- AI polish (Pro, off by default) sends the cleaned text of a dictation — never audio — to
+- AI polish (off by default) sends the cleaned text of a dictation — never audio — to
   the chat endpoint the user configured, with their style, extra instructions and up to 100
   vocabulary terms. The transcript is the user message; the system prompt says it is text to
   rewrite, never instructions to follow, and the reply is used only if it passes a guard
   (no assistant preamble, no reply far longer or shorter than the input). The polish key is
   stored with `safeStorage` like the transcription key and never crosses into a renderer;
   the transcription key is borrowed only when both endpoints are OpenAI's.
+- Earlier versions sold a Pro subscription and could keep its licence key in
+  `settings.json`. This version never reads or sends it: the first time it opens such
+  a profile, it writes `settings.json` without the key and scrubs the recovery copies
+  that may still hold it.
 - There is no telemetry beyond the opt-in counts (off by default, no identifier; see
   the list above). The update check (off until the user turns it on) sends one GET
   to `https://api.github.com/repos/<repository>/releases/latest` with no cookies or
   credentials, reads only the tag and the release link, and never downloads anything
   itself; the link it opens must be a release page of that repository. An update is
-  downloaded only when the user presses **Download and install** (item 3 above).
+  downloaded only when the user presses **Download and install** (item 2 above).
 
 ## Hardening in place
 

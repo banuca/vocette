@@ -6,22 +6,11 @@ Vocette is for people who write a lot and must keep their words confidential: tr
 
 **[Download Vocette](https://github.com/banuca/vocette/releases)** and choose the newest Vocette release. The Windows installer is not signed yet, so Windows may say it protected your PC. Choose **More info**, then **Run anyway**.
 
-## Free and Pro
+## Free and open source
 
-Everyone starts with 30 days of Pro, free. After that, Vocette carries on as Free unless you subscribe.
+Vocette is free for everyone and open source, under the [MIT licence](LICENSE). Every feature is included: dictation with no monthly limit, on your PC or through your own cloud provider; clean-up, spoken corrections and history; up to 500 of your own words and 200 replacements and snippets; and AI polish. There is no account and nothing to buy.
 
-| | Free | Pro |
-|---|---|---|
-| Price | US$0 | US$9.99 a month, or US$99 a year |
-| Dictation, on your PC or through your own cloud provider | 10,000 words a month | No limit |
-| Clean-up, spoken corrections and history | Yes | Yes |
-| Your words: names and terms spelled your way | 50 | 500 |
-| Replacements and snippets | 20 | 200 |
-| AI polish: a dictation rewritten in the style you choose | No | Yes |
-
-Pro is a subscription through Polar and covers up to 10 devices. Cancel any time: Pro stays on until the end of the period you have paid for.
-
-**Teams:** US$120 per seat a year, from 3 seats, by arrangement.
+Vocette is no longer actively developed, so issues and pull requests may go unanswered. The source code is here for anyone to use, change or build on.
 
 ## Privacy
 
@@ -31,10 +20,9 @@ Vocette goes online only for these:
 
 - **The speech model**, once, when you press **Download**: 935 MB from this repository's releases on GitHub, checked against fixed SHA-256 hashes before first use.
 - **Cloud transcription**, only if you choose it: each recording, with your word list, goes to the provider you set up, using your own key, or to a server of your own.
-- **AI polish** (Pro), only if you switch it on: the text of each dictation, never the audio, goes to the provider you choose, with your instructions and word list. Choose Ollama or LM Studio to keep it on your PC.
-- **Your Pro licence**, only once you activate a key: your key and a device label go to Polar, and Vocette then checks your subscription with Polar at most once a day.
+- **AI polish**, only if you switch it on: the text of each dictation, never the audio, goes to the provider you choose, with your instructions and word list. Choose Ollama or LM Studio to keep it on your PC.
 - **Updates**: a daily check asks GitHub for the latest version number. The first-run card offers it, ticked, and you can turn it off in **About**. An update is downloaded only when you press **Download and install**.
-- **Anonymous counts**, only if you tick **Help improve Vocette**: once a day, eight values such as your version, your plan and how many days you dictated in the last seven. No words, no audio and no ID. **About → Show what is sent** shows the exact report.
+- **Anonymous counts**, only if you tick **Help improve Vocette**: once a day, eight values such as your version, your system and how many days you dictated in the last seven. No words, no audio and no ID. **About → Show what is sent** shows the exact report.
 
 There is no crash reporting and no other analytics. [SECURITY.md](SECURITY.md) lists every request in full.
 
@@ -62,7 +50,7 @@ For other languages, you can use a cloud provider with your own key.
 
 ## More
 
-- [How Vocette works](docs/engineering.md): dictation, settings, platforms, the Pro licence and building from source
+- [How Vocette works](docs/engineering.md): dictation, settings, platforms and building from source
 - [Security](SECURITY.md): what the app is allowed to do, and every network request it makes
 - [Platform support](docs/platform-support.md): what works on each system, and what has been tested
 - [Changelog](CHANGELOG.md)
