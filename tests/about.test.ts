@@ -4,6 +4,8 @@ import {
   COUNTS_EXPLANATION,
   DIAGNOSTICS_EXPLANATION,
   COUNTS_NOTICE,
+  PROJECT_STATUS,
+  PROJECT_STATUS_HEADING,
   UPDATE_CHECK_EXPLANATION,
   UPDATE_CHECK_NOTICE,
   attributions,
@@ -222,6 +224,35 @@ describe('privacyNotice', () => {
 })
 
 describe('renderAbout', () => {
+  it('says plainly that Vocette is free, open source under MIT, and no longer developed', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context } = render('local')
+    renderAbout(context)
+    expect(PROJECT_STATUS_HEADING).toBe('Free, open source, and no longer developed')
+    expect(PROJECT_STATUS).toBe(
+      'Vocette is free for everyone and open source, under the MIT licence. Every feature is ' +
+        'included, with nothing to buy and no account. It is no longer actively developed: it ' +
+        'will not get new features, and questions, issues and pull requests may go unanswered. ' +
+        'Its source code is on GitHub, for anyone to use, change or build on.'
+    )
+    const html = content.innerHTML
+    expect(html).toContain(`<h3 id="project-status-heading">${PROJECT_STATUS_HEADING}</h3>`)
+    expect(html).toContain(`<p>${PROJECT_STATUS}</p>`)
+    expect(html).toContain('Free, open-source push-to-talk dictation for Windows, macOS and Linux.')
+    // It comes first, before the cards about how Vocette works.
+    expect(html.indexOf(PROJECT_STATUS)).toBeLessThan(html.indexOf('<h3>Simple by design</h3>'))
+  })
+
+  it('keeps the update, counts, diagnostics and attribution cards', async () => {
+    const { renderAbout } = await import('../src/renderer/pages/about')
+    const { content, context } = render('local')
+    renderAbout(context)
+    for (const heading of ['updates-heading', 'counts-heading', 'diagnostics-heading']) {
+      expect(content.innerHTML).toContain(`id="${heading}"`)
+    }
+    expect(content.innerHTML).toContain('<h3>Attributions</h3>')
+  })
+
   it('replaces the API key card with Private by default', async () => {
     const { renderAbout } = await import('../src/renderer/pages/about')
     const { content, context } = render('local')
@@ -299,6 +330,9 @@ describe('the counts section', () => {
     expect(content.querySelector('#usage-counts')?.checked).toBe(false)
     expect(content.querySelector('#usage-counts-explanation')?.textContent).toBe(COUNTS_EXPLANATION)
     expect(content.querySelector('#privacy-notice')?.textContent).not.toContain(COUNTS_NOTICE)
+    // There are no plans to tell anyone about.
+    expect(COUNTS_EXPLANATION).toContain('your version, system and engine, and how much you dictated')
+    expect(COUNTS_EXPLANATION).not.toMatch(/\bplan\b/u)
   })
 
   it('shows the exact report, as text, when asked', async () => {

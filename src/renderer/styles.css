@@ -1924,6 +1924,11 @@ a:focus-visible {
   margin-left: 6px;
 }
 
+/* Where the project stands: free, open source, no longer developed. */
+.project-status {
+  margin-bottom: 14px;
+}
+
 .about-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

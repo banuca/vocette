@@ -45,6 +45,14 @@ const INDEPENDENT =
   'Vocette is an independent MIT-licensed project with no affiliation to any commercial ' +
   'dictation product.'
 
+/** Where the project stands, said plainly near the top of the page. */
+export const PROJECT_STATUS_HEADING = 'Free, open source, and no longer developed'
+export const PROJECT_STATUS =
+  'Vocette is free for everyone and open source, under the MIT licence. Every feature is ' +
+  'included, with nothing to buy and no account. It is no longer actively developed: it will ' +
+  'not get new features, and questions, issues and pull requests may go unanswered. Its ' +
+  'source code is on GitHub, for anyone to use, change or build on.'
+
 /** The update check's one request, said with the others. */
 export const UPDATE_CHECK_NOTICE =
   'Checking for updates, which you switch on below or ask for with Check now, asks GitHub ' +
@@ -67,8 +75,8 @@ export const COUNTS_NOTICE =
 
 /** Under the counts switch. */
 export const COUNTS_EXPLANATION =
-  'Once a day, sends the report below to counts.vocette.com: your version, system, engine and ' +
-  'plan, and how much you dictated in the last seven days. Never your words or audio, and no ' +
+  'Once a day, sends the report below to counts.vocette.com: your version, system and engine, ' +
+  'and how much you dictated in the last seven days. Never your words or audio, and no ' +
   'ID, so no report can be linked to another. Off unless you switch it on.'
 
 /** Above the diagnostics buttons. */
@@ -114,10 +122,14 @@ export function renderAbout(context: AppContext): AboutView {
     <div class="about-hero">
       <span class="large-brand-mark" aria-hidden="true">${BRAND_MARK_SVG}</span>
       <h2>Vocette</h2>
-      <p>Open-source push-to-talk dictation for Windows, macOS and Linux.</p>
+      <p>Free, open-source push-to-talk dictation for Windows, macOS and Linux.</p>
       <span class="version-badge">Version ${escapeHtml(context.appInfo.version)}</span>
       <span class="version-badge">${escapeHtml(platformName(context))}</span>
     </div>
+    <section class="notice-card project-status" aria-labelledby="project-status-heading">
+      <h3 id="project-status-heading">${escapeHtml(PROJECT_STATUS_HEADING)}</h3>
+      <p>${escapeHtml(PROJECT_STATUS)}</p>
+    </section>
     <div class="about-grid">
       <section class="about-card"><div class="about-icon">${icon('keyboard', 18)}</div><h3>Simple by design</h3><p>Hold or press your shortcut, speak, then finish. The transcript is copied, pasted where that is safe, and saved locally.</p></section>
       <section class="about-card"><div class="about-icon">${icon('home', 18)}</div><h3>Local history</h3><p>Your history remains on this computer. Audio is held in memory only long enough to transcribe it.</p></section>
