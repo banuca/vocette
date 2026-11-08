@@ -4,7 +4,7 @@ import type { ReplacementRule } from './replacements'
 /**
  * Vocette spells its own name, whatever the user's word list holds.
  *
- * The name is a term in every dictation, outside the plan's limit, so a cloud
+ * The name is a term in every dictation, outside the list's limit, so a cloud
  * recogniser and polish are told it exists and the correction gives it its
  * capital. The on-device recogniser takes no prompt, and its mishearings are
  * too far from the name for the near-miss correction ("Voset" is three edits

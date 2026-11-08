@@ -178,8 +178,7 @@ export function renderAbout(context: AppContext): AboutView {
   `
 
   const notice = context.content.querySelector<HTMLElement>('#privacy-notice')
-  // Polish counts only where it can run: switched on, with Pro.
-  const polishing = context.settings.polish?.enabled === true && context.licence.plan !== 'free'
+  const polishing = context.settings.polish?.enabled === true
   if (notice) notice.textContent = privacyNotice(engine, polishing)
 
   // textContent: the model's attribution comes from its manifest, and no text

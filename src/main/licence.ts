@@ -14,7 +14,6 @@ import {
 } from '../shared/product'
 import type { LicenceStatus } from '../shared/types'
 import type { LicenceRecord } from './settings-store'
-import type { WordAllowance } from '../shared/word-allowance'
 
 /**
  * Pro subscriptions, through Polar's public licence-key API.
@@ -472,8 +471,6 @@ export interface LicenceStatusInput {
   monthlyCheckoutUrl?: string
   yearlyCheckoutUrl?: string
   portalUrl?: string
-  /** Free's words this month; left out, or on the trial and Pro, there is none. */
-  words?: WordAllowance | null
 }
 
 /** What the window is told. No key, no activation id, no Polar identifier. */
@@ -508,7 +505,6 @@ export function licenceStatusFor(input: LicenceStatusInput): LicenceStatus {
     // until dismissed. A subscription that ended is the Pro page's to explain.
     trialEndNoticeDue:
       entitlement.plan === 'free' && licence === null && !input.trialEndNoticeDismissed,
-    deviceLabel: input.deviceLabel,
-    words: input.entitlement.pro ? null : (input.words ?? null)
+    deviceLabel: input.deviceLabel
   }
 }

@@ -1,13 +1,4 @@
-import {
-  FREE_REPLACEMENT_RULES,
-  FREE_VOCABULARY_TERMS,
-  PRO_REPLACEMENT_RULES,
-  PRO_VOCABULARY_TERMS,
-  SUBSCRIPTION_GRACE_DAYS,
-  TRIAL_DAYS
-} from './product'
-import { parseReplacements, type ReplacementRule } from './replacements'
-import { parseVocabulary } from './vocabulary'
+import { SUBSCRIPTION_GRACE_DAYS, TRIAL_DAYS } from './product'
 
 /**
  * Which plan is in force, worked out from two facts and the clock: when this
@@ -94,28 +85,4 @@ export function graceDaysLeft(confirmedAt: string, now: number): number {
   const since = Math.max(0, now - Date.parse(confirmedAt))
   if (!Number.isFinite(since)) return 0
   return Math.max(0, Math.ceil((SUBSCRIPTION_GRACE_DAYS * DAY_MS - since) / DAY_MS))
-}
-
-/** How many vocabulary terms a dictation uses on this plan. */
-export function vocabularyTermLimit(pro: boolean): number {
-  return pro ? PRO_VOCABULARY_TERMS : FREE_VOCABULARY_TERMS
-}
-
-/** How many replacement rules a dictation applies on this plan. */
-export function replacementRuleLimit(pro: boolean): number {
-  return pro ? PRO_REPLACEMENT_RULES : FREE_REPLACEMENT_RULES
-}
-
-/**
- * The terms a dictation uses: the first ones, in the user's own order, up to
- * the plan's limit. The stored list is never touched — a list longer than
- * Free's limit keeps every line, and all of it comes back with Pro.
- */
-export function planVocabulary(raw: string, pro: boolean): string[] {
-  return parseVocabulary(raw).slice(0, vocabularyTermLimit(pro))
-}
-
-/** The rules a dictation applies, the same way: the first ones, up to the limit. */
-export function planReplacements(raw: string, pro: boolean): ReplacementRule[] {
-  return parseReplacements(raw).rules.slice(0, replacementRuleLimit(pro))
 }

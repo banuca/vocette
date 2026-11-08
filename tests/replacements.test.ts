@@ -86,7 +86,8 @@ describe('parseReplacements', () => {
     ])
   })
 
-  it('caps the list, and a later line still overrides an early rule', () => {
+  it('caps the list at 200 rules, and a later line still overrides an early rule', () => {
+    expect(MAX_REPLACEMENT_RULES).toBe(200)
     const lines = Array.from({ length: MAX_REPLACEMENT_RULES + 50 }, (_, i) => `word${i} => W${i}`)
     lines.push('word0 => overridden')
     const { rules } = parseReplacements(lines.join('\n'))

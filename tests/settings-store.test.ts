@@ -391,30 +391,20 @@ describe('starting with the computer', () => {
   })
 })
 
-describe("Free's monthly words", () => {
-  it('start uncounted, and a broken record reads as none', () => {
-    expect(normaliseSettings({}).wordUsage).toBeNull()
-    expect(normaliseSettings({ wordUsage: { month: '2026-10', words: 412 } }).wordUsage).toEqual({
-      month: '2026-10',
-      words: 412
+describe('the old monthly word count', () => {
+  it('is no longer kept: a profile that holds one loads, and the count is dropped', () => {
+    const settings = normaliseSettings({
+      wordUsage: { month: '2026-10', words: 12_000 },
+      vocabulary: 'Kirinde'
     })
-    expect(normaliseSettings({ wordUsage: { month: 'soon', words: 412 } }).wordUsage).toBeNull()
+    expect(settings).not.toHaveProperty('wordUsage')
+    expect(settings.vocabulary).toBe('Kirinde')
   })
 
-  it('add up, survive a restart, and start again in a new month', () => {
-    const store = new SettingsStore(file)
-    store.addWordUsage(25, new Date(2026, 9, 15))
-    store.addWordUsage(30, new Date(2026, 9, 16))
-    store.addWordUsage(0, new Date(2026, 9, 16))
-    expect(new SettingsStore(file).getInternal().wordUsage).toEqual({ month: '2026-10', words: 55 })
-    store.addWordUsage(12, new Date(2026, 10, 1))
-    expect(new SettingsStore(file).getInternal().wordUsage).toEqual({ month: '2026-11', words: 12 })
-  })
-
-  it('are never something the window can set', () => {
+  it('is never something the window can set', () => {
     const store = new SettingsStore(file)
     store.update({ wordUsage: { month: '2026-10', words: 0 } } as never)
-    expect(store.getInternal().wordUsage).toBeNull()
+    expect(store.getInternal()).not.toHaveProperty('wordUsage')
     expect(store.getPublic()).not.toHaveProperty('wordUsage')
   })
 })

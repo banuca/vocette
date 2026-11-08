@@ -232,10 +232,9 @@ async function mount(): Promise<void> {
       if (JSON.stringify(next) === JSON.stringify(context.licence)) return
       context.licence = next
       updateProNav()
-      // Each view repaints only what the plan changes: History's notice,
-      // the notes under the lists in Settings, the Pro page itself.
+      // Each view repaints only what the plan changes: History's notice and
+      // the Pro page itself.
       historyView?.applyLicence(next)
-      settingsView?.applyLicence(next)
       proView?.apply(next)
     },
     navigate: (page, intent) => {

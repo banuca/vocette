@@ -18,7 +18,6 @@ import type { PublicSettings } from '../shared/types'
 export const POLISH_PRIVACY =
   'Your transcript text (never audio) is sent to the provider above. Choose Ollama or ' +
   'LM Studio to keep it on this PC.'
-export const POLISH_NOT_PRO = 'Part of Pro.'
 export const POLISH_TEST_NEEDS_SAVE = 'Save settings first — the test uses what is saved.'
 export const POLISH_TEST_SENDING = 'Sending one short sentence…'
 
@@ -40,10 +39,9 @@ export function polishCardMarkup(): string {
       <section class="settings-card polish-card" id="polish-card">
         <div class="settings-heading">
           <div><h2>AI polish</h2><p>Turns what you said into finished text, in the style you choose.</p></div>
-          <span class="configured-badge" id="polish-badge" hidden>Pro</span>
         </div>
         <div class="toggle-list polish-switch">
-          <label class="toggle-row" id="row-polish"><div><strong>Polish my dictation</strong><span>A language model rewrites each dictation before it is pasted. If it takes too long or its reply looks wrong, your text is pasted as it was.</span><small class="capability-note" id="polish-note" hidden></small></div><input id="polish-enabled" type="checkbox" /><i></i></label>
+          <label class="toggle-row" id="row-polish"><div><strong>Polish my dictation</strong><span>A language model rewrites each dictation before it is pasted. If it takes too long or its reply looks wrong, your text is pasted as it was.</span></div><input id="polish-enabled" type="checkbox" /><i></i></label>
         </div>
         <div class="mode-choice polish-styles" role="radiogroup" aria-label="Polish style">${styles}</div>
         <label class="field field-wide"><span>Extra instructions <em>(optional)</em></span>
@@ -78,8 +76,6 @@ export interface PolishCardApi {
 export interface PolishCard {
   /** Paints the saved settings, unless the user is part-way through an edit. */
   apply(next: PublicSettings): void
-  /** Pro or not: the switch and Test are Pro's; the rest can be set up any time. */
-  applyPlan(pro: boolean): void
   /** What Save sends for this card. */
   collect(): { polish: PolishSettingsUpdate; polishKey?: string }
   /** Saved: the fields follow the store again, and the key box is emptied. */
@@ -92,12 +88,9 @@ export function createPolishCard(
   query: Query,
   api: PolishCardApi,
   initial: PublicSettings,
-  pro: boolean,
   onSettings: (next: PublicSettings) => void
 ): PolishCard {
   const enabled = query<HTMLInputElement>('#polish-enabled')
-  const note = query<HTMLElement>('#polish-note')
-  const badge = query<HTMLElement>('#polish-badge')
   const instructions = query<HTMLTextAreaElement>('#polish-instructions')
   const provider = query<HTMLSelectElement>('#polish-provider')
   const model = query<HTMLInputElement>('#polish-model')
@@ -114,7 +107,6 @@ export function createPolishCard(
   const styleInputs = POLISH_STYLES.map((style) => query<HTMLInputElement>(`#polish-style-${style}`))
 
   let saved: PolishSettings = initial.polish
-  let isPro = pro
   /** Something typed or chosen here since the last save. */
   let dirty = false
   let testing = false
@@ -165,19 +157,10 @@ export function createPolishCard(
     keyActions.append(button)
   }
 
-  const paintPlan = (): void => {
-    if (enabled) enabled.disabled = !isPro
-    if (note) {
-      note.textContent = isPro ? '' : POLISH_NOT_PRO
-      note.hidden = isPro
-    }
-    if (badge) badge.hidden = isPro
-  }
-
   const paintTest = (): void => {
     const blocked = dirty || (key?.value.trim() ?? '') !== ''
     if (testButton) {
-      testButton.disabled = testing || blocked || !isPro
+      testButton.disabled = testing || blocked
       testButton.textContent = testing ? 'Testing…' : 'Test'
     }
     if (!testLine) return
@@ -259,7 +242,6 @@ export function createPolishCard(
   })
 
   paintSaved(saved)
-  paintPlan()
   paintTest()
 
   return {
@@ -267,11 +249,6 @@ export function createPolishCard(
       saved = next.polish
       if (!dirty) paintSaved(next.polish)
       else paintKeyActions()
-      paintTest()
-    },
-    applyPlan: (next) => {
-      isPro = next
-      paintPlan()
       paintTest()
     },
     collect: () => {

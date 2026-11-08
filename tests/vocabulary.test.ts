@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { PRO_VOCABULARY_TERMS } from '../src/shared/product'
 import {
   MAX_KEYWORD_TERMS,
   MAX_PROMPT_TERM_CHARS,
@@ -50,10 +49,7 @@ describe('parseVocabulary', () => {
     expect(parseVocabulary(`Kirinde\n${tooLong}\nITU-T`)).toEqual(['Kirinde', 'ITU-T'])
   })
 
-  it("has room for Pro's list, which Free uses the first part of", () => {
-    // The parser's cap is Pro's; Free's lower cap is applied where a
-    // dictation reads its settings, so a stored list is never cut short.
-    expect(MAX_VOCABULARY_TERMS).toBe(PRO_VOCABULARY_TERMS)
+  it('has room for 500 terms, every one of which a dictation uses', () => {
     expect(MAX_VOCABULARY_TERMS).toBe(500)
     expect(MAX_VOCABULARY_CHARS).toBe(20_000)
     expect(MAX_KEYWORD_TERMS).toBe(100)
@@ -158,7 +154,7 @@ describe('budgetPromptTerms', () => {
   })
 
   it('stops before the prompt budget is exceeded', () => {
-    // Pro's 500 terms would be several thousand characters — far past
+    // 500 terms would be several thousand characters — far past
     // whisper-1's 224-token window, which would evict the language hint the
     // prompt was built for.
     const terms = Array.from({ length: MAX_VOCABULARY_TERMS }, (_, i) => `term-number-${i}`)

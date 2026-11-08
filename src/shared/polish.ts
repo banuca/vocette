@@ -1,5 +1,5 @@
 /**
- * AI polish (Pro): a language model turns the cleaned transcript into
+ * AI polish: a language model turns the cleaned transcript into
  * finished text in the style the user chose. Optional, time-limited, and never
  * a reason for a dictation to fail — when it cannot finish in time, or its
  * reply looks wrong, the unpolished text is pasted and the overlay says so.

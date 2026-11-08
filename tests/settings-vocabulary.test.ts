@@ -462,59 +462,35 @@ describe('the vocabulary note and the correction', () => {
 })
 
 /**
- * Free and Pro. A list longer than Free's limit keeps every line; the notes
- * say how much of it the plan in force uses, and say nothing about Pro to a
- * list the plan makes no difference to.
+ * Long lists. Everyone has room for 500 terms and 200 rules, every one of
+ * them used, so the notes count the whole list and say nothing about plans.
  */
-describe('the notes under the lists, on each plan', () => {
+describe('the notes under long lists', () => {
   const terms = (count: number): string =>
     Array.from({ length: count }, (_, index) => `Term${index}`).join('\n')
   const rules = (count: number): string =>
     Array.from({ length: count }, (_, index) => `word${index} => W${index}`).join('\n')
+  const NO_PLANS = /\bPro\b|\btrial\b|\bFree\b/u
 
-  it('say Free uses the first 50 of a longer vocabulary, and Pro all of it', async () => {
-    const { at } = await makeHarness({ vocabulary: terms(80) }, licenceStatus({ plan: 'free' }))
-    const note = at('#vocabulary-note').textContent
-    expect(note).toContain('One term per line, up to 50 terms of 48 characters.')
-    expect(note).toContain('Using 50 of your 80 terms — Pro uses all of them.')
-    // Every line is kept, and the badge counts all of them.
-    expect(at('#vocabulary').value.split('\n')).toHaveLength(80)
+  it('count every term of a long vocabulary, up to 500', async () => {
+    const { at } = await makeHarness({ vocabulary: terms(80) })
+    const note = at('#vocabulary-note').textContent ?? ''
+    expect(note).toContain('One term per line, up to 500 terms of 48 characters.')
+    expect(note).not.toMatch(NO_PLANS)
     expect(at('#vocabulary-badge').textContent).toBe('80 terms')
   })
 
-  it('say during the trial that every term is in use', async () => {
-    const { at } = await makeHarness(
-      { vocabulary: terms(80) },
-      licenceStatus({ plan: 'trial', trialDaysLeft: 23 })
-    )
-    const note = at('#vocabulary-note').textContent
-    expect(note).toContain('One term per line, up to 500 terms of 48 characters.')
-    expect(note).toContain('Pro trial: all 80 terms in use.')
-  })
-
-  it('say nothing about Pro for a list inside the Free limit', async () => {
-    const { at } = await makeHarness({ vocabulary: terms(30) }, licenceStatus({ plan: 'free' }))
-    const note = at('#vocabulary-note').textContent ?? ''
-    expect(note).not.toContain('Pro')
-    expect(note).toContain('up to 50 terms')
-  })
-
-  it('warn about the prompt only for the terms Free actually uses', async () => {
-    // 80 terms, 50 of them in use: the budget warning counts those 50.
+  it('warn about the prompt for every term in use', async () => {
     const long = Array.from({ length: 80 }, (_, index) => `term-number-${index}`).join('\n')
-    const { at } = await makeHarness(
-      { vocabulary: long, model: 'whisper-1' },
-      licenceStatus({ plan: 'free' })
-    )
+    const { at } = await makeHarness({ vocabulary: long, model: 'whisper-1' })
     const note = at('#vocabulary-note').textContent ?? ''
-    expect(note).toContain('Using 50 of your 80 terms')
     const match = /Only the first (\d+) fit, so (\d+) are not being sent/u.exec(note)
     expect(match).not.toBeNull()
-    expect(Number(match?.[1]) + Number(match?.[2])).toBe(50)
+    expect(Number(match?.[1]) + Number(match?.[2])).toBe(80)
   })
 
-  it('say a Pro list beyond 100 terms sends its first 100 as keywords', async () => {
-    const { at } = await makeHarness({ vocabulary: terms(150) }, licenceStatus({ plan: 'pro' }))
+  it('say a list beyond 100 terms sends its first 100 as keywords', async () => {
+    const { at } = await makeHarness({ vocabulary: terms(150) })
     const note = at('#vocabulary-note').textContent ?? ''
     expect(note).toContain(
       'gpt-transcribe takes the first 100 as a dedicated keyword list, and the rest still correct near-misses.'
@@ -522,44 +498,15 @@ describe('the notes under the lists, on each plan', () => {
     expect(note).not.toContain('so every term is used')
   })
 
-  it('say Free applies the first 20 of a longer list of rules, and the trial all of them', async () => {
-    const free = await makeHarness({ replacements: rules(35) }, licenceStatus({ plan: 'free' }))
-    expect(free.at('#replacements-note').textContent).toContain(
-      'Using 20 of your 35 rules — Pro uses all of them.'
-    )
-    expect(free.at('#replacements').value.split('\n')).toHaveLength(35)
-
-    const trial = await makeHarness({ replacements: rules(35) }, licenceStatus({ plan: 'trial' }))
-    expect(trial.at('#replacements-note').textContent).toContain('Pro trial: all 35 rules in use.')
+  it('count every rule of a long list', async () => {
+    const { at } = await makeHarness({ replacements: rules(35) })
+    const note = at('#replacements-note').textContent ?? ''
+    expect(note).toContain(' 35 rules.')
+    expect(note).not.toMatch(NO_PLANS)
   })
 
-  it('keep counting ignored lines alongside the plan', async () => {
-    const { at } = await makeHarness(
-      { replacements: `${rules(25)}\nno arrow here` },
-      licenceStatus({ plan: 'free' })
-    )
-    expect(at('#replacements-note').textContent).toContain(
-      'Using 20 of your 25 rules — Pro uses all of them. 1 line ignored:'
-    )
-  })
-
-  it('follow the plan when it changes while the page is open', async () => {
-    const { view, at, context } = await makeHarness(
-      { vocabulary: terms(80), replacements: rules(35) },
-      licenceStatus({ plan: 'trial', trialDaysLeft: 1 })
-    )
-    expect(at('#vocabulary-note').textContent).toContain('Pro trial: all 80 terms in use.')
-
-    // The trial ends: the shell updates the context, then tells the page.
-    const ended = licenceStatus({ plan: 'free', trialEndNoticeDue: true })
-    context.licence = ended
-    view.applyLicence(ended)
-
-    expect(at('#vocabulary-note').textContent).toContain(
-      'Using 50 of your 80 terms — Pro uses all of them.'
-    )
-    expect(at('#replacements-note').textContent).toContain(
-      'Using 20 of your 35 rules — Pro uses all of them.'
-    )
+  it('keep counting ignored lines', async () => {
+    const { at } = await makeHarness({ replacements: `${rules(25)}\nno arrow here` })
+    expect(at('#replacements-note').textContent).toContain('25 rules — 1 line ignored:')
   })
 })

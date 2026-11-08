@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  POLISH_NOT_PRO,
   POLISH_PRIVACY,
   POLISH_TEST_NEEDS_SAVE,
   createPolishCard,
@@ -40,8 +39,6 @@ class FakeElement {
 
 const IDS = [
   'polish-enabled',
-  'polish-note',
-  'polish-badge',
   'polish-instructions',
   'polish-provider',
   'polish-model',
@@ -69,7 +66,7 @@ async function flush(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve))
 }
 
-function mount(polish: Partial<PolishSettings> = {}, pro = true) {
+function mount(polish: Partial<PolishSettings> = {}) {
   const elements = new Map(IDS.map((id) => [`#${id}`, new FakeElement()]))
   const at = (id: string): FakeElement => {
     const element = elements.get(`#${id}`)
@@ -90,7 +87,6 @@ function mount(polish: Partial<PolishSettings> = {}, pro = true) {
     (selector) => (elements.get(selector) ?? null) as never,
     { testPolish, clearPolishKey },
     settingsWith(polish),
-    pro,
     onSettings
   )
   return { card, at, testPolish, clearPolishKey, onSettings }
@@ -170,19 +166,11 @@ describe('the AI polish card', () => {
     expect(card.collect().polishKey).toBe('sk-polish')
   })
 
-  it('is Pro’s: without it the switch and Test are off, with a note and a badge', () => {
-    const { at, card } = mount({}, false)
-    expect(at('polish-enabled').disabled).toBe(true)
-    expect(at('polish-note').hidden).toBe(false)
-    expect(at('polish-note').textContent).toBe(POLISH_NOT_PRO)
-    expect(at('polish-badge').hidden).toBe(false)
-    expect(at('polish-test').disabled).toBe(true)
-
-    card.applyPlan(true)
+  it('is everyone’s: the switch and Test are on, and nothing says Pro', () => {
+    const { at } = mount()
     expect(at('polish-enabled').disabled).toBe(false)
-    expect(at('polish-note').hidden).toBe(true)
-    expect(at('polish-badge').hidden).toBe(true)
     expect(at('polish-test').disabled).toBe(false)
+    expect(polishCardMarkup()).not.toMatch(/\bPro\b/u)
   })
 
   it('tests only what is saved, and says what came back', async () => {

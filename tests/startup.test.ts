@@ -1713,7 +1713,7 @@ describe('Pro over IPC', () => {
     ])
   })
 
-  it("applies Free's limits from the next take once the trial ends, with no restart", async () => {
+  it('uses every term in every take, before and after the old trial date, and refuses none', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     const start = Date.parse('2026-09-01T09:00:00.000Z')
     vi.setSystemTime(start)
@@ -1725,17 +1725,13 @@ describe('Pro over IPC', () => {
     await app.invoke('settings:save', true, { vocabulary: TERMS })
     app.engine.transcribe.mockResolvedValue('Open data verse now.')
 
-    // Day 29: the trial, so the fifty-first term corrects the take.
-    vi.setSystemTime(start + 29 * DAY)
-    await dictateAgain(app)
-    expect(app.historyAdds().at(-1)?.text).toBe('Open Dataverse now.')
-
-    // Day 31, same session: Free uses the first fifty, and the list is intact.
-    vi.setSystemTime(start + 31 * DAY)
-    await dictateAgain(app)
-    expect(app.historyAdds()).toHaveLength(2)
-    expect(app.historyAdds().at(-1)?.text).toBe('Open data verse now.')
-    expect(app.invoke('licence:status', true)).toMatchObject({ plan: 'free', trialEndNoticeDue: true })
+    // The same session, days apart: the fifty-first term corrects every take.
+    for (const day of [29, 31, 45]) {
+      vi.setSystemTime(start + day * DAY)
+      await dictateAgain(app)
+      expect(app.historyAdds().at(-1)?.text).toBe('Open Dataverse now.')
+    }
+    expect(app.historyAdds()).toHaveLength(3)
   })
 })
 

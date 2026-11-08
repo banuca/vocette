@@ -2,7 +2,6 @@ import type { PolishSettings, PolishSettingsUpdate } from './polish'
 import type { PlatformStatus, RecordingMode } from './capabilities'
 import type { Plan } from './entitlement'
 import type { ShortcutChord } from './shortcuts'
-import type { WordAllowance } from './word-allowance'
 
 export type WorkflowPhase =
   | 'idle'
@@ -30,8 +29,6 @@ export interface WorkflowStatus {
    * when true; any success without it is said.
    */
   quiet?: boolean
-  /** On error: no take started because Free's words for the month are used. */
-  limit?: boolean
   /** On success: how long the text took after letting go, as History keeps it. */
   waitMs?: number
   /**
@@ -254,7 +251,7 @@ export interface PublicSettings {
    */
   apiEndpoint: string
   apiKeySource: ApiKeySource
-  /** AI polish (Pro). The key stays in the main process; only whether one is saved crosses. */
+  /** AI polish. The key stays in the main process; only whether one is saved crosses. */
   polish: PolishSettings
 }
 
@@ -368,8 +365,6 @@ export interface LicenceStatus {
   trialEndNoticeDue: boolean
   /** What activation names this PC to Polar: "Vocette on Windows · 7F3A". */
   deviceLabel: string
-  /** Free's words this month; null on the trial and Pro, which have no limit. */
-  words: WordAllowance | null
 }
 
 /** Activating answers with the new status, or the sentence that says why not. */

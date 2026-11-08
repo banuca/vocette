@@ -77,16 +77,11 @@ import {
   type EngineStatus,
   type ModelStatus
 } from '../shared/engine'
-import {
-  entitlementFor,
-  planReplacements,
-  planVocabulary,
-  subscriptionStanding,
-  type Entitlement
-} from '../shared/entitlement'
+import { entitlementFor, subscriptionStanding, type Entitlement } from '../shared/entitlement'
 import { CUSTOMER_PORTAL_URL, UPDATE_REPOSITORY } from '../shared/product'
 import { withOwnName, withOwnNameRules } from '../shared/own-name'
-import { allowanceFor, allowanceUsedUp } from '../shared/word-allowance'
+import { parseReplacements } from '../shared/replacements'
+import { parseVocabulary } from '../shared/vocabulary'
 import { buildReport, type CountsReport, type CountsStatus } from '../shared/usage-counts'
 import { createOverlayPeek, type OverlayPeek } from './overlay-peek'
 import { AppUpdater } from './app-updater'
@@ -384,7 +379,7 @@ function polishRequest(text: string, signal?: AbortSignal): Parameters<typeof re
     text,
     style: settings.polishStyle,
     instructions: settings.polishInstructions,
-    terms: withOwnName(planVocabulary(settings.vocabulary, entitlement().pro)),
+    terms: withOwnName(parseVocabulary(settings.vocabulary)),
     endpoint: settings.polishEndpoint,
     model: settings.polishModel,
     apiKey: polishKey(),
@@ -418,9 +413,6 @@ function showMain(page: Page = 'history'): void {
 function workflowSettings(): WorkflowSettings {
   const settings = settingsStore.getInternal()
   const status = engineStatus()
-  // Worked out afresh for every take, so the trial ends when it ends — no
-  // restart — and the lists shrink to Free's limits without being cut.
-  const { pro } = entitlement()
   return {
     // Resolved here, once: the controller is told the mode actually in force,
     // never the preference the platform cannot honour.
@@ -438,31 +430,21 @@ function workflowSettings(): WorkflowSettings {
     // model the user chose.
     model: settings.engine === 'local' ? LOCAL_MODEL.id : settings.model,
     language: settings.language,
-    pro,
-    // Pro only: a Free user's saved switch sends nothing anywhere.
-    polish: pro && settings.polishEnabled,
-    // The first 50 terms and 20 rules on Free, all of them with Pro. The
-    // terms feed both the cloud request and the correction after it. The
+    polish: settings.polishEnabled,
+    // Every term and rule the parsers accept: up to 500 terms and 200 rules.
+    // The terms feed both the cloud request and the correction after it. The
     // app's own name rides along outside the limit (see own-name.ts).
-    vocabulary: withOwnName(planVocabulary(settings.vocabulary, pro)),
-    replacements: withOwnNameRules(planReplacements(settings.replacements, pro)),
+    vocabulary: withOwnName(parseVocabulary(settings.vocabulary)),
+    replacements: withOwnNameRules(parseReplacements(settings.replacements).rules),
     microphoneId: settings.microphoneId,
     transcriptionReady: status.ready,
-    notReadyReason: status.notReadyReason,
-    // Free's words this month; the trial and Pro have no limit.
-    allowance: pro ? null : allowanceFor(settings.wordUsage, new Date())
+    notReadyReason: status.notReadyReason
   }
 }
 
-/**
- * Counts a delivered take: a day's tally for opt-in counts (only while they
- * are on), and its words on Free, telling the window the new total.
- */
-function countWords(words: number): void {
+/** Counts a delivered take: a day's tally for opt-in counts, only while they are on. */
+function countDictation(): void {
   settingsStore.recordUsageDay()
-  if (entitlement().pro) return
-  settingsStore.addWordUsage(words)
-  broadcastLicenceStatus()
 }
 
 /**
@@ -471,19 +453,18 @@ function countWords(words: number): void {
  */
 function countsReport(): CountsReport {
   const settings = settingsStore.getInternal()
-  const now = new Date()
-  const plan = entitlement()
   return buildReport({
     version: app.getVersion(),
     os: platform.id === 'unknown' ? 'other' : platform.id,
     engine: settings.engine === 'local' ? 'local' : 'cloud',
-    plan: plan.plan,
+    plan: entitlement().plan,
     // Set on the first launch of a version with the trial, which for a new
     // install is its first run.
     firstRunAt: settings.trialStartedAt,
     days: settings.usageDays,
-    limitHit: !plan.pro && allowanceUsedUp(allowanceFor(settings.wordUsage, now)),
-    now
+    // There is no limit to reach; the counts server still expects the field.
+    limitHit: false,
+    now: new Date()
   })
 }
 
@@ -541,8 +522,7 @@ function licenceStatus(): LicenceStatus {
     checking: subscriptionChecker?.isChecking() ?? false,
     checkMessage: subscriptionChecker?.lastMessage() ?? null,
     monthlyCheckoutUrl: checkout.monthly,
-    yearlyCheckoutUrl: checkout.yearly,
-    words: allowanceFor(settingsStore.getInternal().wordUsage, new Date())
+    yearlyCheckoutUrl: checkout.yearly
   })
 }
 
@@ -931,7 +911,7 @@ function createDictationController(): DictationController {
     broadcastStatus,
     showMain,
     recordHistory,
-    countWords,
+    countDictation,
     noteTake: (take) =>
       diagnosticsLog?.record({
         kind: 'take',

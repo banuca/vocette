@@ -1,11 +1,9 @@
 import type { AppContext, NavigationIntent } from '../app-context'
 import { BLUETOOTH_HEADSET_NOTE, looksLikeBluetoothHeadset } from '../bluetooth-headset'
 import { escapeHtml, friendlyError, keyChips } from '../dom'
-import { replacementsPlanNote, vocabularyPlanNote } from '../licence-text'
 import { createModelRow, localLanguageNote } from '../model-download'
 import { createPolishCard, polishCardMarkup } from '../polish-card'
 import type { EngineStatus } from '../../shared/engine'
-import { vocabularyTermLimit } from '../../shared/entitlement'
 import {
   autoPasteSupported,
   clipboardOnlyReason,
@@ -25,7 +23,6 @@ import {
   LANGUAGE_OPTIONS,
   TRANSCRIPTION_MODELS,
   dictationIsBusy,
-  type LicenceStatus,
   type PasteLastStatus,
   type PublicSettings,
   type SettingsUpdate,
@@ -35,6 +32,7 @@ import {
 import {
   MAX_KEYWORD_TERMS,
   MAX_PROMPT_TERM_CHARS,
+  MAX_VOCABULARY_TERMS,
   MAX_VOCABULARY_TERM_CHARS,
   budgetPromptTerms,
   parseVocabulary,
@@ -105,8 +103,6 @@ export interface SettingsView {
   applyEngine(next: EngineStatus): void
   /** Removing the model waits for a dictation to finish. */
   applyWorkflow(status: WorkflowStatus): void
-  /** The notes under the lists say how much of each the plan in force uses. */
-  applyLicence(next: LicenceStatus): void
   dispose(): void
 }
 
@@ -351,12 +347,8 @@ ${polishCardMarkup()}
     context.content.querySelector<T>(selector)
 
   // AI polish keeps its own controls; Save collects them with the rest.
-  const polishCard = createPolishCard(
-    query,
-    window.murmur,
-    settings,
-    context.licence.plan !== 'free',
-    (next) => context.applySettings(next)
+  const polishCard = createPolishCard(query, window.murmur, settings, (next) =>
+    context.applySettings(next)
   )
 
   const holdDelay = query<HTMLSelectElement>('#hold-delay')
@@ -470,12 +462,8 @@ ${polishCardMarkup()}
    */
   const paintVocabularyNote = (): void => {
     if (!vocabularyNote && !vocabularyBadge) return
+    // The terms a dictation uses: every one the parser accepts.
     const terms = parseVocabulary(vocabulary?.value ?? '')
-    // What a dictation uses on the plan in force: the first terms, up to its
-    // limit. The list itself is never cut, so the badge counts all of it.
-    const plan = context.licence.plan
-    const limit = vocabularyTermLimit(plan !== 'free')
-    const inUse = terms.slice(0, limit)
     const selected = modelSelect?.value ?? settings.model
     const model =
       selected === CUSTOM_MODEL_OPTION ? modelCustom?.value.trim() ?? '' : selected
@@ -493,11 +481,7 @@ ${polishCardMarkup()}
     }
     if (!vocabularyNote) return
 
-    const format = `One term per line, up to ${limit} terms of ${MAX_VOCABULARY_TERM_CHARS} characters.`
-    // Said only when the plan changes what is used: a list inside Free's
-    // limit is the same on every plan, and hears nothing about Pro.
-    const planNote = vocabularyPlanNote(plan, terms.length)
-    const lead = planNote ? `${format} ${planNote}` : format
+    const lead = `One term per line, up to ${MAX_VOCABULARY_TERMS} terms of ${MAX_VOCABULARY_TERM_CHARS} characters.`
     const describe = (): string => {
       // True of every engine: the correction runs on this computer, after
       // recognition. For the on-device engine it is the whole mechanism —
@@ -506,15 +490,15 @@ ${polishCardMarkup()}
       const limits = `${lead} They are sent to your transcription provider with every dictation.`
       if (supportsKeywordList(model, endpoint)) {
         // One request carries no more keywords than it always did; a longer
-        // Pro list still corrects near-misses after recognition.
+        // list still corrects near-misses after recognition.
         const keywords =
-          inUse.length > MAX_KEYWORD_TERMS
+          terms.length > MAX_KEYWORD_TERMS
             ? `${model} takes the first ${MAX_KEYWORD_TERMS} as a dedicated keyword list, and the rest still correct near-misses.`
             : `${model} takes them as a dedicated keyword list, so every term is used.`
         return `${limits} ${keywords} ${VOCABULARY_CORRECTION_NOTE}`
       }
-      const sent = budgetPromptTerms(inUse).length
-      const dropped = inUse.length - sent
+      const sent = budgetPromptTerms(terms).length
+      const dropped = terms.length - sent
       const fit =
         dropped > 0
           ? ` Only the first ${sent} fit, so ${dropped} ${dropped === 1 ? 'is' : 'are'} not being sent — shorten the list.`
@@ -550,19 +534,10 @@ ${polishCardMarkup()}
       ignored === 0
         ? ''
         : `${ignored} ${ignored === 1 ? 'line' : 'lines'} ignored: a rule needs => with something on both sides, at most ${MAX_SPOKEN_CHARS} characters before it and ${MAX_WRITTEN_CHARS.toLocaleString('en-GB')} after`
-    // A list longer than Free's limit hears how much of it the plan uses, in
-    // place of the plain count, so the number is said once. Every rule stays
-    // in the box whatever the plan.
-    const planNote = replacementsPlanNote(context.licence.plan, rules.length)
-    let text: string
-    if (planNote) {
-      text = `${REPLACEMENTS_HELP} ${planNote}${skipped ? ` ${skipped}.` : ''}`
-    } else {
-      const count =
-        rules.length === 0 ? 'No rules yet' : rules.length === 1 ? '1 rule' : `${rules.length} rules`
-      const full = rules.length >= MAX_REPLACEMENT_RULES ? ', the most Vocette will use' : ''
-      text = `${REPLACEMENTS_HELP} ${count}${full}${skipped ? ` — ${skipped}` : ''}.`
-    }
+    const count =
+      rules.length === 0 ? 'No rules yet' : rules.length === 1 ? '1 rule' : `${rules.length} rules`
+    const full = rules.length >= MAX_REPLACEMENT_RULES ? ', the most Vocette will use' : ''
+    const text = `${REPLACEMENTS_HELP} ${count}${full}${skipped ? ` — ${skipped}` : ''}.`
     // textContent, not innerHTML: the rules are user input, and `=>` must
     // read as typed. Written only when it changes, because the note is a live
     // region and would otherwise be read out in full on every keystroke.
@@ -1341,13 +1316,6 @@ ${polishCardMarkup()}
     },
     applyEngine: (next) => modelRow?.apply(next),
     applyWorkflow: (status) => modelRow?.setDictating(dictationIsBusy(status.phase)),
-    // Read from the context, which the shell has already updated; the trial
-    // can end while this page is open.
-    applyLicence: () => {
-      paintVocabularyNote()
-      paintReplacementsNote()
-      polishCard.applyPlan(context.licence.plan !== 'free')
-    },
     dispose: () => {
       disposed = true
       releaseCaptureListener?.()

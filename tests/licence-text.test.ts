@@ -11,9 +11,7 @@ import {
   plansNote,
   subscribeLabels,
   subscriptionLine,
-  replacementsPlanNote,
-  trialBadge,
-  vocabularyPlanNote
+  trialBadge
 } from '../src/renderer/licence-text'
 import { licenceStatus } from './fixtures/licence-status'
 
@@ -142,28 +140,6 @@ describe('the licence lines', () => {
       'Your subscription has not been confirmed for 30 days, so Pro is paused. Connect to the ' +
         'internet and press Check now.'
     )
-  })
-})
-
-describe('the notes under the lists', () => {
-  it('say how much of a long list Free uses, and that Pro uses all of it', () => {
-    expect(vocabularyPlanNote('free', 80)).toBe('Using 50 of your 80 terms — Pro uses all of them.')
-    expect(replacementsPlanNote('free', 35)).toBe(
-      'Using 20 of your 35 rules — Pro uses all of them.'
-    )
-  })
-
-  it('say during the trial that the whole list is in use', () => {
-    expect(vocabularyPlanNote('trial', 80)).toBe('Pro trial: all 80 terms in use.')
-    expect(replacementsPlanNote('trial', 35)).toBe('Pro trial: all 35 rules in use.')
-  })
-
-  it('say nothing when the plan changes nothing', () => {
-    expect(vocabularyPlanNote('free', 50)).toBeNull()
-    expect(vocabularyPlanNote('trial', 12)).toBeNull()
-    expect(vocabularyPlanNote('pro', 480)).toBeNull()
-    expect(replacementsPlanNote('free', 20)).toBeNull()
-    expect(replacementsPlanNote('pro', 150)).toBeNull()
   })
 })
 

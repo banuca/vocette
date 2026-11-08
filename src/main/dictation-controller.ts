@@ -4,12 +4,6 @@ import { applyReplacements, type ReplacementRule } from '../shared/replacements'
 import { correctVocabulary, type CommonWordTest } from '../shared/vocabulary-correction'
 import { worthPolishing, type PolishOutcome } from '../shared/polish'
 import { wordCount } from '../shared/format'
-import {
-  allowanceUsedUp,
-  crossingNote,
-  usedUpStatus,
-  type WordAllowance
-} from '../shared/word-allowance'
 import type { RecordingMode } from '../shared/capabilities'
 import type { PasteDeclined, TakeNote } from './diagnostics-log'
 import type {
@@ -121,18 +115,9 @@ export interface WorkflowSettings {
   /** The model that will transcribe, as History records it. */
   model: string
   language: string
-  /**
-   * Whether Pro's limits apply to this take: during the trial and with a
-   * licence. The lists below already honour it — Free's first 50 terms and
-   * 20 rules — so nothing here needs to look, until a Pro-only step does.
-   */
-  pro: boolean
-  /**
-   * AI polish for this take: switched on, and Pro. The caller works it out,
-   * so a Free user's saved switch never sends anything anywhere.
-   */
+  /** AI polish for this take: the user's saved switch. */
   polish: boolean
-  /** Parsed once by the caller, and cut to the plan's limit; the controller only forwards it. */
+  /** Parsed once by the caller; the controller only forwards it. */
   vocabulary: string[]
   /** Parsed once by the caller, like the vocabulary; the controller only applies them. */
   replacements: ReplacementRule[]
@@ -141,12 +126,6 @@ export interface WorkflowSettings {
   transcriptionReady: boolean
   /** What to tell the user when it has not, already a sentence. */
   notReadyReason: string | null
-  /**
-   * Free's words this month; null on the trial and Pro, which have no limit.
-   * Once they are used no new take starts, but a take already under way is
-   * always delivered in full.
-   */
-  allowance: WordAllowance | null
 }
 
 /** Foreground-window verdict taken at paste time (null = tracking unavailable). */
@@ -218,8 +197,8 @@ export interface DictationDeps {
   broadcastStatus(status: WorkflowStatus): void
   showMain(page: Page): void
   recordHistory(text: string, durationMs: number, model: string, extras: HistoryExtras): void
-  /** Counts a delivered take's words; the caller counts them only on Free. */
-  countWords?(words: number): void
+  /** Counts a delivered take, for opt-in counts. */
+  countDictation?(): void
   /** For the local diagnostics log: how a take ended, with no text. */
   noteTake?(take: TakeNote): void
   /** For the local diagnostics log: why a paste was not made. */
@@ -249,7 +228,7 @@ export interface DictationDeps {
    */
   prewarm?(): void
   /**
-   * AI polish (Pro): the cleaned text rewritten in the user's style, inside
+   * AI polish: the cleaned text rewritten in the user's style, inside
    * their time limit. Always resolves; `note` says why the text went out
    * unpolished. Only called while `WorkflowSettings.polish` is on.
    */
@@ -427,7 +406,7 @@ export class DictationController {
       // words. Only a shortcut take may carry on with it, and only while it
       // could still be transcribed; anything else lets it go unheard first.
       const settings = this.deps.getSettings()
-      if (source === 'shortcut' && settings.transcriptionReady && !allowanceUsedUp(settings.allowance)) {
+      if (source === 'shortcut' && settings.transcriptionReady) {
         this.promoteProvisional(settings)
         return
       }
@@ -445,12 +424,6 @@ export class DictationController {
       // The reason names what is missing — the speech model, or a key — so
       // the user is not sent looking for the wrong thing.
       this.fail(settings.notReadyReason ?? 'Transcription is not set up yet.', true)
-      return
-    }
-    if (settings.allowance && allowanceUsedUp(settings.allowance)) {
-      // Said where the user is looking, with when it comes back. The window
-      // is not pushed in front: History and the Pro page say the rest.
-      this.broadcast({ phase: 'error', ...usedUpStatus(settings.allowance), limit: true }, ERROR_RESET_MS)
       return
     }
 
@@ -501,9 +474,7 @@ export class DictationController {
     if (this.activeAttempt) return
     const settings = this.deps.getSettings()
     // Not being ready is not news yet: a press that is held says so itself.
-    // Nor is a month's words being used up, and the microphone stays shut.
     if (!settings.instantCapture || !settings.transcriptionReady) return
-    if (allowanceUsedUp(settings.allowance)) return
 
     // What any shortcut take captures at its start, and nothing the user can
     // see. The status on screen, its timer and a kept retry take are all left
@@ -1186,7 +1157,7 @@ export class DictationController {
         spokenFormatting: settings.spokenFormatting
       })
 
-      // AI polish (Pro) works on the cleaned text, before the user's own
+      // AI polish works on the cleaned text, before the user's own
       // rules, so a snippet is pasted exactly as they wrote it. Its time limit
       // is its own; running out of it, or any failure, costs only the polish.
       let finished = cleaned
@@ -1235,8 +1206,7 @@ export class DictationController {
       // Counted as it is kept, so a paste that fails still counts: the words
       // are in History, one click from the clipboard.
       const words = wordCount(text)
-      this.deps.countWords?.(words)
-      const allowanceNote = crossingNote(settings.allowance, words)
+      this.deps.countDictation?.()
       if (!this.ownsAttempt(attempt)) return
 
       const message = await this.pasteOrExplain({
@@ -1270,17 +1240,15 @@ export class DictationController {
       // copied because the user turned automatic paste off. The overlay folds
       // away with a tick. Anything else is said, polish that did not happen
       // included.
-      // A take that crosses Free's notice line or its limit says so, once.
       const quiet =
         !polishNote &&
-        !allowanceNote &&
         (message === PASTED_MESSAGE || (message === COPIED_MESSAGE && !settings.autoPaste))
       this.broadcast(
         {
           phase: 'success',
           // Said plainly when polish was wanted and did not happen.
           message: polishNote ? `${message} — unpolished (${polishNote})` : message,
-          detail: allowanceNote ?? previewOf(text),
+          detail: previewOf(text),
           waitMs,
           ...(quiet ? { quiet } : {})
         },

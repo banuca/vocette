@@ -6,8 +6,9 @@ import {
   type SoundKind,
   type WorkflowSettings
 } from '../src/main/dictation-controller'
-import { planReplacements, planVocabulary } from '../src/shared/entitlement'
+import { parseReplacements } from '../src/shared/replacements'
 import type { Page, WorkflowStatus } from '../src/shared/types'
+import { parseVocabulary } from '../src/shared/vocabulary'
 
 /** Stands in for the snapshot of whatever the user had copied. */
 const USER_CLIPBOARD = { snapshot: 'what the user had copied' }
@@ -35,14 +36,12 @@ function makeHarness(
     engine: 'cloud',
     model: 'gpt-transcribe',
     language: 'en',
-    pro: true,
     polish: false,
     vocabulary: [],
     replacements: [],
     microphoneId: 'mic-1',
     transcriptionReady: true,
     notReadyReason: null,
-    allowance: null,
     ...overrides.settings
   }
 
@@ -56,7 +55,7 @@ function makeHarness(
   const broadcastStatus = vi.fn<(status: WorkflowStatus) => void>()
   const showMain = vi.fn<(page: Page) => void>()
   const recordHistory = vi.fn<DictationDeps['recordHistory']>()
-  const countWords = vi.fn<(words: number) => void>()
+  const countDictation = vi.fn<() => void>()
   const noteTake = vi.fn<NonNullable<DictationDeps['noteTake']>>()
   const notePasteDeclined = vi.fn<NonNullable<DictationDeps['notePasteDeclined']>>()
   const noteMicError = vi.fn<NonNullable<DictationDeps['noteMicError']>>()
@@ -79,7 +78,7 @@ function makeHarness(
     broadcastStatus,
     showMain,
     recordHistory,
-    countWords,
+    countDictation,
     noteTake,
     notePasteDeclined,
     noteMicError,
@@ -618,97 +617,38 @@ describe('waiting for held modifier keys before pasting', () => {
   })
 })
 
-describe("Free's monthly words", () => {
-  const allowance = (used: number): WorkflowSettings['allowance'] => ({
-    used,
-    limit: 10_000,
-    monthName: 'October',
-    resetsOn: '1 November'
-  })
-  const statuses = (harness: ReturnType<typeof makeHarness>): WorkflowStatus[] =>
-    harness.deps.broadcastStatus.mock.calls.map(([status]) => status)
+describe('no monthly limit', () => {
   const recorderStarts = (harness: ReturnType<typeof makeHarness>): number =>
     harness.deps.sendToRecorder.mock.calls.filter(([channel]) => channel === 'recorder:start').length
 
-  it('starts no take once they are used, and says when they come back', () => {
-    const harness = makeHarness({ settings: { pro: false, allowance: allowance(10_000) } })
-    harness.controller.startDictation('shortcut')
-    expect(recorderStarts(harness)).toBe(0)
-    expect(statuses(harness).at(-1)).toEqual({
-      phase: 'error',
-      message: 'Free words used up for October',
-      detail: 'Back on 1 November · Pro has no limit',
-      limit: true,
-      canRetry: false
-    })
-    expect(harness.deps.showMain).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(4500)
-    expect(harness.controller.getStatus().phase).toBe('idle')
+  it('starts and delivers take after take, past 10,000 words, and says nothing about words', async () => {
+    const harness = makeHarness()
+    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
+    // More than the old Free month in a single take, then another take.
+    harness.deps.transcribe.mockResolvedValueOnce(
+      Array.from({ length: 10_001 }, (_, index) => `word${index}`).join(' ')
+    )
+    await dictate(harness)
+    await vi.advanceTimersByTimeAsync(5_000)
+    await dictate(harness)
+
+    expect(recorderStarts(harness)).toBe(2)
+    expect(harness.deps.recordHistory).toHaveBeenCalledTimes(2)
+    expect(harness.deps.paste).toHaveBeenCalledTimes(2)
+    expect(harness.deps.countDictation).toHaveBeenCalledTimes(2)
+    const said = harness.deps.broadcastStatus.mock.calls
+      .map(([status]) => `${status.message} ${status.detail ?? ''}`)
+      .join('\n')
+    expect(said).not.toMatch(/limit|free words|used up|\bPro\b/iu)
   })
 
-  it('refuses from the window just the same', () => {
-    const harness = makeHarness({ settings: { pro: false, allowance: allowance(10_412) } })
-    harness.controller.startDictation('ui')
-    harness.controller.toggleDictation('ui')
-    expect(recorderStarts(harness)).toBe(0)
-  })
-
-  it('never opens the microphone at the keypress once they are used', () => {
-    const harness = makeHarness({ settings: { pro: false, allowance: allowance(10_000) } })
-    harness.controller.prepareDictation()
-    expect(recorderStarts(harness)).toBe(0)
-  })
-
-  it('lets go of a keypress take if the words ran out under it', () => {
-    const harness = makeHarness({ settings: { pro: false, allowance: allowance(9_990) } })
+  it('opens the microphone at the keypress, and from the window, every time', () => {
+    const harness = makeHarness()
     harness.controller.prepareDictation()
     expect(recorderStarts(harness)).toBe(1)
-    harness.settings.allowance = allowance(10_005)
-    harness.controller.startDictation('shortcut')
-    expect(harness.controller.isRecording()).toBe(false)
-    expect(statuses(harness).at(-1)).toMatchObject({ phase: 'error', limit: true })
-  })
-
-  it('still records with words to spare, and counts what it delivers', async () => {
-    const harness = makeHarness({ settings: { pro: false, allowance: allowance(9_999) } })
-    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
-    await dictate(harness)
-    // "Hello world." is two words, and crosses the limit: delivered in full, and said.
-    expect(harness.deps.paste).toHaveBeenCalledTimes(1)
-    expect(harness.deps.countWords).toHaveBeenCalledWith(2)
-    const success = statuses(harness).filter((status) => status.phase === 'success').at(-1)
-    expect(success).toMatchObject({
-      message: 'Pasted',
-      detail: "That's your 10,000 free words for October · back on 1 November"
-    })
-    expect(success).not.toHaveProperty('quiet')
-  })
-
-  it('says the month so far once, as the take crosses 8,000', async () => {
-    const harness = makeHarness({ settings: { pro: false, allowance: allowance(7_999) } })
-    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
-    await dictate(harness)
-    expect(statuses(harness).filter((status) => status.phase === 'success').at(-1)).toMatchObject({
-      message: 'Pasted',
-      detail: '8,001 of 10,000 free words this month'
-    })
-  })
-
-  it('stays quiet between the lines', async () => {
-    const harness = makeHarness({ settings: { pro: false, allowance: allowance(5_000) } })
-    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
-    await dictate(harness)
-    expect(statuses(harness).filter((status) => status.phase === 'success').at(-1)).toMatchObject({
-      message: 'Pasted',
-      quiet: true
-    })
-  })
-
-  it('has no limit on the trial or Pro', async () => {
-    const harness = makeHarness({ settings: { pro: true, allowance: null } })
-    harness.deps.getForegroundState.mockReturnValue({ sameWindow: true, elevated: false })
-    await dictate(harness)
-    expect(harness.deps.paste).toHaveBeenCalledTimes(1)
+    harness.controller.abandonPreparation()
+    harness.controller.startDictation('ui')
+    expect(recorderStarts(harness)).toBe(2)
   })
 })
 
@@ -2984,26 +2924,21 @@ describe('silence stays silent', () => {
 })
 
 /**
- * Free's limits as a take meets them. The settings are built with the same
- * functions the main process uses for every take, so this is the path a real
- * dictation follows: the cloud request and the correction after it both see
- * the capped list, and the stored list itself is never cut.
+ * The whole of a long list, as a take meets it. The settings are built with
+ * the same parsers the main process uses for every take, so this is the path
+ * a real dictation follows: the cloud request and the correction after it
+ * both see every term, and every rule applies.
  */
-describe('the plan limits, as a take uses them', () => {
-  const settingsFor = (
-    vocabulary: string,
-    replacements: string,
-    pro: boolean
-  ): Partial<WorkflowSettings> => ({
-    pro,
-    vocabulary: planVocabulary(vocabulary, pro),
-    replacements: planReplacements(replacements, pro)
+describe('the whole list, as a take uses it', () => {
+  const settingsFor = (vocabulary: string, replacements: string): Partial<WorkflowSettings> => ({
+    vocabulary: parseVocabulary(vocabulary),
+    replacements: parseReplacements(replacements).rules
   })
 
-  /** Fifty terms, then Dataverse as the fifty-first. */
-  const TERMS = [...Array.from({ length: 50 }, (_, index) => `Term${index}`), 'Dataverse'].join('\n')
-  /** Twenty rules, then a twenty-first. */
-  const RULES = Array.from({ length: 21 }, (_, index) => `word${index} => W${index}`).join('\n')
+  /** 499 terms, then Dataverse as the 500th: the most a list holds. */
+  const TERMS = [...Array.from({ length: 499 }, (_, index) => `Term${index}`), 'Dataverse'].join('\n')
+  /** 200 rules: the most a list holds. */
+  const RULES = Array.from({ length: 200 }, (_, index) => `word${index} => W${index}`).join('\n')
 
   async function dictate(harness: ReturnType<typeof makeHarness>, rawText: string): Promise<void> {
     harness.deps.transcribe.mockResolvedValue(rawText)
@@ -3019,26 +2954,11 @@ describe('the plan limits, as a take uses them', () => {
   const sentTerms = (harness: ReturnType<typeof makeHarness>): string[] =>
     harness.deps.transcribe.mock.calls[0]?.[0].vocabulary ?? []
 
-  it('leaves the 51st term out of the request and the correction on Free', async () => {
-    const harness = makeHarness({ settings: settingsFor(TERMS, '', false) })
+  it('sends the 500th term, and corrects to it', async () => {
+    const harness = makeHarness({ settings: settingsFor(TERMS, '') })
     await dictate(harness, 'Open data verse now.')
 
-    expect(sentTerms(harness)).toHaveLength(50)
-    expect(sentTerms(harness)).not.toContain('Dataverse')
-    // Nothing changed what was heard, so no heard text is kept beside it.
-    expect(harness.deps.recordHistory).toHaveBeenCalledWith(
-      'Open data verse now.',
-      100,
-      'gpt-transcribe',
-      { waitMs: expect.any(Number) }
-    )
-  })
-
-  it('sends the 51st term with Pro, and corrects to it', async () => {
-    const harness = makeHarness({ settings: settingsFor(TERMS, '', true) })
-    await dictate(harness, 'Open data verse now.')
-
-    expect(sentTerms(harness)).toHaveLength(51)
+    expect(sentTerms(harness)).toHaveLength(500)
     expect(sentTerms(harness).at(-1)).toBe('Dataverse')
     expect(harness.deps.recordHistory).toHaveBeenCalledWith(
       'Open Dataverse now.',
@@ -3048,18 +2968,11 @@ describe('the plan limits, as a take uses them', () => {
     )
   })
 
-  it('applies the first 20 rules on Free, and the 21st only with Pro', async () => {
-    const free = makeHarness({ settings: settingsFor('', RULES, false) })
-    await dictate(free, 'Say word0 and word20.')
-    expect(free.deps.recordHistory).toHaveBeenCalledWith('Say W0 and word20.', 100, 'gpt-transcribe', {
-      heardText: 'Say word0 and word20.',
-      waitMs: expect.any(Number)
-    })
-
-    const pro = makeHarness({ settings: settingsFor('', RULES, true) })
-    await dictate(pro, 'Say word0 and word20.')
-    expect(pro.deps.recordHistory).toHaveBeenCalledWith('Say W0 and W20.', 100, 'gpt-transcribe', {
-      heardText: 'Say word0 and word20.',
+  it('applies the 200th rule', async () => {
+    const harness = makeHarness({ settings: settingsFor('', RULES) })
+    await dictate(harness, 'Say word0 and word199.')
+    expect(harness.deps.recordHistory).toHaveBeenCalledWith('Say W0 and W199.', 100, 'gpt-transcribe', {
+      heardText: 'Say word0 and word199.',
       waitMs: expect.any(Number)
     })
   })
@@ -3376,7 +3289,7 @@ describe('AI polish', () => {
     expect(lastSuccess(harness)).toMatchObject({ message: 'Pasted', quiet: true })
   })
 
-  it('is never asked while polish is off, or for a take with Pro gone', async () => {
+  it('is never asked while polish is off', async () => {
     const polish = polished('Never.')
     const harness = makeHarness({ settings: { polish: false }, polish })
     await dictate(harness, 'hello world')

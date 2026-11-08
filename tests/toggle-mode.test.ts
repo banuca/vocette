@@ -49,14 +49,12 @@ function makeHarness(mode: 'hold' | 'toggle' = 'toggle', holdDelayMs = 250) {
     engine: 'cloud',
     model: 'gpt-transcribe',
     language: 'en',
-    pro: true,
     polish: false,
     vocabulary: [],
     replacements: [],
     microphoneId: 'mic-1',
     transcriptionReady: true,
-    notReadyReason: null,
-    allowance: null
+    notReadyReason: null
   }
 
   const sendToRecorder = vi.fn()

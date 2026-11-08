@@ -54,7 +54,6 @@ node e2e/quiet-check.mjs
 | `resting-check` | The resting pill from start-up, springing open and back (K10) |
 | `peek-check` | Point at the pill and it fades; away and it comes back. Moves the real pointer (K11) |
 | `resting-switch-check` | The "Show the pill while idle" switch (K10) |
-| `word-limit-check` | Free past its trial at 9,995 words: History line, the crossing take, the refused next take with its pause sign (N1) |
 | `welcome-check` | The first-run card: both ticked, Done saves, gone for good (S2, S3) |
 | `language-check` | Prints the system languages and the language a fresh profile starts in (S6) |
 | `update-install-check` | Packaged app only (`E2E_EXE`): Download and install from a local feed, with progress; the installer's hash checked, then deleted. Never installs (K8) |

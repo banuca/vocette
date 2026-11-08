@@ -6,7 +6,6 @@ import {
   PRO_VOCABULARY_TERMS,
   SUBSCRIPTION_GRACE_DAYS
 } from '../shared/product'
-import type { Plan } from '../shared/entitlement'
 import type { LicenceStatus } from '../shared/types'
 
 /**
@@ -131,29 +130,6 @@ export function subscriptionLine(
   if (confirmed === 'today' || confirmed === 'yesterday') return line
   const left = licence.graceDaysLeft
   return `${line}. Pro keeps working for ${left} more ${left === 1 ? 'day' : 'days'} without a check.`
-}
-
-/**
- * The line under the vocabulary once a list is longer than Free's limit, or
- * null when the plan changes nothing about it.
- */
-export function vocabularyPlanNote(plan: Plan, terms: number): string | null {
-  if (terms <= FREE_VOCABULARY_TERMS) return null
-  if (plan === 'free') {
-    return `Using ${FREE_VOCABULARY_TERMS} of your ${terms} terms — Pro uses all of them.`
-  }
-  if (plan === 'trial') return `Pro trial: all ${terms} terms in use.`
-  return null
-}
-
-/** The same for the replacement rules. */
-export function replacementsPlanNote(plan: Plan, rules: number): string | null {
-  if (rules <= FREE_REPLACEMENT_RULES) return null
-  if (plan === 'free') {
-    return `Using ${FREE_REPLACEMENT_RULES} of your ${rules} rules — Pro uses all of them.`
-  }
-  if (plan === 'trial') return `Pro trial: all ${rules} rules in use.`
-  return null
 }
 
 /** History's one notice, shown once the trial has ended, until it is dismissed. */

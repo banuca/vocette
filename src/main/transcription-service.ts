@@ -370,7 +370,7 @@ export class TranscriptionService {
     body.append('model', input.model)
 
     if (shape.useKeywords) {
-      // The first terms, in the user's order: a Pro list can hold several
+      // The first terms, in the user's order: a list can hold several
       // hundred, but one request carries no more than it always did. Every
       // term still corrects near-misses after recognition.
       for (const term of shape.terms.slice(0, MAX_KEYWORD_TERMS)) body.append('keywords[]', term)
